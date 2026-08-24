@@ -1,0 +1,61 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "benchscope"
+version = "1.0.3"
+description = "vLLM / SGLang 推理服务性能测试 Web 工具 (benchscope)"
+readme = "README.md"
+requires-python = ">=3.9"
+license = "Apache-2.0"
+license-files = ["LICENSE"]
+keywords = [
+    "vllm", "sglang", "benchmark", "llm", "performance-test",
+    "inference", "openai-api", "web-ui", "benchscope",
+]
+authors = [
+    { name = "benchscope", email = "benchscope@example.com" },
+]
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Topic :: System :: Benchmark",
+    "Framework :: FastAPI",
+]
+dependencies = [
+    "fastapi>=0.110",
+    "uvicorn[standard]>=0.29",
+    "requests>=2.31",
+    "openpyxl>=3.1",
+    "pydantic>=2",
+    "python-multipart>=0.0.9",
+]
+
+[project.optional-dependencies]
+modelscope = ["modelscope>=1.15"]
+
+[project.urls]
+Homepage = "https://github.com/LABELNET/benchscope"
+Documentation = "https://github.com/LABELNET/benchscope#readme"
+Source = "https://github.com/LABELNET/benchscope"
+
+[project.scripts]
+benchscope = "benchscope.cli:main"
+
+[tool.setuptools]
+packages = [
+    "benchscope",
+    "benchscope.server",
+    "benchscope.benches",
+]
+
+[tool.setuptools.package-data]
+"benchscope" = ["webui/**/*"]
