@@ -13,7 +13,7 @@ log = logging.getLogger("benchscope.summary")
 # xlsx 列定义（与 asserts/benchmark-260821.xlsx 对齐，末尾追加 单用户）
 XLSX_HEADERS = [
     "GPU", "模型", "精度", "推理框架", "输入长度", "输出长度", "并发数",
-    "output", "peakoutput", "total", "ttft", "itl", "tpot", "单用户",
+    "Output", "Peak Output", "Total", "TTFT", "ITL", "TPOT", "单用户",
 ]
 
 

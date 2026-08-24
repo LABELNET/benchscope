@@ -98,7 +98,7 @@ Each run creates `logs/<MMDD-HHMMSS>/`:
   ```
 - P99 summary CSV: `<model>_X<gpu>_p99.log` (same columns, TTFT/TPOT/ITL = P99).
 - `benchmark-*.xlsx` — two sheets **均值 Mean** & **P99**; columns:
-  `GPU, 模型, 精度, 推理框架, 输入长度, 输出长度, 并发数, output, peakoutput, total, ttft, itl, tpot, 单用户` where `单用户 = 1000 / tpot`.
+  `GPU, 模型, 精度, 推理框架, 输入长度, 输出长度, 并发数, Output, Peak Output, Total, TTFT, ITL, TPOT, 单用户` where `单用户 = 1000 / TPOT`.
 - **Metrics parsed** (mean + P99): `output`, `peakoutput` (peak output tok/s), `total`, `ttft`, `tpot`, `itl`, plus `req_per_s`; best-concurrency highlight = the row with TPOT closest to (and below) the configured threshold.
 - **日志管理** page (or vLLM Logs view) lists runs; preview/download raw logs; **均值分析** / **P99 分析** tabs show tables + six curves.
 

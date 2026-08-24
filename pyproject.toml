@@ -15,7 +15,7 @@ keywords = [
     "inference", "openai-api", "web-ui", "benchscope",
 ]
 authors = [
-    { name = "benchscope", email = "benchscope@example.com" },
+    { name = "benchscope", email = "labelnet@foxmail.com" },
 ]
 classifiers = [
     "Development Status :: 5 - Production/Stable",
