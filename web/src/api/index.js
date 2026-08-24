@@ -22,11 +22,17 @@ export const api = {
   getGpu: () => http.get('/api/config/gpu'),
   getParams: (framework) => http.get(`/api/config/params/${framework}`),
 
-  // 测试
-  startTest: (payload) => http.post('/api/test/start', payload),
-  stopTest: () => http.post('/api/test/stop'),
-  testStatus: () => http.get('/api/test/status'),
-  previewTest: (payload) => http.post('/api/test/preview', payload),
+  // 任务
+  listTasks: () => http.get('/api/tasks'),
+  getTask: (taskId) => http.get(`/api/tasks/${taskId}`),
+  createTask: (payload) => http.post('/api/tasks', payload),
+  startTask: (taskId) => http.post(`/api/tasks/${taskId}/start`),
+  stopTask: (taskId) => http.post(`/api/tasks/${taskId}/stop`),
+  deleteTask: (taskId) => http.delete(`/api/tasks/${taskId}`),
+  previewTask: (payload) => http.post('/api/tasks/preview', payload),
+
+  // Dashboard
+  getDashboardStats: () => http.get('/api/dashboard/stats'),
 
   // 日志
   listRuns: () => http.get('/api/logs/runs'),
@@ -45,6 +51,14 @@ export const api = {
   deleteDataset: (name) => http.delete(`/api/logs/datasets/${encodeURIComponent(name)}`),
   sharegptStatus: () => http.get('/api/logs/datasets/sharegpt'),
   sharegptDownload: () => http.post('/api/logs/datasets/sharegpt/download'),
+
+  // 会话
+  listSessions: () => http.get('/api/sessions'),
+  createSession: (data) => http.post('/api/sessions', data),
+  getSession: (id) => http.get(`/api/sessions/${id}`),
+  deleteSession: (id) => http.delete(`/api/sessions/${id}`),
+  clearSessions: () => http.delete('/api/sessions'),
+  chatUrl: (sessionId) => `/api/sessions/${sessionId}/chat`,
 }
 
 export function wsUrl() {

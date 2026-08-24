@@ -20,3 +20,4 @@ datasets/
 
 # Office 锁文件
 ~$*
+.venv

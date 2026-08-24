@@ -10,7 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
-from benchscope.server import api_config, api_logs, api_test
+from benchscope.server import api_config, api_logs, api_tasks, api_dashboard, api_sessions
 from benchscope.server.state import state
 
 log = logging.getLogger("benchscope.app")
@@ -23,14 +23,14 @@ async def lifespan(app: FastAPI):
     state.monitor.start()
     yield
     state.monitor.stop()
-    state.tests.stop()
+    state.tasks.stop()
 
 
 def create_app() -> FastAPI:
     app = FastAPI(
         title="benchscope",
         description="vLLM / SGLang 推理服务性能测试工具",
-        version="0.1.0",
+        version="2.0.0",
         lifespan=lifespan,
     )
 
@@ -43,8 +43,10 @@ def create_app() -> FastAPI:
     )
 
     app.include_router(api_config.router)
-    app.include_router(api_test.router)
+    app.include_router(api_tasks.router)
     app.include_router(api_logs.router)
+    app.include_router(api_dashboard.router)
+    app.include_router(api_sessions.router)
 
     # ---------------- WebSocket ----------------
     @app.websocket("/ws")
@@ -56,17 +58,14 @@ def create_app() -> FastAPI:
         loop = asyncio.get_running_loop()
         state.hub.register(ws, loop)
         try:
-            # 连接后立即推送一次状态
             snap = state.monitor.check_once(broadcast=False)
             snap["web"] = "ready"
             await ws.send_text(json.dumps({"type": "status", "status": snap}, ensure_ascii=False))
-            run = state.tests.current
-            if run:
-                await ws.send_text(
-                    json.dumps({"type": "run_snapshot", "run": run.snapshot()}, ensure_ascii=False)
-                )
+            # 推送所有任务快照
+            for task in state.tasks.list_tasks():
+                await ws.send_text(json.dumps({"type": "task_snapshot", "task_id": task["task_id"], "task": task}, ensure_ascii=False))
             while True:
-                await ws.receive_text()  # 保持连接，忽略客户端消息
+                await ws.receive_text()
         except WebSocketDisconnect:
             pass
         except Exception:

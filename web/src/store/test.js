@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia'
 import { api, wsUrl } from '@/api'
+import { useConfigStore } from './config'
 
 let socket = null
 let reconnectTimer = null
@@ -7,54 +8,33 @@ let reconnectTimer = null
 export const useTestStore = defineStore('test', {
   state: () => ({
     connected: false,
-    running: false,
-    run: null,          // 当前 run 快照（含 rows）
-    rows: [],           // 结果行（实时）
-    logLines: [],       // 当前 run 实时日志行（上限 8000）
-    currentCase: '',    // 实时日志所属用例
+    tasks: {},           // task_id -> task snapshot
+    activeTaskId: null,  // 当前查看的任务
+    logLines: {},        // task_id -> log lines
+    currentCase: '',
     currentConc: null,
-    error: null,
-    lastRunId: null,
   }),
   getters: {
-    resultsByCase: (s) => {
-      const map = {}
-      for (const r of s.rows) {
-        const label = r.label || r.case || 'unknown'
-        if (r.metrics) {
-          if (!map[label]) map[label] = []
-          map[label].push(r)
-        }
-      }
-      return map
-    },
+    taskList: (s) => Object.values(s.tasks).sort((a, b) => (b.created_at || '').localeCompare(a.created_at || '')),
+    activeTask: (s) => s.tasks[s.activeTaskId] || null,
+    activeLogs: (s) => s.logLines[s.activeTaskId] || [],
+    runningTasks: (s) => Object.values(s.tasks).filter((t) => t.status === 'running'),
   },
   actions: {
     connect() {
       if (socket && (socket.readyState === WebSocket.OPEN || socket.readyState === WebSocket.CONNECTING)) return
       try {
         socket = new WebSocket(wsUrl())
-      } catch {
-        return
-      }
-      socket.onopen = () => {
-        this.connected = true
-      }
+      } catch { return }
+      socket.onopen = () => { this.connected = true }
       socket.onclose = () => {
         this.connected = false
         clearTimeout(reconnectTimer)
         reconnectTimer = setTimeout(() => this.connect(), 3000)
       }
-      socket.onerror = () => {
-        this.connected = false
-      }
+      socket.onerror = () => { this.connected = false }
       socket.onmessage = (ev) => {
-        try {
-          const msg = JSON.parse(ev.data)
-          this.handleMessage(msg)
-        } catch {
-          /* 忽略 */
-        }
+        try { this.handleMessage(JSON.parse(ev.data)) } catch { /* ignore */ }
       }
     },
     handleMessage(msg) {
@@ -62,75 +42,64 @@ export const useTestStore = defineStore('test', {
         case 'status':
           useConfigStore().applyStatus(msg)
           break
-        case 'run_started':
-        case 'run_snapshot':
-          this.run = msg.run
-          this.lastRunId = msg.run?.run_id
-          this.rows = msg.run?.rows || []
-          this.running = msg.run?.status === 'running'
-          this.logLines = []
-          this.error = null
+        case 'task_snapshot':
+        case 'task_started':
+          if (msg.task) this.tasks[msg.task_id] = msg.task
           break
-        case 'log_line':
-          if (msg.run_id !== this.lastRunId && this.lastRunId) return
+        case 'task_result': {
+          const task = this.tasks[msg.task_id]
+          if (!task) break
+          const row = msg.row
+          if (!task.rows) task.rows = []
+          const idx = task.rows.findIndex((r) => r.label === row.label && r.concurrency === row.concurrency)
+          if (idx >= 0) task.rows.splice(idx, 1, row)
+          else task.rows.push(row)
+          break
+        }
+        case 'task_log':
+          if (!this.logLines[msg.task_id]) this.logLines[msg.task_id] = []
           this.currentCase = msg.case
           this.currentConc = msg.concurrency
-          this.logLines.push(msg.line)
-          if (this.logLines.length > 8000) this.logLines.splice(0, this.logLines.length - 8000)
+          const lines = this.logLines[msg.task_id]
+          lines.push(msg.line)
+          if (lines.length > 8000) lines.splice(0, lines.length - 8000)
           break
-        case 'result': {
-          if (msg.run_id !== this.lastRunId && this.lastRunId) return
-          const row = msg.row
-          const idx = this.rows.findIndex(
-            (r) => r.label === row.label && r.concurrency === row.concurrency,
-          )
-          if (idx >= 0) this.rows.splice(idx, 1, row)
-          else this.rows.push(row)
+        case 'task_done':
+          if (msg.task) this.tasks[msg.task_id] = msg.task
           break
-        }
-        case 'run_done':
-          if (msg.run) {
-            this.run = msg.run
-            this.rows = msg.run.rows || this.rows
-          }
-          this.running = false
-          break
-        case 'run_error':
-          this.running = false
-          this.error = msg.error
-          if (msg.run) this.run = msg.run
+        case 'task_error':
+          if (msg.task) this.tasks[msg.task_id] = msg.task
           break
       }
     },
-    async start(payload) {
-      this.error = null
-      const resp = await api.startTest(payload)
+    setActiveTask(taskId) {
+      this.activeTaskId = taskId
+    },
+    async loadTasks() {
+      try {
+        const resp = await api.listTasks()
+        for (const t of resp.tasks || []) {
+          this.tasks[t.task_id] = t
+        }
+      } catch { /* ignore */ }
+    },
+    async createTask(payload) {
+      const resp = await api.createTask(payload)
+      if (resp.task) this.tasks[resp.task_id] = resp.task
       return resp
     },
-    async stop() {
-      await api.stopTest()
+    async startTask(taskId) {
+      const resp = await api.startTask(taskId)
+      if (resp.task) this.tasks[resp.task_id] = resp.task
+      return resp
     },
-    async refresh() {
-      try {
-        const resp = await api.testStatus()
-        this.running = resp.running
-        if (resp.run) {
-          this.run = resp.run
-          this.lastRunId = resp.run.run_id
-          if (resp.run.rows) this.rows = resp.run.rows
-        }
-      } catch {
-        /* 忽略 */
-      }
+    async stopTask(taskId) {
+      await api.stopTask(taskId)
     },
-    clear() {
-      this.rows = []
-      this.logLines = []
-      this.run = null
-      this.error = null
+    async deleteTask(taskId) {
+      await api.deleteTask(taskId)
+      delete this.tasks[taskId]
+      delete this.logLines[taskId]
     },
   },
 })
-
-// 便捷引用，避免循环依赖
-import { useConfigStore } from './config'
