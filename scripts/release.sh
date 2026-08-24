@@ -93,7 +93,7 @@ UPLOAD_OK=0
 for i in $(seq 1 "$UPLOAD_RETRIES"); do
   echo "==> 上传 PyPI (第 ${i}/${UPLOAD_RETRIES} 次) ..."
   if timeout "$UPLOAD_TIMEOUT" python3 -m twine upload \
-      --non-interactive --disable-progress-bar --retries 3 dist/*; then
+      --non-interactive --disable-progress-bar dist/*; then
     UPLOAD_OK=1
     break
   else
