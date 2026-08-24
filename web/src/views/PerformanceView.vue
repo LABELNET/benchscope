@@ -7,7 +7,7 @@
           <template #icon><reload-outlined /></template>
           {{ t('refresh') }}
         </a-button>
-        <a-button type="primary" @click="showCreate = true">
+        <a-button type="primary" @click="$router.push('/performance/create')" :disabled="hasRunning">
           <template #icon><plus-outlined /></template>
           {{ t('newTask') }}
         </a-button>
@@ -49,10 +49,7 @@
       </a-row>
     </a-spin>
 
-    <!-- 新建任务抽屉 -->
-    <a-drawer v-model:open="showCreate" :title="t('newTask')" width="640" :destroy-on-close="true">
-      <TaskCreateForm @created="onCreated" />
-    </a-drawer>
+
   </div>
 </template>
 
@@ -62,13 +59,12 @@ import { message } from 'ant-design-vue'
 import { DeleteOutlined, PlayCircleOutlined, PlusOutlined, ReloadOutlined, StopOutlined } from '@ant-design/icons-vue'
 import { useTestStore } from '@/store/test'
 import { t } from '@/i18n'
-import TaskCreateForm from '@/components/performance/TaskCreateForm.vue'
 
 const test = useTestStore()
 const loading = ref(false)
-const showCreate = ref(false)
 
 const tasks = computed(() => test.taskList)
+const hasRunning = computed(() => tasks.value.some((t) => t.status === 'running'))
 
 function statusBadge(s) {
   return s === 'running' ? 'processing' : s === 'done' ? 'success' : s === 'error' ? 'error' : s === 'stopped' ? 'warning' : 'default'
@@ -115,8 +111,7 @@ async function deleteTask(taskId) {
   } catch (e) { message.error(e.message) }
 }
 
-function onCreated(taskId) {
-  showCreate.value = false
+function onCreated() {
   loadTasks()
 }
 

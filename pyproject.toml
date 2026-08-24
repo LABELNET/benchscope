@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "benchscope"
-version = "1.0.4"
-description = "vLLM / SGLang 推理服务性能测试 Web 工具 (benchscope)"
+version = "1.0.5"
+description = "LLM inference performance testing tool. Supports vLLM, SGLang, and any OpenAI-compatible API."
 readme = "README.md"
 requires-python = ">=3.9"
 license = "Apache-2.0"

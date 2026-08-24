@@ -2,7 +2,7 @@
   <a-tooltip :title="extra || label">
     <span class="status-badge" :class="ready ? 'ok' : 'bad'">
       <component :is="ready ? CheckCircleFilled : CloseCircleFilled" class="status-icon" />
-      <span class="status-label">{{ label }}：{{ ready ? '就绪' : '离线' }}</span>
+      <span class="status-label">{{ label }}</span>
     </span>
   </a-tooltip>
 </template>

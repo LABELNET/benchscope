@@ -3,11 +3,11 @@ import { createPinia } from 'pinia'
 import Antd from 'ant-design-vue'
 import 'ant-design-vue/dist/reset.css'
 import dayjs from 'dayjs'
-import 'dayjs/locale/zh-cn'
+import 'dayjs/locale/en'
 import App from './App.vue'
 import router from './router'
 
-dayjs.locale('zh-cn')
+dayjs.locale('en')
 
 const app = createApp(App)
 app.use(createPinia())

@@ -11,7 +11,7 @@ import threading
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(
         prog="benchscope",
-        description="vLLM / SGLang 推理服务性能测试 Web 工具",
+        description="LLM inference performance testing tool. Supports vLLM, SGLang, and any OpenAI-compatible API.",
     )
     parser.add_argument("--host", default="0.0.0.0", help="监听地址（默认 0.0.0.0）")
     parser.add_argument("--port", type=int, default=8080, help="监听端口（默认 8080）")
@@ -35,7 +35,7 @@ def main(argv=None) -> int:
         threading.Timer(1.2, lambda: webbrowser.open(url)).start()
 
     print("=" * 56)
-    print("  benchscope - vLLM / SGLang 性能测试工具")
+    print("  BenchScope - LLM inference performance testing tool")
     print(f"  打开浏览器访问: {url}")
     print("=" * 56)
     uvicorn.run(app, host=args.host, port=args.port, log_level="info")

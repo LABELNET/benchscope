@@ -5,7 +5,7 @@ import en from './en.js'
 const messages = { zh, en }
 
 export const i18nState = reactive({
-  locale: 'zh',
+  locale: 'en',
 })
 
 export function t(key) {
@@ -24,7 +24,7 @@ export function initI18n(savedLocale) {
   if (savedLocale && messages[savedLocale]) {
     setLocale(savedLocale)
   } else {
-    const browserLang = navigator.language?.toLowerCase()
-    setLocale(browserLang?.startsWith('zh') ? 'zh' : 'en')
+    // 默认英文，除非用户显式选择中文
+    setLocale('en')
   }
 }

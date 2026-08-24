@@ -29,8 +29,8 @@ async def lifespan(app: FastAPI):
 def create_app() -> FastAPI:
     app = FastAPI(
         title="benchscope",
-        description="vLLM / SGLang 推理服务性能测试工具",
-        version="2.0.0",
+        description="LLM inference performance testing tool. Supports vLLM, SGLang, and any OpenAI-compatible API.",
+        version="1.0.5",
         lifespan=lifespan,
     )
 
@@ -77,6 +77,13 @@ def create_app() -> FastAPI:
     assets_dir = WEBUI_DIR / "assets"
     if assets_dir.is_dir():
         app.mount("/assets", StaticFiles(directory=assets_dir), name="assets")
+
+    @app.get("/bs-logo.png", include_in_schema=False)
+    def logo():
+        logo_path = WEBUI_DIR / "bs-logo.png"
+        if logo_path.exists():
+            return FileResponse(logo_path, media_type="image/png")
+        raise HTTPException(status_code=404, detail="Logo not found")
 
     @app.get("/", include_in_schema=False)
     def index():

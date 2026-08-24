@@ -1,9 +1,9 @@
 <template>
   <a-layout-header class="topbar">
     <div class="brand" @click="$router.push('/dashboard')">
-      <thunderbolt-filled class="brand-icon" />
-      <span class="brand-name">benchscope</span>
-      <a-tag color="blue" style="margin-left: 8px">v2.0</a-tag>
+      <img src="/bs-logo.png" class="brand-logo" alt="BS" />
+      <span class="brand-name">BenchScope</span>
+      <a-tag color="blue" style="margin-left: 8px">v1.0.5</a-tag>
     </div>
 
     <a-menu
@@ -18,10 +18,6 @@
       <StatusBadge :label="t('service')" :ready="serviceReady" :extra="serviceExtra" />
       <a-divider type="vertical" />
       <StatusBadge :label="t('environment')" :ready="inferenceReady" :extra="inferenceExtra" />
-      <a-button type="primary" ghost size="small" style="margin-left: 12px" @click="$router.push('/settings')">
-        <template #icon><setting-outlined /></template>
-        {{ t('settings') }}
-      </a-button>
     </div>
   </a-layout-header>
 </template>
@@ -35,7 +31,6 @@ import {
   MessageOutlined,
   SettingOutlined,
   FundOutlined,
-  ThunderboltFilled,
 } from '@ant-design/icons-vue'
 import StatusBadge from '@/components/StatusBadge.vue'
 import { useConfigStore } from '@/store/config'
@@ -60,6 +55,7 @@ const menuItems = [
   { key: 'performance', icon: () => h(ExperimentOutlined), label: t('performance') },
   { key: 'accuracy', icon: () => h(FundOutlined), label: t('accuracy') },
   { key: 'sessions', icon: () => h(MessageOutlined), label: t('sessions') },
+  { key: 'settings', icon: () => h(SettingOutlined), label: t('settings') },
 ]
 
 const inferenceReady = computed(() => config.status?.inference === 'ready')
@@ -95,9 +91,10 @@ function onMenuClick({ key }) {
   margin-right: 24px;
   user-select: none;
 }
-.brand-icon {
-  color: #1677ff;
-  font-size: 22px;
+.brand-logo {
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
 }
 .brand-name {
   font-size: 17px;

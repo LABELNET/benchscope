@@ -138,14 +138,16 @@ class SessionManager:
             session.persist(self.sessions_dir / f"{session_id}.json")
             return msg
 
-    def stream_chat(self, session_id: str, user_message: str):
+    def stream_chat(self, session_id: str, user_message: str, model: str = ""):
         """生成器：通过 OpenAI 兼容 API 流式转发对话。"""
         session = self.get_session(session_id)
         if not session:
             yield json.dumps({"error": "Session not found"}, ensure_ascii=False)
             return
 
-        self.add_message(session_id, "user", user_message, model=session.model)
+        # 使用请求中的 model，否则回退到 session 的 model
+        chat_model = model or session.model or "default"
+        self.add_message(session_id, "user", user_message, model=chat_model)
 
         api_config = self.config.api or {}
         base_url = api_config.get("base_url", "http://localhost:8000")
@@ -171,7 +173,7 @@ class SessionManager:
         import requests as req
 
         payload = {
-            "model": session.model or "default",
+            "model": chat_model,
             "messages": messages,
             "stream": True,
             "max_tokens": 4096,
@@ -181,8 +183,8 @@ class SessionManager:
         try:
             resp = req.post(url, json=payload, headers=headers, stream=True, timeout=120)
             if resp.status_code != 200:
-                err_msg = f"API 返回错误: {resp.status_code} {resp.text[:500]}"
-                self.add_message(session_id, "assistant", err_msg, model=session.model)
+                err_msg = f"API error: {resp.status_code} {resp.text[:500]}"
+                self.add_message(session_id, "assistant", err_msg, model=chat_model)
                 yield json.dumps({"error": err_msg}, ensure_ascii=False)
                 return
 
@@ -196,6 +198,9 @@ class SessionManager:
                     chunk = json.loads(data_str)
                     delta = chunk.get("choices", [{}])[0].get("delta", {})
                     token = delta.get("content", "")
+                    thinking = delta.get("reasoning_content", "")
+                    if thinking:
+                        yield json.dumps({"thinking": thinking}, ensure_ascii=False)
                     if token:
                         assistant_content += token
                         yield json.dumps({"token": token}, ensure_ascii=False)
@@ -203,13 +208,13 @@ class SessionManager:
                     continue
 
             if assistant_content:
-                self.add_message(session_id, "assistant", assistant_content, model=session.model)
+                self.add_message(session_id, "assistant", assistant_content, model=chat_model)
             yield json.dumps({"done": True}, ensure_ascii=False)
 
         except Exception as e:
             log.exception("Stream chat failed")
-            err_msg = f"请求失败: {e}"
+            err_msg = f"Request failed: {e}"
             if assistant_content:
-                self.add_message(session_id, "assistant", assistant_content, model=session.model)
-            self.add_message(session_id, "assistant", err_msg, model=session.model)
+                self.add_message(session_id, "assistant", assistant_content, model=chat_model)
+            self.add_message(session_id, "assistant", err_msg, model=chat_model)
             yield json.dumps({"error": err_msg}, ensure_ascii=False)

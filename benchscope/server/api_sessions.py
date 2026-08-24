@@ -23,6 +23,7 @@ class CreateSessionRequest(BaseModel):
 
 class ChatRequest(BaseModel):
     message: str
+    model: str = ""
 
 
 @router.get("")
@@ -63,7 +64,7 @@ def chat(session_id: str, req: ChatRequest):
         raise HTTPException(status_code=404, detail="Session not found")
 
     def event_stream():
-        for chunk in state.sessions.stream_chat(session_id, req.message):
+        for chunk in state.sessions.stream_chat(session_id, req.message, model=req.model):
             yield f"data: {chunk}\n\n"
 
     return StreamingResponse(event_stream(), media_type="text/event-stream")
