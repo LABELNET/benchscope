@@ -59,6 +59,8 @@ Open the page and:
 | 5.0 | Planned | Accuracy testing on common datasets |
 | 6.0 | Planned | ModelScope official-model comparison & conclusions |
 
+> Full version plan: [ROADMAP.md](ROADMAP.md) · Product spec: [PROJECTS-README.md](PROJECTS-README.md)
+
 ## Project Structure
 
 ```

@@ -59,6 +59,8 @@ benchscope --port 8080 --no-browser
 | 5.0 | 规划中 | 常见数据集精度测试 |
 | 6.0 | 规划中 | ModelScope 官方模型链接与对比结论 |
 
+> 完整版本计划：[ROADMAP.md](ROADMAP.md) · 产品需求：[PROJECTS-README.md](PROJECTS-README.md)
+
 ## 目录结构
 
 ```
