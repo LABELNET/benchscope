@@ -3,7 +3,7 @@
     <div class="brand" @click="$router.push('/vllm')">
       <thunderbolt-filled class="brand-icon" />
       <span class="brand-name">benchscope</span>
-      <a-tag color="blue" style="margin-left: 8px">v1.0.3</a-tag>
+      <a-tag color="blue" style="margin-left: 8px">v1.0.4</a-tag>
     </div>
 
     <a-menu
