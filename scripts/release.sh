@@ -86,8 +86,25 @@ if [ "$DRY_RUN" -eq 1 ]; then
 fi
 
 # ---------- 发布到 PyPI ----------
-echo "==> 上传 PyPI ..."
-python3 -m twine upload dist/*
+# 加固：twine 自身 --retries + 外循环重试 + 单次超时，抵御瞬时网络抖动（SSL EOF 等）
+UPLOAD_RETRIES="${TWINE_UPLOAD_RETRIES:-3}"
+UPLOAD_TIMEOUT="${TWINE_UPLOAD_TIMEOUT:-180}"
+UPLOAD_OK=0
+for i in $(seq 1 "$UPLOAD_RETRIES"); do
+  echo "==> 上传 PyPI (第 ${i}/${UPLOAD_RETRIES} 次) ..."
+  if timeout "$UPLOAD_TIMEOUT" python3 -m twine upload \
+      --non-interactive --disable-progress-bar --retries 3 dist/*; then
+    UPLOAD_OK=1
+    break
+  else
+    echo "  本次上传未成功，稍后重试..." >&2
+    sleep 5
+  fi
+done
+if [ "$UPLOAD_OK" -ne 1 ]; then
+  echo "错误: PyPI 上传在 ${UPLOAD_RETRIES} 次尝试后仍失败，已中止（未打 tag/未推送）。" >&2
+  exit 1
+fi
 
 # ---------- git 提交 + 打 tag + 推送 ----------
 echo "==> git 提交 + 打 tag + 推送 ..."
