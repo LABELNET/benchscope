@@ -34,7 +34,7 @@ import {
 } from '@ant-design/icons-vue'
 import StatusBadge from '@/components/StatusBadge.vue'
 import { useConfigStore } from '@/store/config'
-import { t } from '@/i18n'
+import { t, i18nState } from '@/i18n'
 
 const route = useRoute()
 const router = useRouter()
@@ -50,13 +50,13 @@ const activeKey = computed(() => {
   return 'dashboard'
 })
 
-const menuItems = [
+const menuItems = computed(() => [
   { key: 'dashboard', icon: () => h(DashboardOutlined), label: t('dashboard') },
   { key: 'performance', icon: () => h(ExperimentOutlined), label: t('performance') },
   { key: 'accuracy', icon: () => h(FundOutlined), label: t('accuracy') },
   { key: 'sessions', icon: () => h(MessageOutlined), label: t('sessions') },
   { key: 'settings', icon: () => h(SettingOutlined), label: t('settings') },
-]
+])
 
 const inferenceReady = computed(() => config.status?.inference === 'ready')
 const serviceReady = computed(() => true)

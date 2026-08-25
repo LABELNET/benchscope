@@ -12,6 +12,9 @@
       <div class="workspaces-section">
         <div class="workspaces-header">
           <span class="workspaces-label">{{ t('chats') }}</span>
+          <a-popconfirm :title="t('clearConfirm')" @confirm="clearAllSessions" ok-text="OK" cancel-text="Cancel">
+            <a-button size="small" type="ghost" class="clear-all-btn">{{ t('clearSessions') }}</a-button>
+          </a-popconfirm>
         </div>
         <div class="session-list">
           <div
@@ -35,6 +38,22 @@
     <!-- 主内容区 -->
     <div class="main-area">
       <template v-if="activeSession">
+        <!-- 会话标题栏:推理性能数据 -->
+        <div class="chat-header">
+          <div class="perf-bar">
+            <span class="perf-item">{{ displayPerf.turns }} turns · {{ displayPerf.steps }} steps</span>
+            <span class="perf-sep">|</span>
+            <span class="perf-item">LLM {{ displayPerf.llmTime }}</span>
+            <span class="perf-sep">|</span>
+            <span class="perf-item">TTFT {{ displayPerf.ttft }} · {{ displayPerf.tokPerSec }} tok/s</span>
+            <span class="perf-sep">|</span>
+            <span class="perf-item">Output {{ displayPerf.tokPerSec }} tok/s</span>
+            <span class="perf-sep">|</span>
+            <span class="perf-item">TPOT {{ displayPerf.tpot }}</span>
+            <span class="perf-sep">|</span>
+            <span class="perf-item">ITL {{ displayPerf.itl }}</span>
+          </div>
+        </div>
         <!-- 消息列表 -->
         <div class="chat-messages" ref="msgBox">
           <div v-for="(msg, i) in displayMessages" :key="i" class="msg-row" :class="msg.role">
@@ -49,9 +68,9 @@
               <div v-if="msg.thinking" class="thinking-block">
                 <div class="thinking-header" @click="msg._thinkingOpen = !msg._thinkingOpen">
                   <down-outlined :rotate="msg._thinkingOpen ? 0 : -90" class="thinking-arrow" />
-                  <span class="thinking-label">{{ t('thinking') }}</span>
+                  <span class="thinking-label">{{ t('thinkingInProgress') }}</span>
                 </div>
-                <div v-show="msg._thinkingOpen !== false" class="thinking-content">
+                <div v-show="msg._thinkingOpen === true" class="thinking-content">
                   <div class="thinking-text">{{ msg.thinking }}</div>
                 </div>
               </div>
@@ -68,11 +87,12 @@
             </div>
             <div class="msg-content-wrap">
               <div v-if="streamThinking" class="thinking-block">
-                <div class="thinking-header">
-                  <span class="thinking-label">{{ t('thinking') }}</span>
+                <div class="thinking-header" @click="streamThinkingOpen = !streamThinkingOpen">
+                  <down-outlined :rotate="streamThinkingOpen ? 0 : -90" class="thinking-arrow" />
+                  <span class="thinking-label">{{ t('thinkingInProgress') }}</span>
                   <span class="thinking-dots"><span></span><span></span><span></span></span>
                 </div>
-                <div class="thinking-content">
+                <div v-show="streamThinkingOpen" class="thinking-content">
                   <div class="thinking-text">{{ streamThinking }}<span class="cursor-blink">|</span></div>
                 </div>
               </div>
@@ -84,7 +104,7 @@
           </div>
         </div>
 
-        <!-- 底部输入栏 -->
+        <!-- 底部输入栏:输入内容框 + 底部操作(模型/发送靠右) -->
         <div class="input-bar">
           <div class="input-container">
             <div class="input-box">
@@ -96,48 +116,37 @@
                 :disabled="streaming"
                 bordered
                 class="chat-textarea"
+                :class="{ 'has-content': inputText.trim() }"
               />
               <div class="input-bottom-row">
-                <div class="input-left">
-                  <a-tooltip title="Upload file">
-                    <paper-clip-outlined class="attach-icon" />
-                  </a-tooltip>
-                  <a-tooltip title="Web search">
-                    <global-outlined class="attach-icon" />
-                  </a-tooltip>
-                </div>
                 <div class="input-right">
-                  <span class="model-name">{{ selectedModel || 'No model' }}</span>
-                  <a-select v-model:value="qualityLevel" size="small" :bordered="false" style="width: 70px" class="quality-select">
-                    <a-select-option value="high">High</a-select-option>
-                    <a-select-option value="medium">Medium</a-select-option>
-                    <a-select-option value="low">Low</a-select-option>
-                  </a-select>
+                  <a-select
+                    v-model:value="selectedModel"
+                    :options="modelOptions"
+                    size="small"
+                    :bordered="false"
+                    style="width: 200px"
+                    :placeholder="t('selectModelForChat')"
+                  />
+                  <a-select
+                    v-model:value="selectedQuality"
+                    :options="qualityOptions"
+                    size="small"
+                    :bordered="false"
+                    style="width: 86px"
+                  />
+                  <span class="thinking-toggle">
+                    <span class="thinking-toggle-label">{{ t('thinking') }}</span>
+                    <a-switch v-model:checked="enableThinking" size="small" />
+                  </span>
                   <div v-if="streaming" class="loading-spinner"></div>
-                  <a-button
-                    type="primary"
-                    shape="circle"
-                    size="large"
-                    @click="sendMessage"
-                    :disabled="!inputText.trim()"
-                    class="send-btn"
-                  >
-                    <template #icon><arrow-up-outlined /></template>
-                  </a-button>
+                  <span
+                    class="send-text"
+                    :class="{ 'send-active': inputText.trim() && !streaming }"
+                    @click="onSendClick"
+                  >{{ t('send') }}</span>
                 </div>
               </div>
-            </div>
-            <!-- 性能提示栏 -->
-            <div v-if="perfStats.turns > 0" class="perf-bar">
-              <span class="perf-item">{{ perfStats.turns }} turns · {{ perfStats.steps }} steps</span>
-              <span class="perf-sep">|</span>
-              <span class="perf-item">LLM {{ perfStats.llmTime }}</span>
-              <span class="perf-sep">|</span>
-              <span class="perf-item">TTFT avg {{ perfStats.ttft }} · {{ perfStats.tokPerSec }} tok/s</span>
-              <span class="perf-sep">|</span>
-              <span class="perf-item">Cache hit {{ perfStats.cacheHit }}</span>
-              <span class="perf-sep">|</span>
-              <span class="perf-item">Input {{ perfStats.inputTokens }} tok</span>
             </div>
           </div>
         </div>
@@ -153,7 +162,7 @@
 <script setup>
 import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { message } from 'ant-design-vue'
-import { SmileOutlined, MessageOutlined, CloseOutlined, DownOutlined, ArrowUpOutlined, PaperClipOutlined, GlobalOutlined } from '@ant-design/icons-vue'
+import { SmileOutlined, MessageOutlined, CloseOutlined, DownOutlined } from '@ant-design/icons-vue'
 import { api } from '@/api'
 import { useConfigStore } from '@/store/config'
 import { t } from '@/i18n'
@@ -166,21 +175,31 @@ const inputText = ref('')
 const streaming = ref(false)
 const streamBuffer = ref('')
 const streamThinking = ref('')
+const streamThinkingOpen = ref(false)
 const msgBox = ref(null)
-const qualityLevel = ref('high')
 
 // 性能统计
-const perfStats = ref({
-  turns: 0,
-  steps: 0,
-  llmTime: '0s',
-  ttft: '0s',
-  tokPerSec: '0',
-  cacheHit: '0%',
-  inputTokens: '0',
-})
+const defaultPerf = { turns: 0, steps: 0, llmTime: '0s', ttft: '0s', tokPerSec: '0', inputTokens: '0', tpot: '0ms', itl: '0ms' }
+const perfStats = ref({ ...defaultPerf })
+const livePerf = ref(null)
+const displayPerf = computed(() => (streaming.value && livePerf.value) ? livePerf.value : (activeSession.value?.perf || defaultPerf))
 
 const modelOptions = computed(() => (config.status?.models || []).map((m) => ({ value: m, label: m })))
+
+// 对话质量 high/medium/low
+const qualityOptions = computed(() => [
+  { value: 'high', label: t('qualityHigh') },
+  { value: 'medium', label: t('qualityMedium') },
+  { value: 'low', label: t('qualityLow') },
+])
+const localQualityKey = 'benchscope_chat_quality'
+const selectedQuality = ref(localStorage.getItem(localQualityKey) || 'medium')
+watch(selectedQuality, (v) => localStorage.setItem(localQualityKey, v))
+
+// 思考开关
+const localThinkingKey = 'benchscope_chat_thinking'
+const enableThinking = ref(localStorage.getItem(localThinkingKey) !== 'false')
+watch(enableThinking, (v) => localStorage.setItem(localThinkingKey, String(v)))
 
 // 本地记住的模型选择（与 TopBar 共享 localStorage）
 const localModelKey = 'benchscope_chat_model'
@@ -196,12 +215,7 @@ watch(modelOptions, (opts) => {
 
 const displayMessages = computed(() => {
   if (!activeSession.value?.messages) return []
-  return activeSession.value.messages
-    .filter(m => m.role !== 'system')
-    .map(m => ({
-      ...m,
-      _thinkingOpen: m._thinkingOpen !== undefined ? m._thinkingOpen : true,
-    }))
+  return activeSession.value.messages.filter(m => m.role !== 'system')
 })
 
 // ===== Markdown 渲染 =====
@@ -269,6 +283,14 @@ async function selectSession(id) {
   try {
     const resp = await api.getSession(id)
     activeSession.value = resp
+    // 恢复该会话的配置与性能数据
+    if (resp.quality) selectedQuality.value = resp.quality
+    if (resp.enable_thinking !== undefined) enableThinking.value = resp.enable_thinking
+    if (resp.model) selectedModel.value = resp.model
+    // 思考块默认折叠
+    if (resp.messages) {
+      resp.messages.forEach(m => { if (m._thinkingOpen === undefined) m._thinkingOpen = false })
+    }
     await nextTick()
     scrollToBottom()
   } catch (e) { message.error(e.message) }
@@ -295,6 +317,21 @@ async function deleteSession(id) {
   } catch (e) { message.error(e.message) }
 }
 
+async function clearAllSessions() {
+  try {
+    await api.clearSessions()
+    sessions.value = []
+    activeId.value = null
+    activeSession.value = null
+    message.success(t('clearSessions'))
+  } catch (e) { message.error(e.message) }
+}
+
+// 发送按钮(文字):有内容且未流式时才可点击
+function onSendClick() {
+  if (inputText.value.trim() && !streaming.value) sendMessage()
+}
+
 async function sendMessage() {
   const text = inputText.value.trim()
   if (!text || !activeId.value || streaming.value) return
@@ -315,17 +352,44 @@ async function sendMessage() {
   streaming.value = true
   streamBuffer.value = ''
   streamThinking.value = ''
+  streamThinkingOpen.value = false
   let assistantContent = ''
   let assistantThinking = ''
   const startTime = Date.now()
   let firstTokenTime = 0
   let tokenCount = 0
+  let lastTokenTime = 0
+  let itlSum = 0
+  let itlCount = 0
+
+  // 实时更新顶部性能数据
+  const updateLivePerf = () => {
+    const now = Date.now()
+    const elapsed = now - startTime
+    const ttftSec = firstTokenTime ? ((firstTokenTime - startTime) / 1000).toFixed(1) : '0'
+    const decodeElapsed = firstTokenTime ? (now - firstTokenTime) : 0
+    const tokPerSec = decodeElapsed > 0 ? Math.round(tokenCount / (decodeElapsed / 1000)) : 0
+    const tpotMs = tokenCount > 0 ? (decodeElapsed / tokenCount).toFixed(0) : '0'
+    const itlMs = itlCount > 0 ? (itlSum / itlCount).toFixed(0) : '0'
+    const userMsgs = activeSession.value.messages.filter(m => m.role === 'user').length
+    livePerf.value = {
+      turns: userMsgs,
+      steps: userMsgs + 1,
+      llmTime: formatDuration(elapsed),
+      ttft: `${ttftSec}s`,
+      tokPerSec: String(tokPerSec),
+      inputTokens: String(tokenCount),
+      tpot: `${tpotMs}ms`,
+      itl: `${itlMs}ms`,
+    }
+  }
+  updateLivePerf()
 
   try {
     const resp = await fetch(api.chatUrl(activeId.value), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ message: text, model: selectedModel.value || undefined }),
+      body: JSON.stringify({ message: text, model: selectedModel.value || undefined, quality: selectedQuality.value, enable_thinking: enableThinking.value }),
     })
 
     const reader = resp.body.getReader()
@@ -346,9 +410,16 @@ async function sendMessage() {
           const data = JSON.parse(dataStr)
           if (data.token) {
             tokenCount++
-            if (!firstTokenTime) firstTokenTime = Date.now()
+            const now = Date.now()
+            if (!firstTokenTime) firstTokenTime = now
+            if (lastTokenTime) {
+              itlSum += now - lastTokenTime
+              itlCount++
+            }
+            lastTokenTime = now
             assistantContent += data.token
             streamBuffer.value = assistantContent
+            updateLivePerf()
             scrollToBottom()
           }
           if (data.thinking) {
@@ -361,7 +432,7 @@ async function sendMessage() {
       }
     }
 
-    // 完成后将 assistant 消息加入列表
+    // 完成后将 assistant 消息加入列表(思考默认收起)
     if (assistantContent || assistantThinking) {
       activeSession.value.messages.push({
         role: 'assistant',
@@ -369,14 +440,17 @@ async function sendMessage() {
         thinking: assistantThinking || '',
         timestamp: new Date().toISOString().slice(0, 19).replace('T', ' '),
         model: selectedModel.value || '',
-        _thinkingOpen: true,
+        _thinkingOpen: false,
       })
     }
 
-    // 计算性能统计
+    // 计算性能统计并记录到当前会话
     const elapsed = Date.now() - startTime
     const ttftSec = firstTokenTime ? ((firstTokenTime - startTime) / 1000).toFixed(1) : '0'
-    const tokPerSec = elapsed > 0 ? Math.round(tokenCount / (elapsed / 1000)) : 0
+    const decodeElapsed = firstTokenTime ? (Date.now() - firstTokenTime) : 0
+    const tokPerSec = decodeElapsed > 0 ? Math.round(tokenCount / (decodeElapsed / 1000)) : 0
+    const tpotMs = tokenCount > 0 ? (decodeElapsed / tokenCount).toFixed(0) : '0'
+    const itlMs = itlCount > 0 ? (itlSum / itlCount).toFixed(0) : '0'
     const userMsgs = activeSession.value.messages.filter(m => m.role === 'user').length
     const asstMsgs = activeSession.value.messages.filter(m => m.role === 'assistant').length
     perfStats.value = {
@@ -385,17 +459,23 @@ async function sendMessage() {
       llmTime: formatDuration(elapsed),
       ttft: `${ttftSec}s`,
       tokPerSec: String(tokPerSec),
-      cacheHit: '—',
       inputTokens: String(tokenCount),
+      tpot: `${tpotMs}ms`,
+      itl: `${itlMs}ms`,
     }
+    activeSession.value.perf = { ...perfStats.value }
+    api.updateSessionPerf(activeId.value, perfStats.value).catch(() => {})
+    livePerf.value = null
 
     await loadSessions()
   } catch (e) {
     message.error(e.message)
   } finally {
     streaming.value = false
+    livePerf.value = null
     streamBuffer.value = ''
     streamThinking.value = ''
+    streamThinkingOpen.value = false
   }
 }
 
@@ -433,17 +513,17 @@ onMounted(() => {
   display: flex;
   height: 100%;
   overflow: hidden;
-  background: #fff;
+  background: var(--ant-color-bg-container, #fff);
 }
 
 /* ===== 左侧栏 ===== */
 .sidebar {
   width: 260px;
   flex-shrink: 0;
-  border-right: 1px solid #f0f0f0;
+  border-right: 1px solid var(--ant-color-border, #f0f0f0);
   display: flex;
   flex-direction: column;
-  background: #fafafa;
+  background: var(--ant-color-bg-layout, #fafafa);
 }
 
 .sidebar-top {
@@ -454,13 +534,13 @@ onMounted(() => {
   border-radius: 20px;
   height: 40px;
   font-size: 14px;
-  border: 1px solid #d9d9d9;
-  background: #fff;
-  color: #333;
+  border: 1px solid var(--ant-color-border, #d9d9d9);
+  background: var(--ant-color-bg-container, #fff);
+  color: var(--ant-color-text, #333);
 }
 .new-session-btn:hover {
-  border-color: #1677ff;
-  color: #1677ff;
+  border-color: var(--ant-color-primary, #1677ff);
+  color: var(--ant-color-primary, #1677ff);
 }
 
 .workspaces-section {
@@ -480,7 +560,7 @@ onMounted(() => {
 .workspaces-label {
   font-size: 12px;
   font-weight: 600;
-  color: #999;
+  color: var(--ant-color-text-tertiary, #999);
   text-transform: uppercase;
   letter-spacing: 0.5px;
 }
@@ -503,22 +583,22 @@ onMounted(() => {
   position: relative;
 }
 .session-item:hover {
-  background: #e6f4ff;
+  background: var(--ant-color-primary-bg, #e6f4ff);
 }
 .session-item.active {
-  background: #bae0ff;
+  background: var(--ant-color-primary-bg-hover, #bae0ff);
 }
 
 .session-icon {
   font-size: 16px;
-  color: #1677ff;
+  color: var(--ant-color-primary, #1677ff);
   flex-shrink: 0;
 }
 
 .session-name {
   flex: 1;
   font-size: 13px;
-  color: #333;
+  color: var(--ant-color-text, #333);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -526,7 +606,7 @@ onMounted(() => {
 
 .session-close {
   font-size: 14px;
-  color: #bbb;
+  color: var(--ant-color-text-quaternary, #bbb);
   opacity: 0;
   transition: opacity 0.2s;
   flex-shrink: 0;
@@ -544,7 +624,18 @@ onMounted(() => {
   display: flex;
   flex-direction: column;
   min-width: 0;
-  background: #fff;
+  background: var(--ant-color-bg-container, #fff);
+}
+
+.chat-header {
+  flex-shrink: 0;
+  border-bottom: 1px solid #f0f0f0;
+  background: var(--ant-color-bg-container, #fff);
+}
+.chat-header .perf-bar {
+  margin-top: 0;
+  padding: 6px 16px;
+  justify-content: flex-start;
 }
 
 .chat-messages {
@@ -581,12 +672,12 @@ onMounted(() => {
 }
 
 .user-avatar {
-  background: #1677ff;
+  background: var(--ant-color-primary, #1677ff);
   color: #fff;
 }
 
 .ai-avatar {
-  background: #f0f5ff;
+  background: var(--ant-color-primary-bg, #f0f5ff);
   overflow: hidden;
 }
 
@@ -686,7 +777,11 @@ onMounted(() => {
 }
 
 .msg-row.assistant .reply-content {
-  padding: 2px 0;
+  background: #ffffff;
+  border-left: 3px solid #1677ff;
+  padding: 10px 14px;
+  border-radius: 0 8px 8px 0;
+  margin-top: 4px;
 }
 
 /* ===== 代码块 ===== */
@@ -808,36 +903,51 @@ onMounted(() => {
 .chat-textarea:focus {
   box-shadow: none !important;
 }
+.chat-textarea.has-content {
+  color: #1677ff;
+}
 
 .input-bottom-row {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-end;
   margin-top: 8px;
   padding-top: 8px;
   border-top: 1px solid #f5f5f5;
-}
-
-.input-left {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.attach-icon {
-  font-size: 16px;
-  color: #bbb;
-  cursor: pointer;
-  transition: color 0.2s;
-}
-.attach-icon:hover {
-  color: #1677ff;
 }
 
 .input-right {
   display: flex;
   align-items: center;
   gap: 8px;
+}
+
+.send-text {
+  font-size: 14px;
+  font-weight: 600;
+  color: #ccc;
+  cursor: not-allowed;
+  user-select: none;
+  padding: 4px 10px;
+  transition: color 0.2s;
+}
+.send-active {
+  color: #1677ff;
+  cursor: pointer;
+}
+.send-active:hover {
+  color: #4096ff;
+}
+
+.thinking-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.thinking-toggle-label {
+  font-size: 13px;
+  color: #666;
+  white-space: nowrap;
 }
 
 .model-name {
@@ -870,15 +980,6 @@ onMounted(() => {
 }
 @keyframes spin {
   to { transform: rotate(360deg); }
-}
-
-.send-btn {
-  width: 36px !important;
-  height: 36px !important;
-  min-width: 36px !important;
-  display: flex;
-  align-items: center;
-  justify-content: center;
 }
 
 /* ===== 性能提示栏 ===== */

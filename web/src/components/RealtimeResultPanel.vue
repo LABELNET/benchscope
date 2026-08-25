@@ -1,20 +1,20 @@
 <template>
-  <div>
-    <a-space style="margin-bottom: 8px" wrap>
+  <div class="result-panel">
+    <a-space size="small" wrap class="panel-header">
       <a-tag color="blue"><template #icon><appstore-outlined /></template>用例 {{ caseCount }} 个</a-tag>
       <a-tag color="green"><template #icon><check-circle-outlined /></template>已出结果 {{ rows.length }} 条</a-tag>
       <a-tag :color="running ? 'processing' : 'default'">
         <template #icon><sync-outlined :spin="running" /></template>
-        {{ running ? '测试进行中…' : '空闲' }}
+        {{ running ? '测试中…' : '空闲' }}
       </a-tag>
-      <span v-if="threshold" style="color: #999; font-size: 12px">
-        TPOT 阈值 {{ threshold }}ms：绿色=低于阈值，金色=最佳并发
+      <span v-if="threshold" class="threshold-hint">
+        TPOT 阈值 {{ threshold }}ms
       </span>
     </a-space>
 
-    <MetricsTable :rows="rows" :threshold="threshold" :pagination="{ pageSize: 20, showSizeChanger: true }" />
+    <MetricsTable :rows="rows" :threshold="threshold" :pagination="{ pageSize: 20, showSizeChanger: false, size: 'small' }" />
 
-    <a-divider style="margin: 12px 0">实时曲线（横轴：并发数）</a-divider>
+    <a-divider style="margin: 8px 0 4px">实时曲线（横轴：并发数）</a-divider>
     <MetricsCharts :rows="rows" :metric-defs="metricDefs" />
   </div>
 </template>
@@ -50,3 +50,18 @@ const caseCount = computed(() => {
   return set.size
 })
 </script>
+
+<style scoped>
+.result-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.panel-header {
+  margin-bottom: 4px;
+}
+.threshold-hint {
+  color: var(--ant-color-text-tertiary, #999);
+  font-size: 11px;
+}
+</style>

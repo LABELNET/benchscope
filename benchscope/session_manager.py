@@ -22,9 +22,99 @@ class Message:
     content: str
     timestamp: str = ""
     model: str = ""
+    thinking: str = ""
 
     def to_dict(self):
-        return {"role": self.role, "content": self.content, "timestamp": self.timestamp, "model": self.model}
+        return {"role": self.role, "content": self.content, "timestamp": self.timestamp, "model": self.model, "thinking": self.thinking}
+
+
+# 支持的推理标签对列表（通用化）
+# 支持: 标准 ASCII 标签 <think>, 全角标签 ＜think＞, 以及其他常见变体
+REASONING_TAGS = [
+    # 标准 ASCII 标签
+    ("think", "<think>", "</think>"),
+    ("reasoning", "<reasoning>", "</reasoning>"),
+    ("thinking", "<thinking>", "</thinking>"),
+    ("reflection", "<reflection>", "</reflection>"),
+    ("analysis", "<analysis>", "</analysis>"),
+    # 全角标签（中文输入法常见）
+    ("think-full", "＜think＞", "＜/think＞"),
+    ("reasoning-full", "＜reasoning＞", "＜/reasoning＞"),
+    ("thinking-full", "＜thinking＞", "＜/thinking＞"),
+]
+
+# 预编译所有标签的 open/close 查找表
+_TAG_OPENS = {tag[1]: (tag[0], tag[2]) for tag in REASONING_TAGS}
+_TAG_CLOSES = {tag[2]: tag[1] for tag in REASONING_TAGS}
+_TAG_NAMES = [tag[0] for tag in REASONING_TAGS]
+
+
+def parse_think_tags(raw: str):
+    """通用推理标签解析:从 raw 中分离所有已知推理标签对的内容,返回 (thinking, content)。
+    支持多段推理块、嵌套不严格、标签未闭合时剩余内容归为 thinking。
+    """
+    thinking_parts = []
+    content_parts = []
+    i = 0
+    n = len(raw)
+    # 当前打开的标签栈:存 open_tag 字符串
+    open_stack = []
+    while i < n:
+        # 检查是否命中任一 open 标签
+        matched_open = None
+        for _, open_tag, close_tag in REASONING_TAGS:
+            if raw[i:].startswith(open_tag):
+                matched_open = open_tag
+                break
+        if matched_open:
+            # 找到 open 标签
+            if open_stack:
+                # 已有打开的标签，把之前累积的 content 保留
+                pass  # 继续推入 thinking
+            open_stack.append(matched_open)
+            i += len(matched_open)
+            # 查找对应 close
+            tag_name, close_tag = _TAG_OPENS[matched_open]
+            end = raw.find(close_tag, i)
+            if end == -1:
+                # 标签未闭合,剩余内容全部归为 thinking
+                thinking_parts.append(raw[i:])
+                i = n
+                break
+            else:
+                thinking_parts.append(raw[i:end])
+                i = end + len(close_tag)
+                open_stack.pop()
+            continue
+        # 检查是否命中任一 close 标签（可能存在未匹配的 close，忽略）
+        matched_close = None
+        for _, open_tag, close_tag in REASONING_TAGS:
+            if raw[i:].startswith(close_tag):
+                matched_close = close_tag
+                break
+        if matched_close:
+            # 有打开的标签才视为闭合;否则作为普通文本
+            if open_stack:
+                expected_open = _TAG_CLOSES[matched_close]
+                # 弹出匹配的 open（栈顶查找）
+                if expected_open in open_stack:
+                    open_stack.remove(expected_open)
+                i += len(matched_close)
+                continue
+            # 无打开标签,作为普通 content
+            content_parts.append(raw[i])
+            i += 1
+            continue
+        # 普通字符
+        if open_stack:
+            # 在推理块内部
+            thinking_parts.append(raw[i])
+        else:
+            content_parts.append(raw[i])
+        i += 1
+    thinking = "".join(thinking_parts).strip()
+    content = "".join(content_parts).strip()
+    return thinking, content
 
 
 @dataclass
@@ -36,6 +126,9 @@ class Session:
     messages: list = field(default_factory=list)
     created_at: str = ""
     updated_at: str = ""
+    quality: str = ""
+    enable_thinking: bool = True
+    perf: dict = field(default_factory=dict)
 
     def to_dict(self):
         return {
@@ -46,6 +139,9 @@ class Session:
             "messages": [m.to_dict() if isinstance(m, Message) else m for m in self.messages],
             "created_at": self.created_at,
             "updated_at": self.updated_at,
+            "quality": self.quality,
+            "enable_thinking": self.enable_thinking,
+            "perf": self.perf,
         }
 
     def persist(self, path: Path):
@@ -68,14 +164,43 @@ class SessionManager:
         for p in self.sessions_dir.glob("*.json"):
             try:
                 data = json.loads(p.read_text(encoding="utf-8"))
+                restored_msgs = []
+                for m in data.get("messages", []):
+                    if isinstance(m, dict):
+                        raw_content = m.get("content", "")
+                        existing_thinking = m.get("thinking", "")
+                        # 检测是否包含任一已知推理标签（兼容旧消息）
+                        has_tag = any(close_tag in raw_content for _, _, close_tag in REASONING_TAGS)
+                        if has_tag and not existing_thinking:
+                            t, c = parse_think_tags(raw_content)
+                            restored_msgs.append(Message(
+                                role=m.get("role", ""),
+                                content=c,
+                                timestamp=m.get("timestamp", ""),
+                                model=m.get("model", ""),
+                                thinking=t,
+                            ))
+                        else:
+                            restored_msgs.append(Message(
+                                role=m.get("role", ""),
+                                content=raw_content,
+                                timestamp=m.get("timestamp", ""),
+                                model=m.get("model", ""),
+                                thinking=existing_thinking,
+                            ))
+                    else:
+                        restored_msgs.append(m)
                 session = Session(
                     session_id=data.get("session_id", p.stem),
                     title=data.get("title", ""),
                     model=data.get("model", ""),
                     system_prompt=data.get("system_prompt", ""),
-                    messages=[Message(**m) if isinstance(m, dict) else m for m in data.get("messages", [])],
+                    messages=restored_msgs,
                     created_at=data.get("created_at", ""),
                     updated_at=data.get("updated_at", ""),
+                    quality=data.get("quality", ""),
+                    enable_thinking=data.get("enable_thinking", True),
+                    perf=data.get("perf", {}) if isinstance(data.get("perf"), dict) else {},
                 )
                 self._sessions[session.session_id] = session
             except Exception:
@@ -110,15 +235,21 @@ class SessionManager:
             self._sessions.pop(session_id, None)
             p = self.sessions_dir / f"{session_id}.json"
             if p.exists():
-                p.unlink()
+                try:
+                    p.unlink()
+                except Exception:
+                    log.warning("unlink failed: %s", p)
 
     def clear_all(self):
         with self._lock:
             for p in self.sessions_dir.glob("*.json"):
-                p.unlink()
+                try:
+                    p.unlink()
+                except Exception:
+                    log.warning("unlink failed: %s", p)
             self._sessions.clear()
 
-    def add_message(self, session_id: str, role: str, content: str, model: str = "") -> Optional[Message]:
+    def add_message(self, session_id: str, role: str, content: str, model: str = "", thinking: str = "") -> Optional[Message]:
         with self._lock:
             session = self._sessions.get(session_id)
             if not session:
@@ -128,6 +259,7 @@ class SessionManager:
                 content=content,
                 timestamp=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
                 model=model,
+                thinking=thinking,
             )
             session.messages.append(msg)
             session.updated_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -138,7 +270,15 @@ class SessionManager:
             session.persist(self.sessions_dir / f"{session_id}.json")
             return msg
 
-    def stream_chat(self, session_id: str, user_message: str, model: str = ""):
+    def update_perf(self, session_id: str, perf: dict):
+        with self._lock:
+            session = self._sessions.get(session_id)
+            if not session:
+                return
+            session.perf = perf if isinstance(perf, dict) else {}
+            session.persist(self.sessions_dir / f"{session_id}.json")
+
+    def stream_chat(self, session_id: str, user_message: str, model: str = "", quality: str = "", enable_thinking: bool = True):
         """生成器：通过 OpenAI 兼容 API 流式转发对话。"""
         session = self.get_session(session_id)
         if not session:
@@ -147,6 +287,11 @@ class SessionManager:
 
         # 使用请求中的 model，否则回退到 session 的 model
         chat_model = model or session.model or "default"
+        # 持久化对话配置到会话
+        session.model = chat_model
+        if quality:
+            session.quality = quality
+        session.enable_thinking = enable_thinking
         self.add_message(session_id, "user", user_message, model=chat_model)
 
         api_config = self.config.api or {}
@@ -178,8 +323,18 @@ class SessionManager:
             "stream": True,
             "max_tokens": 4096,
         }
+        # 对话质量 high/medium/low 映射为 temperature
+        temp = {"high": 0.9, "medium": 0.5, "low": 0.2}.get(quality)
+        if temp is not None:
+            payload["temperature"] = temp
+        # 思考开关(vLLM/SGLang 通过 chat_template_kwargs 控制)
+        payload["chat_template_kwargs"] = {"enable_thinking": enable_thinking}
 
         assistant_content = ""
+        assistant_thinking = ""
+        raw_content = ""
+        prev_thinking = ""
+        prev_content = ""
         try:
             resp = req.post(url, json=payload, headers=headers, stream=True, timeout=120)
             if resp.status_code != 200:
@@ -200,21 +355,34 @@ class SessionManager:
                     token = delta.get("content", "")
                     thinking = delta.get("reasoning_content", "")
                     if thinking:
+                        assistant_thinking += thinking
                         yield json.dumps({"thinking": thinking}, ensure_ascii=False)
                     if token:
-                        assistant_content += token
-                        yield json.dumps({"token": token}, ensure_ascii=False)
+                        raw_content += token
+                        # 解析 ndl...GGUF 标签,分离思考与回复
+                        new_thinking, new_content = parse_think_tags(raw_content)
+                        if len(new_thinking) > len(prev_thinking):
+                            dt = new_thinking[len(prev_thinking):]
+                            assistant_thinking += dt
+                            yield json.dumps({"thinking": dt}, ensure_ascii=False)
+                        if len(new_content) > len(prev_content):
+                            dc = new_content[len(prev_content):]
+                            assistant_content += dc
+                            yield json.dumps({"token": dc}, ensure_ascii=False)
+                        prev_thinking = new_thinking
+                        prev_content = new_content
                 except json.JSONDecodeError:
                     continue
 
-            if assistant_content:
-                self.add_message(session_id, "assistant", assistant_content, model=chat_model)
+            if assistant_content or assistant_thinking:
+                log.info("stream_chat parsed: thinking=%d chars, content=%d chars", len(assistant_thinking), len(assistant_content))
+                self.add_message(session_id, "assistant", assistant_content, model=chat_model, thinking=assistant_thinking)
             yield json.dumps({"done": True}, ensure_ascii=False)
 
         except Exception as e:
             log.exception("Stream chat failed")
             err_msg = f"Request failed: {e}"
-            if assistant_content:
-                self.add_message(session_id, "assistant", assistant_content, model=chat_model)
+            if assistant_content or assistant_thinking:
+                self.add_message(session_id, "assistant", assistant_content, model=chat_model, thinking=assistant_thinking)
             self.add_message(session_id, "assistant", err_msg, model=chat_model)
             yield json.dumps({"error": err_msg}, ensure_ascii=False)

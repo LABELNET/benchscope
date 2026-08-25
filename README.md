@@ -25,13 +25,16 @@ benchscope
 benchscope --port 8080 --no-browser
 ```
 
-Open the page and:
+Open the page and switch between the five-item top nav — **Dashboard / Performance / Accuracy / Sessions / Settings**:
 
-1. Confirm the top nav shows **Service** (app) and **Environment** (inference) as online.
-2. Go to **Settings** (top-right) and set the inference service **Base URL** (any OpenAI-compatible endpoint).
-3. Open the **vLLM / SGLang** page, choose a model (from `/v1/models`), a dataset (Random / ShareGPT / Custom) and a concurrency list.
-4. Use **Test Progress → Start Test**. The **Test Results** panel updates live with a bilingual table and six curves.
-5. Logs are written under `logs/<MMDD-HHMMSS>/` with a `benchmark-*.xlsx` summary (mean + P99 sheets).
+1. **Settings** → **Inference API** section, set the **Base URL** (any OpenAI-compatible endpoint) and use **Test Connection** to confirm it pulls `/v1/models`.
+2. **Performance** → click **New Task** to open the task form (select model + framework, dataset, concurrency, advanced params, command preview). After creating the task you land on the task detail page.
+3. On the **task detail page** the left column shows live progress + bench terminal, the right column shows the realtime bilingual table and six curves (start/stop/retry controls in the top status bar).
+4. **Dashboard** shows aggregate stats (total runs / running tasks / avg TPOT / best model) and the historical run records list (with detail panel reusing the mean/P99 analysis).
+5. **Sessions** opens an SSE streaming chat with the inference service (model picker + system prompt + Markdown rendering).
+6. Logs are written under `logs/<MMDD-HHMMSS>/` with a `benchmark-*.xlsx` summary (mean + P99 sheets).
+
+> UI language (EN/中) and theme (light/dark/system) can be toggled in **Settings → General**.
 
 ## Features
 
@@ -45,7 +48,12 @@ Open the page and:
 - **Live results** — bilingual table + six curves (Output & Total throughput, TTFT/TPOT mean & P99) against concurrency.
 - **Logs** — per-run `MMDD-HHMMSS` directory with raw bench logs, mean/P99 summary CSV and `benchmark-*.xlsx` (mean + P99 sheets); preview & download in the UI.
 - **Analysis** — mean / P99 blocks with output/peakoutput/total/ttft/itl/tpot curves and **best-concurrency highlight** (closest to, and below, a TPOT threshold).
-- **Admin-console UI** — fixed top nav, fixed left nav (test workflow / test records), and a fixed sub-nav; the content area scrolls internally.
+- **Task-based Performance (v1.0.5)** — create benchmark tasks on the **Performance** page; each task runs in its own thread and is persisted under `~/.benchscope/tasks/` so refreshing the page does not lose in-flight state. The task detail page shows live progress + bench terminal (left) and the realtime bilingual table + six curves (right).
+- **Dashboard (v1.0.5)** — aggregate stats cards (total runs / running tasks / avg TPOT / best model) plus the historical run-records list with an inline mean/P99 analysis panel.
+- **Sessions (v1.0.5)** — SSE streaming chat against the OpenAI-compatible API; sessions are persisted under `~/.benchscope/sessions/`.
+- **Accuracy (v1.0.5)** — placeholder page reserved for the v5.0 accuracy-testing release.
+- **i18n & theme (v1.0.5)** — bilingual UI (English / 简体中文) and light / dark / system theme switching, both configurable in Settings.
+- **Admin-console UI** — five-item fixed top nav (Dashboard / Performance / Accuracy / Sessions / Settings) plus per-page sub-navigation; content area scrolls internally. Legacy `/vllm`, `/sglang`, `/logs` routes redirect to the new pages.
 - **Status monitoring** — Service & Environment online/offline indicators with live updates.
 
 ## Roadmap
@@ -53,6 +61,7 @@ Open the page and:
 | Version | Status | Scope |
 | --- | --- | --- |
 | 1.0.0 | 🚀 Released | Text-model performance testing — dual framework, three datasets, realtime results, logs & xlsx summary, analysis, admin UI |
+| 1.0.5 | 🚀 Released | v2.0 UI overhaul: 5-column nav (Dashboard / Performance / Accuracy / Sessions / Settings), task-based Performance with persistence, Sessions SSE chat, i18n (EN/中), light/dark/system theme |
 | 2.0 | 🔜 Planned | Multimodal model performance testing |
 | 3.0 | Planned | Full-modal (audio/video/…) model performance testing |
 | 4.0 | Planned | World-model performance testing |
@@ -68,13 +77,25 @@ benchscope/
 ├── benchscope/
 │   ├── cli.py            # `benchscope` command entry
 │   ├── config.py         # config persistence (~/.benchscope/config.json)
+│   ├── task_manager.py   # task-based performance runner + persistence
+│   ├── session_manager.py # chat sessions store + SSE streaming
 │   ├── datasets.py       # ShareGPT download/convert, custom datasets
 │   ├── gpu.py            # GPU auto-detect
 │   ├── parser.py         # bench output parsing (mean + P99)
 │   ├── summary.py        # CSV & xlsx summary generation
 │   ├── benches/          # vllm/sglang command building & execution
 │   └── server/           # FastAPI + WebSocket + test orchestration
+│       ├── api_config.py     # config / models / GPU / status API
+│       ├── api_test.py       # legacy single-test start/stop API
+│       ├── api_tasks.py      # task CRUD + start/stop/preview
+│       ├── api_sessions.py   # session CRUD + SSE chat
+│       ├── api_dashboard.py  # dashboard stats (total runs / avg TPOT / best model)
+│       ├── api_logs.py       # run-records & dataset management API
+│       ├── test_manager.py   # legacy single-test manager (used by api_test)
+│       └── ws.py             # WebSocket broadcast hub
 ├── web/                  # Vue 3 + Ant Design Vue front-end source
+│   └── src/views/        # DashboardView / PerformanceView / TaskDetailView /
+│                          CreateTaskView / AccuracyView / SessionsView / SettingsView
 └── tests/                # mock OpenAI server & UI smoke tests
 ```
 

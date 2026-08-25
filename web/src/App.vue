@@ -1,5 +1,5 @@
 <template>
-  <a-config-provider :locale="antdLocale" :theme="themeConfig">
+  <a-config-provider :locale="antdLocale" :theme="themeConfig" :key="resolvedTheme">
     <a-layout class="app-layout">
       <TopBar />
       <a-layout class="app-content-layout">
@@ -27,6 +27,7 @@ const antdLocale = computed(() => (i18nState.locale === 'zh' ? zhCN : enUS))
 const themeConfig = computed(() => {
   const isDark = resolvedTheme.value === 'dark'
   return {
+    cssVar: true,
     token: {
       colorPrimary: '#1677ff',
       borderRadius: 6,
@@ -59,14 +60,13 @@ const resolvedTheme = computed(() => {
 watch(resolvedTheme, (val) => {
   document.documentElement.setAttribute('data-theme', val)
   document.body.className = val === 'dark' ? 'theme-dark' : 'theme-light'
-})
+}, { immediate: true })
 
 onMounted(async () => {
   await config.load()
   initI18n(config.config?.locale)
   test.loadTasks()
   test.connect()
-  document.documentElement.setAttribute('data-theme', resolvedTheme.value)
 })
 </script>
 

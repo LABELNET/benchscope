@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import re
 import threading
 import time
@@ -209,7 +210,7 @@ class TestManager:
     def _execute(self, run: TestRun) -> None:
         framework = run.framework
         tmpl = (self.config.get("bench_commands") or {}).get(framework, "")
-        runner = BenchRunner(tmpl)
+        runner = BenchRunner(command_template=tmpl)
         self._runner = runner
 
         model_name = sanitize_name(Path(run.model).name or run.model)
@@ -320,7 +321,8 @@ class TestManager:
                 "case": case["label"], "concurrency": concurrency, "line": line,
             })
 
-        metrics = runner.run(cmd, stream_cb=stream)
+        shell_init = (self.config.get("bench_shell_init") or "").strip()
+        metrics = runner.run(cmd, stream_cb=stream, shell_init=shell_init)
         return {
             "case": case["label"], "label": case["label"],
             "input_len": case.get("input_len"), "output_len": case.get("output_len"),

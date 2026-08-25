@@ -1,19 +1,26 @@
 """bench 子进程流式执行器。
 
-支持真实执行（vllm/sglang CLI）与 FAKE 模式（BENCHSCOPE_FAKE_BENCH=1，
-生成仿真输出，便于无 vllm/sglang 环境下联调 UI 全流程）。
+使用 bash -c 显式 source 系统 profile 后再执行 bench 命令，
+确保子进程拿到完整的系统环境变量（PATH/LD_LIBRARY_PATH/MACA_PATH 等），
+彻底解决环境变量继承问题。
+
+支持两种模式：
+  1. 真实模式（默认）：subprocess 执行 vllm/sglang CLI，实时推送输出
+  2. FAKE 模式（BENCHSCOPE_FAKE_BENCH=1）：生成仿真输出，便于无 vllm/sglang 环境下联调 UI
 """
 from __future__ import annotations
 
 import logging
-import math
 import os
 import random
+import re
 import shlex
+import shutil
+import signal
 import subprocess
-import sys
 import threading
 import time
+from pathlib import Path
 from typing import Callable, Optional
 
 from benchscope.parser import parse_metrics
@@ -23,26 +30,115 @@ log = logging.getLogger("benchscope.runner")
 StreamCallback = Callable[[str], None]  # 每行输出回调
 
 
+def _load_env_from_script(script_path: Path) -> dict[str, str]:
+    """解析 shell 脚本中的 export 语句，返回 {key: value} 字典。
+
+    支持：
+      export KEY=value
+      export KEY="value with spaces"
+      export KEY='value'
+      export KEY  (仅声明，无值则跳过)
+    同时支持 shell 变量引用（如 ${OTHER}、$OTHER），会用已解析的变量展开。
+    """
+    if not script_path.exists():
+        return {}
+    result: dict[str, str] = {}
+    export_re = re.compile(r'^\s*export\s+(\w+)\s*=\s*(.+?)?\s*$')
+    # 先读所有行，处理变量展开时按出现顺序
+    raw_lines = []
+    try:
+        for line in script_path.read_text(encoding="utf-8").splitlines():
+            line = line.strip()
+            if not line or line.startswith('#'):
+                continue
+            m = export_re.match(line)
+            if m:
+                key = m.group(1)
+                val = m.group(2)
+                if val is None:
+                    continue  # export KEY（无值）跳过
+                # 去除引号
+                val = val.strip()
+                if len(val) >= 2 and val[0] == val[-1] and val[0] in ('"', "'"):
+                    val = val[1:-1]
+                raw_lines.append((key, val))
+    except Exception:
+        log.exception("解析环境脚本失败: %s", script_path)
+        return {}
+
+    # 按顺序展开变量（支持 ${VAR} 和 $VAR 引用）
+    for key, val in raw_lines:
+        def _expand(s: str) -> str:
+            # ${VAR} 和 $VAR
+            for _ in range(10):  # 最多迭代 10 次防止循环引用
+                new = re.sub(
+                    r'\$\{(\w+)\}|\$(\w+)',
+                    lambda m: result.get(m.group(1) or m.group(2), ''),
+                    s,
+                )
+                if new == s:
+                    break
+                s = new
+            return s
+        result[key] = _expand(val)
+
+    return result
+
+
+def _find_and_load_maca_env() -> dict[str, str]:
+    """自动查找项目内的 metax/maca 初始化脚本并解析环境变量。
+
+    查找顺序：
+      1. 当前工作目录的 scripts/maca.sh
+      2. benchscope 包所在目录的 ../scripts/maca.sh
+      3. 常见路径 /opt/maca/env.sh
+    """
+    candidates = [
+        Path.cwd() / "scripts" / "maca.sh",
+        Path(__file__).resolve().parent.parent / "scripts" / "maca.sh",
+        Path("/opt/maca/env.sh"),
+        Path("/opt/maca/bin/maca_env.sh"),
+    ]
+    for candidate in candidates:
+        if candidate.exists():
+            env = _load_env_from_script(candidate)
+            if env:
+                log.info("从 %s 加载了 %d 个环境变量", candidate, len(env))
+                return env
+    return {}
+
+
 class StopRequested(RuntimeError):
     """测试被人为停止。"""
 
 
 class BenchRunner:
-    def __init__(self, command_template: str | None = None):
+    """bench 子进程执行器。
+
+    使用流程：
+        runner = BenchRunner(command_template="vllm bench serve")
+        metrics = runner.run(cmd, stream_cb=print)  # 阻塞执行并返回指标
+    """
+
+    def __init__(self, command_template: str | None = None, run_dir=None):
         """command_template 形如 "vllm bench serve" / "python -m sglang.bench_serving"。"""
         self.command_template = command_template or "vllm bench serve"
         self._proc: Optional[subprocess.Popen] = None
         self._stop_flag = threading.Event()
 
+    # ------------------------------------------------------------------
     def kill(self) -> None:
-        """终止当前执行的子进程（用于停止测试）。"""
+        """终止当前执行的子进程组（用于停止测试）。"""
         self._stop_flag.set()
         proc = self._proc
         if proc and proc.poll() is None:
             try:
-                proc.kill()
-            except Exception:
-                pass
+                os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
+            except (ProcessLookupError, OSError):
+                try:
+                    proc.kill()
+                except Exception:
+                    pass
 
     # ------------------------------------------------------------------
     def run(
@@ -50,33 +146,86 @@ class BenchRunner:
         cmd: list[str],
         stream_cb: Optional[StreamCallback] = None,
         timeout: float | None = None,
+        shell_init: str = "",
     ) -> dict:
-        """执行命令，返回 parse_metrics 结果（含 raw）。失败抛 RuntimeError。"""
+        """执行命令，返回 parse_metrics 结果（含 raw）。失败抛 RuntimeError。
+
+        shell_init：可选，用户自定义的初始化脚本（如 source /opt/maca/env.sh），
+        会在执行 bench 命令前在同一个 bash -lic shell 里先执行。
+        """
         self._stop_flag.clear()
         if os.environ.get("BENCHSCOPE_FAKE_BENCH") == "1":
             return self._run_fake(cmd, stream_cb)
 
-        # 用模板指定的可执行文件替换命令头部（vllm / python -m sglang...）
+        # 用模板指定的可执行文件替换命令头部
         full_cmd = self._resolve(cmd)
-        log.info("执行命令: %s", " ".join(full_cmd))
+        cmd_str = " ".join(shlex.quote(c) for c in full_cmd)
+        log.info("执行命令: %s", cmd_str)
         if stream_cb:
-            stream_cb("$ " + " ".join(full_cmd) + "\n")
+            stream_cb("$ " + cmd_str + "\n")
+
+        # 关键：用最小 env 启动 bash -lic，让它从 profile 重建完整 PATH
+        # （如果传 Trae 的 PATH，profile 里的 export PATH 很多是追加/条件判断，
+        #  导致 source 后 PATH 仍是残缺的 Trae 版）
+        minimal_env = {
+            "HOME": os.environ.get("HOME", ""),
+            "USER": os.environ.get("USER", ""),
+            "LANG": os.environ.get("LANG", "C.UTF-8"),
+            "TERM": os.environ.get("TERM", "xterm-256color"),
+            "SHELL": os.environ.get("SHELL", "/bin/bash"),
+        }
+        # 保留 conda 相关环境变量（如果有）
+        for key in ("CONDA_EXE", "CONDA_PREFIX", "CONDA_DEFAULT_ENV"):
+            if key in os.environ:
+                minimal_env[key] = os.environ[key]
+
+        # 自动加载 metax/maca 平台环境变量（从 scripts/maca.sh 等脚本解析）
+        maca_env = _find_and_load_maca_env()
+        if maca_env:
+            # 注入到 Python env（子进程直接继承）
+            for k, v in maca_env.items():
+                minimal_env[k] = v
+            log.info("注入 metax 环境变量: MACA_PATH=%s, PATH 含 maca=%s",
+                     maca_env.get("MACA_PATH", "?"),
+                     "maca" in maca_env.get("PATH", ""))
+
+        # 同时在 bash 命令里也 source 这些脚本（双重保险）
+        auto_source = ""
+        if maca_env:
+            # 找到实际的 maca.sh 路径并 source
+            for candidate in [
+                Path.cwd() / "scripts" / "maca.sh",
+                Path(__file__).resolve().parent.parent / "scripts" / "maca.sh",
+                Path("/opt/maca/env.sh"),
+            ]:
+                if candidate.exists():
+                    auto_source = f"source {candidate} 2>/dev/null; "
+                    break
+
+        # 构造完整的 bash -lic 命令：先自动 source maca.sh，再用户自定义 init，再 exec bench
+        # bash -lic 会自动 source /etc/profile、~/.bash_profile、~/.bashrc 等
+        init_part = f"{shell_init}; " if shell_init else ""
+        bash_cmd = f"{auto_source}{init_part}exec {cmd_str}"
 
         try:
+            bash_bin = shutil.which("bash") or "/bin/bash"
             proc = subprocess.Popen(
-                full_cmd,
+                [bash_bin, "-lic", bash_cmd],
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
                 text=True,
                 encoding="utf-8",
                 errors="replace",
                 bufsize=1,
+                env=minimal_env,
+                cwd=os.getcwd(),
+                preexec_fn=os.setsid,  # 创建新进程组，便于整体杀死
             )
             self._proc = proc
         except FileNotFoundError as e:
             raise RuntimeError(
                 f"未找到命令执行环境：{full_cmd[0]}。请确认已安装 "
-                f"{self.command_template.split()[0]} 相关 CLI（并在服务设置中配置 bench 命令）。"
+                f"{self.command_template.split()[0]} 相关 CLI。"
             ) from e
 
         chunks: list[str] = []
@@ -113,7 +262,6 @@ class BenchRunner:
     def _resolve(self, cmd: list[str]) -> list[str]:
         """把命令头替换为模板指定的执行方式。"""
         tmpl = shlex.split(self.command_template)
-        # 保留原始参数（从模板之后开始）
         return tmpl + cmd[len(tmpl):] if cmd[:len(tmpl)] == tmpl else tmpl + cmd
 
     # ------------------------------------------------------------------

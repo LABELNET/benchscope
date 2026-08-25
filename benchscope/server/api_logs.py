@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 import logging
 import re
+import shutil
 import threading
 from pathlib import Path
 
@@ -64,6 +65,14 @@ def get_run(run_id: str):
     run_info = _load_run_json(d) or {}
     files = sorted((p.name, p.stat().st_size) for p in d.iterdir() if p.is_file())
     return {"run_id": run_id, "dir": str(d), "files": files, "run": run_info}
+
+
+@router.delete("/runs/{run_id}")
+def delete_run(run_id: str):
+    """删除整条运行记录目录。"""
+    d = _resolve_run_dir(run_id)
+    shutil.rmtree(d)
+    return {"ok": True}
 
 
 # ----------------------------------------------------------------------
@@ -330,8 +339,13 @@ def sharegpt_download():
 
 # ----------------------------------------------------------------------
 def _resolve_run_dir(run_id: str) -> Path:
+    # 路径穿越校验：run_id 必须是单层目录名，禁止包含分隔符或父级引用
+    if not run_id or "/" in run_id or "\\" in run_id or ".." in run_id:
+        raise HTTPException(status_code=400, detail="非法的 run_id")
     logs_dir = state.config.logs_dir
-    d = logs_dir / run_id
+    d = (logs_dir / run_id).resolve()
+    if not str(d).startswith(str(logs_dir.resolve())):
+        raise HTTPException(status_code=400, detail="非法的 run_id")
     if not d.is_dir():
         raise HTTPException(status_code=404, detail=f"运行记录不存在: {run_id}")
     return d

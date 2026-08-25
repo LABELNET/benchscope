@@ -15,9 +15,9 @@
       </a-col>
     </a-row>
 
-    <!-- 测试记录 -->
+    <!-- 性能测试记录 -->
     <a-card size="small" class="records-card">
-      <template #title>{{ t('testRecords') }}</template>
+      <template #title>{{ t('perfTestRecords') }}</template>
       <template #extra>
         <a-space>
           <a-select v-model:value="filterFramework" size="small" style="width: 120px" allow-clear :placeholder="t('allFrameworks')">
@@ -43,7 +43,7 @@
         :loading="loading"
         size="small"
         row-key="run_id"
-        :pagination="{ pageSize: 15, showSizeChanger: true, showTotal: (t) => `${t} ${t('testRecords')}` }"
+        :pagination="{ pageSize: 15, showSizeChanger: true, showTotal: (t) => `${t} ${t('perfTestRecords')}` }"
       >
         <template #bodyCell="{ column, record }">
           <template v-if="column.key === 'run_id'">
@@ -63,7 +63,26 @@
           </template>
           <template v-if="column.key === 'actions'">
             <a-button type="link" size="small" @click="openDetail(record.run_id)">{{ t('detail') }}</a-button>
+            <a-popconfirm :title="t('deleteRunConfirm')" @confirm="deleteRun(record)">
+              <a-button danger size="small">{{ t('deleteRun') }}</a-button>
+            </a-popconfirm>
           </template>
+        </template>
+      </a-table>
+    </a-card>
+
+    <!-- 精度测试记录（v5.0 预留） -->
+    <a-card size="small" class="records-card">
+      <template #title>{{ t('accTestRecords') }}</template>
+      <a-table
+        :columns="accColumns"
+        :data-source="[]"
+        size="small"
+        row-key="run_id"
+        :pagination="false"
+      >
+        <template #emptyText>
+          <a-empty :description="t('accuracyPlanned')" />
         </template>
       </a-table>
     </a-card>
@@ -84,6 +103,7 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue'
 import { ReloadOutlined } from '@ant-design/icons-vue'
+import { message } from 'ant-design-vue'
 import { api } from '@/api'
 import { t } from '@/i18n'
 import RunDetailPanel from '@/components/RunDetailPanel.vue'
@@ -122,7 +142,17 @@ const columns = [
   { title: 'Framework', key: 'framework', width: 100 },
   { title: 'Status', key: 'status', width: 100 },
   { title: 'Time', key: 'time', width: 180 },
-  { title: '', key: 'actions', width: 80 },
+  { title: '', key: 'actions', width: 160 },
+]
+
+// 精度测试记录列定义预埋（v5.0）
+const accColumns = [
+  { title: 'Run ID', key: 'run_id', width: 140 },
+  { title: 'Model', key: 'model', width: 180 },
+  { title: 'Framework', key: 'framework', width: 100 },
+  { title: 'Status', key: 'status', width: 100 },
+  { title: 'Time', key: 'time', width: 180 },
+  { title: '', key: 'actions', width: 160 },
 ]
 
 function statusColor(s) {
@@ -159,6 +189,17 @@ function openDetail(runId) {
   detailOpen.value = true
 }
 
+async function deleteRun(record) {
+  try {
+    await api.deleteRun(record.run_id)
+    message.success(t('deleteRun'))
+    runs.value = runs.value.filter((r) => r.run_id !== record.run_id)
+    await loadStats()
+  } catch (e) {
+    message.error(e.message)
+  }
+}
+
 onMounted(loadRuns)
 </script>
 
@@ -178,5 +219,9 @@ onMounted(loadRuns)
 .records-card {
   border-radius: 8px;
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+  margin-bottom: 16px;
+}
+.records-card:last-child {
+  margin-bottom: 0;
 }
 </style>

@@ -36,11 +36,48 @@
               :key="opt.value"
               class="theme-card"
               :class="{ active: form.theme === opt.value }"
-              @click="form.theme = opt.value"
+              @click="selectTheme(opt.value)"
             >
               <component :is="opt.icon" class="theme-icon" />
               <span class="theme-label">{{ opt.label }}</span>
             </div>
+          </div>
+        </div>
+
+        <!-- 其他设置 -->
+        <div class="content-section">
+          <div class="section-label">{{ t('otherSettings') }}</div>
+          <div class="section-row">
+            <span class="section-label" style="font-weight: 400">{{ t('defaultFramework') }}</span>
+            <a-select v-model:value="form.framework" style="width: 200px" :options="frameworkOptions" @change="saveField('framework')" />
+          </div>
+          <div class="section-row">
+            <span class="section-label" style="font-weight: 400">{{ t('tpotThreshold') }}</span>
+            <a-input-number v-model:value="form.tpot_threshold_ms" :min="0" addon-after="ms" style="width: 200px" @change="saveField('tpot_threshold_ms')" />
+          </div>
+          <div class="section-row">
+            <span class="section-label" style="font-weight: 400">{{ t('logsDir') }}</span>
+            <a-input v-model:value="form.logs_dir" placeholder="./logs" style="width: 360px" @change="saveField('logs_dir')" />
+          </div>
+          <div class="section-row">
+            <span class="section-label" style="font-weight: 400">{{ t('datasetsDir') }}</span>
+            <a-input v-model:value="form.datasets_dir" placeholder="./datasets" style="width: 360px" @change="saveField('datasets_dir')" />
+          </div>
+          <div class="section-row">
+            <span class="section-label" style="font-weight: 400">{{ t('requestRate') }}</span>
+            <div style="display: flex; gap: 8px; align-items: center">
+              <a-select v-model:value="requestRateMode" style="width: 160px" :options="requestRateOptions" @change="saveRequestRate" />
+              <a-input-number v-if="requestRateMode === 'custom'" v-model:value="requestRateValue" :min="0" addon-after="req/s" style="width: 180px" @change="saveRequestRate" />
+            </div>
+          </div>
+          <div class="section-row">
+            <span class="section-label" style="font-weight: 400">{{ t('benchShellInit') }}</span>
+            <a-input
+              v-model:value="form.bench_shell_init"
+              :placeholder="t('benchShellInitPlaceholder')"
+              style="width: 480px"
+              @change="saveField('bench_shell_init')"
+            />
           </div>
         </div>
       </div>
@@ -59,6 +96,7 @@
                 <span class="provider-status-text">{{ record.connected ? t('connectionOk') : t('connectionFail') }}</span>
               </template>
               <template v-if="column.key === 'actions'">
+                <a-button type="link" size="small" @click="editProvider(index)">{{ t('edit') }}</a-button>
                 <a-button type="link" size="small" @click="testProvider(index)">{{ t('testConnection') }}</a-button>
                 <a-button type="link" size="small" danger @click="removeProvider(index)">{{ t('delete') }}</a-button>
               </template>
@@ -80,30 +118,22 @@
         <p class="section-desc">{{ t('pluginsDesc') }}</p>
         <a-empty :description="t('noData')" />
       </div>
-
-      <!-- Save bar -->
-      <div class="save-bar">
-        <a-button type="primary" size="large" @click="saveAll">
-          <template #icon><save-outlined /></template>
-          {{ t('save') }}
-        </a-button>
-      </div>
     </div>
 
-    <!-- Add custom provider modal -->
-    <a-modal v-model:open="showAddCustom" :title="t('addCustomProvider')" @ok="addCustomProvider" ok-text="OK" cancel-text="Cancel">
+    <!-- Add/Edit custom provider modal -->
+    <a-modal v-model:open="showAddCustom" :title="editIndex >= 0 ? t('editProvider') : t('addCustomProvider')" @ok="saveProvider" :ok-text="t('okText')" :cancel-text="t('cancel')">
       <a-form layout="vertical">
         <a-form-item :label="t('providerName')">
-          <a-input v-model:value="newCustom.name" placeholder="e.g. My Provider" />
+          <a-input v-model:value="newCustom.name" :placeholder="t('providerNamePlaceholder')" />
         </a-form-item>
         <a-form-item :label="t('baseUrl')">
-          <a-input v-model:value="newCustom.base_url" placeholder="http://..." />
+          <a-input v-model:value="newCustom.base_url" :placeholder="t('baseUrlPlaceholder')" />
         </a-form-item>
         <a-form-item :label="t('endpoint')">
-          <a-input v-model:value="newCustom.endpoint" placeholder="/v1/chat/completions" />
+          <a-input v-model:value="newCustom.endpoint" :placeholder="t('endpointPlaceholder')" />
         </a-form-item>
         <a-form-item :label="t('apiKey')">
-          <a-input-password v-model:value="newCustom.api_key" placeholder="sk-..." />
+          <a-input-password v-model:value="newCustom.api_key" :placeholder="t('apiKeyPlaceholder')" />
         </a-form-item>
         <a-form-item :label="t('framework')">
           <a-radio-group v-model:value="newCustom.framework" button-style="solid">
@@ -121,7 +151,7 @@ import { computed, onMounted, reactive, ref } from 'vue'
 import { message } from 'ant-design-vue'
 import {
   SettingOutlined, DatabaseOutlined, ApiOutlined,
-  PlusOutlined, SaveOutlined,
+  PlusOutlined,
   BulbOutlined, CloudOutlined, DesktopOutlined,
 } from '@ant-design/icons-vue'
 import { api } from '@/api'
@@ -132,16 +162,24 @@ const config = useConfigStore()
 const activeTab = ref('general')
 const testing = ref(false)
 const showAddCustom = ref(false)
+const editIndex = ref(-1)
 const providers = ref([])
 
 const form = reactive({
   theme: 'light',
   locale: 'en',
   framework: 'vllm',
+  tpot_threshold_ms: 100,
+  logs_dir: './logs',
+  datasets_dir: './datasets',
+  request_rate: 'inf',
   api: { base_url: '', endpoint: '/v1/chat/completions', api_key: '', extra_headers: {} },
 })
 
-const newCustom = reactive({ name: '', base_url: '', endpoint: '/v1/chat/completions', api_key: '', framework: 'vllm' })
+const requestRateMode = ref('inf')
+const requestRateValue = ref(10)
+
+const newCustom = reactive({ name: '', base_url: 'http://127.0.0.1:8000', endpoint: '/v1/chat/completions', api_key: '', framework: 'vllm' })
 
 const menuItems = computed(() => [
   { key: 'general', icon: SettingOutlined, label: t('general') },
@@ -160,13 +198,23 @@ const themeOptions = computed(() => [
   { value: 'system', icon: DesktopOutlined, label: t('system') },
 ])
 
-const providerColumns = [
-  { title: 'Provider Name', dataIndex: 'name', key: 'name' },
-  { title: 'Base URL', dataIndex: 'base_url', key: 'base_url' },
-  { title: 'Framework', dataIndex: 'framework', key: 'framework' },
-  { title: 'Status', key: 'status', width: 120 },
-  { title: '', key: 'actions', width: 140 },
-]
+const frameworkOptions = computed(() => [
+  { label: 'vLLM', value: 'vllm' },
+  { label: 'SGLang', value: 'sglang' },
+])
+
+const requestRateOptions = computed(() => [
+  { label: t('requestRateInf'), value: 'inf' },
+  { label: t('requestRateCustom'), value: 'custom' },
+])
+
+const providerColumns = computed(() => [
+  { title: t('providerNameCol'), dataIndex: 'name', key: 'name' },
+  { title: t('baseUrl'), dataIndex: 'base_url', key: 'base_url' },
+  { title: t('frameworkCol'), dataIndex: 'framework', key: 'framework' },
+  { title: t('statusCol'), key: 'status', width: 120 },
+  { title: '', key: 'actions', width: 200 },
+])
 
 onMounted(async () => {
   try {
@@ -176,6 +224,10 @@ onMounted(async () => {
       theme: c.theme || 'light',
       locale: c.locale || 'en',
       framework: c.framework || 'vllm',
+      tpot_threshold_ms: c.tpot_threshold_ms ?? 100,
+      logs_dir: c.logs_dir || './logs',
+      datasets_dir: c.datasets_dir || './datasets',
+      request_rate: c.request_rate || 'inf',
       api: {
         base_url: c.api?.base_url || '',
         endpoint: c.api?.endpoint || '/v1/chat/completions',
@@ -183,17 +235,41 @@ onMounted(async () => {
         extra_headers: c.api?.extra_headers || {},
       },
     })
+    // Sync request rate mode/value
+    const rr = c.request_rate
+    if (rr === 'inf' || rr === undefined || rr === null || rr === '') {
+      requestRateMode.value = 'inf'
+      requestRateValue.value = 10
+    } else {
+      requestRateMode.value = 'custom'
+      requestRateValue.value = Number(rr) || 10
+    }
     // Load providers from config
     if (c.providers?.length) {
       providers.value = c.providers.map(p => ({ ...p, connected: false }))
-    } else if (form.api.base_url) {
-      providers.value = [{ name: 'Default', base_url: form.api.base_url, api_key: form.api.api_key, framework: form.framework, connected: config.status?.inference === 'ready' }]
+    } else {
+      const defaultUrl = form.api.base_url || 'http://127.0.0.1:8000'
+      providers.value = [{ name: 'Default', base_url: defaultUrl, api_key: form.api.api_key, framework: form.framework, connected: false }]
     }
+    // 自动测试所有 provider 连接
+    autoTestAll()
   } catch { /* ignore */ }
 })
 
 function onLocaleChange() {
   setLocale(form.locale)
+  // 持久化到后端（无需手动保存）
+  config.save({ locale: form.locale }).catch(() => {})
+}
+
+function selectTheme(theme) {
+  form.theme = theme
+  // 立即应用到 config store，触发 App.vue 的 resolvedTheme 更新
+  config.$patch({
+    config: { ...(config.config || {}), theme },
+  })
+  // 持久化到后端（无需手动保存）
+  config.save({ theme }).catch(() => {})
 }
 
 async function testProvider(index) {
@@ -222,28 +298,57 @@ async function testProvider(index) {
 
 function removeProvider(index) {
   providers.value.splice(index, 1)
+  persistProviders()
 }
 
-function addCustomProvider() {
-  if (!newCustom.name) { message.warning('Please enter provider name'); return }
-  providers.value.push({ ...newCustom, connected: false })
-  Object.assign(newCustom, { name: '', base_url: '', endpoint: '/v1/chat/completions', api_key: '', framework: 'vllm' })
+function editProvider(index) {
+  editIndex.value = index
+  const p = providers.value[index]
+  Object.assign(newCustom, { name: p.name, base_url: p.base_url, endpoint: p.endpoint || '/v1/chat/completions', api_key: p.api_key || '', framework: p.framework || 'vllm' })
+  showAddCustom.value = true
+}
+
+function saveProvider() {
+  if (!newCustom.name) { message.warning(t('enterProviderNameWarn')); return }
+  if (editIndex.value >= 0) {
+    providers.value[editIndex.value] = { ...providers.value[editIndex.value], ...newCustom }
+  } else {
+    providers.value.push({ ...newCustom, connected: false })
+  }
+  Object.assign(newCustom, { name: '', base_url: 'http://127.0.0.1:8000', endpoint: '/v1/chat/completions', api_key: '', framework: 'vllm' })
+  editIndex.value = -1
   showAddCustom.value = false
+  persistProviders()
 }
 
-async function saveAll() {
-  try {
-    await config.save({
-      theme: form.theme,
-      locale: form.locale,
-      framework: form.framework,
-      api: { ...form.api, extra_headers: {} },
-      providers: providers.value,
-    })
-    message.success(t('saved'))
-    config.refreshStatus()
-  } catch (e) {
-    message.error(e.message)
+function persistProviders() {
+  config.save({ providers: providers.value.map(({ connected, ...rest }) => rest) }).catch(() => {})
+}
+
+function saveField(key) {
+  config.save({ [key]: form[key] }).catch(() => {})
+}
+
+function saveRequestRate() {
+  const v = requestRateMode.value === 'inf' ? 'inf' : String(requestRateValue.value ?? 0)
+  form.request_rate = v
+  config.save({ request_rate: v }).catch(() => {})
+}
+
+async function autoTestAll() {
+  for (let i = 0; i < providers.value.length; i++) {
+    try {
+      const provider = providers.value[i]
+      const result = await api.testConnection({
+        base_url: provider.base_url,
+        endpoint: provider.endpoint || '/v1/chat/completions',
+        api_key: provider.api_key || '',
+        extra_headers: {},
+      })
+      providers.value[i] = { ...provider, connected: result.ok }
+    } catch {
+      providers.value[i] = { ...providers.value[i], connected: false }
+    }
   }
 }
 </script>
@@ -253,22 +358,22 @@ async function saveAll() {
   display: flex;
   height: 100%;
   overflow: hidden;
-  background: #fff;
+  background: var(--ant-color-bg-container, #fff);
 }
 
 /* ===== 左侧菜单 ===== */
 .settings-sidebar {
   width: 220px;
   flex-shrink: 0;
-  border-right: 1px solid #f0f0f0;
-  background: #fafafa;
+  border-right: 1px solid var(--ant-color-border, #f0f0f0);
+  background: var(--ant-color-bg-layout, #fafafa);
   padding: 24px 12px;
 }
 
 .sidebar-title {
   font-size: 20px;
   font-weight: 700;
-  color: #333;
+  color: var(--ant-color-text, #333);
   padding: 0 12px 20px;
 }
 
@@ -286,18 +391,18 @@ async function saveAll() {
   border-radius: 10px;
   cursor: pointer;
   font-size: 14px;
-  color: #555;
+  color: var(--ant-color-text-secondary, #555);
   transition: all 0.2s;
 }
 
 .menu-item:hover {
-  background: #f0f0f0;
-  color: #333;
+  background: var(--ant-color-fill-secondary, #f0f0f0);
+  color: var(--ant-color-text, #333);
 }
 
 .menu-item.active {
-  background: #e6f4ff;
-  color: #1677ff;
+  background: var(--ant-color-primary-bg, #e6f4ff);
+  color: var(--ant-color-primary, #1677ff);
   font-weight: 500;
 }
 
@@ -331,18 +436,18 @@ async function saveAll() {
   align-items: center;
   justify-content: space-between;
   padding: 12px 0;
-  border-bottom: 1px solid #f0f0f0;
+  border-bottom: 1px solid var(--ant-color-border, #f0f0f0);
 }
 
 .section-label {
   font-size: 14px;
-  color: #333;
+  color: var(--ant-color-text, #333);
   font-weight: 500;
 }
 
 .section-desc {
   font-size: 14px;
-  color: #999;
+  color: var(--ant-color-text-tertiary, #999);
   margin: 0 0 24px;
 }
 
@@ -360,37 +465,37 @@ async function saveAll() {
   align-items: center;
   gap: 8px;
   padding: 20px 16px;
-  border: 1px solid #e8e8e8;
+  border: 1px solid var(--ant-color-border, #e8e8e8);
   border-radius: 12px;
   cursor: pointer;
   transition: all 0.2s;
-  background: #fff;
+  background: var(--ant-color-bg-container, #fff);
 }
 
 .theme-card:hover {
-  border-color: #1677ff;
+  border-color: var(--ant-color-primary, #1677ff);
   box-shadow: 0 2px 8px rgba(22, 119, 255, 0.1);
 }
 
 .theme-card.active {
-  border-color: #1677ff;
-  background: #f0f5ff;
+  border-color: var(--ant-color-primary, #1677ff);
+  background: var(--ant-color-primary-bg, #f0f5ff);
 }
 
 .theme-icon {
   font-size: 22px;
-  color: #666;
+  color: var(--ant-color-text-secondary, #666);
 }
 
 .theme-label {
   font-size: 14px;
-  color: #333;
+  color: var(--ant-color-text, #333);
 }
 
 /* ===== Provider table ===== */
 .provider-table-wrapper {
   margin-top: 16px;
-  border: 1px solid #f0f0f0;
+  border: 1px solid var(--ant-color-border, #f0f0f0);
   border-radius: 8px;
   overflow: hidden;
 }
@@ -408,35 +513,28 @@ async function saveAll() {
 }
 
 .provider-status-dot.disconnected {
-  background: #d9d9d9;
+  background: var(--ant-color-text-quaternary, #d9d9d9);
 }
 
 .provider-status-text {
   font-size: 13px;
-  color: #666;
+  color: var(--ant-color-text-secondary, #666);
 }
 
 .add-provider-btn {
   flex: 1;
   height: 48px;
-  border: 1px dashed #d9d9d9;
+  border: 1px dashed var(--ant-color-border, #d9d9d9);
   border-radius: 10px;
   font-size: 14px;
-  color: #666;
-  background: #fafafa;
+  color: var(--ant-color-text-secondary, #666);
+  background: var(--ant-color-bg-layout, #fafafa);
 }
 
 .add-provider-btn:hover {
-  border-color: #1677ff;
-  color: #1677ff;
-  background: #f0f5ff;
+  border-color: var(--ant-color-primary, #1677ff);
+  color: var(--ant-color-primary, #1677ff);
+  background: var(--ant-color-primary-bg, #f0f5ff);
 }
 
-/* ===== Save bar ===== */
-.save-bar {
-  text-align: center;
-  padding: 24px 0 32px;
-  border-top: 1px solid #f0f0f0;
-  margin-top: 16px;
-}
 </style>

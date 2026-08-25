@@ -25,13 +25,16 @@ benchscope
 benchscope --port 8080 --no-browser
 ```
 
-打开页面后：
+打开页面后，通过顶部 5 栏导航 **Dashboard / Performance / Accuracy / Sessions / Settings** 切换：
 
-1. 确认顶部导航「服务」（应用）与「环境」（推理服务）显示为在线。
-2. 进入右上角「设置」，配置推理服务 **Base URL**（任意 OpenAI 兼容地址）。
-3. 打开 **vLLM / SGLang** 页面，选择模型（来自 `/v1/models`）、数据集（Random / ShareGPT / Custom）与并发数。
-4. 在「测试进度 → 开始测试」执行。**测试结果**面板实时更新双语表格与六条曲线。
-5. 日志保存在 `logs/<月日-时分秒>/` 目录，并生成 `benchmark-*.xlsx` 汇总（均值 + P99 双 sheet）。
+1. **Settings** →「推理服务 API」分区，填写 **Base URL**（任意 OpenAI 兼容地址），点击「测试连接」确认能拉到 `/v1/models`。
+2. **Performance** → 点击「新建测试任务」打开任务表单（选择模型 + 框架、数据集、并发、高级参数、命令预览），创建后自动跳转任务详情页。
+3. 任务详情页左侧为实时进度 + bench 终端，右侧为实时双语表格与六条曲线（顶部状态栏含开始/停止/重试/命令预览按钮）。
+4. **Dashboard** 展示统计卡片（总测试次数 / 进行中任务 / 平均 TPOT / 最佳模型）与历史运行记录列表（内嵌均值/P99 分析面板）。
+5. **Sessions** 与推理服务进行 SSE 流式对话（模型选择 + 系统提示词 + Markdown 渲染）。
+6. 日志保存在 `logs/<月日-时分秒>/` 目录，并生成 `benchmark-*.xlsx` 汇总（均值 + P99 双 sheet）。
+
+> UI 语言（中/英）与主题（亮色/暗色/跟随系统）可在 **Settings → 通用** 中切换。
 
 ## 功能特性
 
@@ -45,7 +48,12 @@ benchscope --port 8080 --no-browser
 - **实时结果** — 双语表格 + 六条曲线（Output/Total 吞吐，TTFT/TPOT mean & P99）随并发数变化。
 - **日志** — 每次运行一个 `月日-时分秒` 目录，含原始 bench 日志、mean/P99 汇总 CSV 与 `benchmark-*.xlsx`（双 sheet，含单用户 = `1000/tpot` 列）；界面内支持预览与下载。
 - **分析** — 均值 / P99 两大块，含 output/peakoutput/total/ttft/itl/tpot 曲线与**最佳并发高亮**（最接近且低于 TPOT 阈值的记录）。
-- **管理台 UI** — 固定顶栏、固定左侧导航（测试流程 / 测试记录）、固定副导航；内容区内部滚动。
+- **任务化 Performance（v1.0.5）** — 在 Performance 页创建测试任务，每任务独立线程运行并持久化到 `~/.benchscope/tasks/`，刷新页面不丢任务。任务详情页左侧实时进度 + bench 终端，右侧实时双语表格 + 六条曲线。
+- **Dashboard（v1.0.5）** — 统计卡片（总测试次数 / 进行中任务 / 平均 TPOT / 最佳模型）+ 历史运行记录列表（内嵌均值/P99 分析面板）。
+- **Sessions（v1.0.5）** — 与 OpenAI 兼容 API 的 SSE 流式对话；会话持久化到 `~/.benchscope/sessions/`。
+- **Accuracy（v1.0.5）** — 占位页，为 v5.0 精度测试版本预留。
+- **i18n 与主题（v1.0.5）** — 中英双语 UI 与亮色/暗色/跟随系统主题切换，均在 Settings 配置。
+- **管理台 UI** — 固定顶栏 5 项导航（Dashboard / Performance / Accuracy / Sessions / Settings）+ 每页副导航；内容区内部滚动。旧路由 `/vllm`、`/sglang`、`/logs` 已重定向到新页面。
 - **状态监控** — 「服务」与「环境」在线/离线指示灯实时刷新。
 
 ## 规划
@@ -53,6 +61,7 @@ benchscope --port 8080 --no-browser
 | 版本 | 状态 | 范围 |
 | --- | --- | --- |
 | 1.0.0 | 🚀 已发布 | 纯文本性能测试 — 双框架、三种数据集、实时结果、日志与 xlsx 汇总、分析、管理台 UI |
+| 1.0.5 | 🚀 已发布 | v2.0 UI 大改：5 栏导航（Dashboard / Performance / Accuracy / Sessions / Settings）、任务化 Performance（持久化）、Sessions 会话、i18n（中英）、亮/暗/跟随系统主题 |
 | 2.0 | 🔜 规划中 | 多模态模型性能测试 |
 | 3.0 | 规划中 | 全模态（音频/视频等）模型性能测试 |
 | 4.0 | 规划中 | 世界模型性能测试 |
@@ -68,13 +77,25 @@ benchscope/
 ├── benchscope/
 │   ├── cli.py            # `benchscope` 命令入口
 │   ├── config.py         # 配置持久化 (~/.benchscope/config.json)
+│   ├── task_manager.py   # 任务化性能测试执行器 + 持久化
+│   ├── session_manager.py # 会话存储 + SSE 流式对话
 │   ├── datasets.py       # sharegpt 下载/转换、自定义数据集
 │   ├── gpu.py            # GPU 自动检测
 │   ├── parser.py         # bench 输出解析（mean + P99）
 │   ├── summary.py        # CSV 与 xlsx 汇总生成
 │   ├── benches/          # vllm/sglang 命令构建与执行
 │   └── server/           # FastAPI + WebSocket + 测试编排
+│       ├── api_config.py     # 配置 / 模型 / GPU / 状态 API
+│       ├── api_test.py       # 旧版单测试启停 API
+│       ├── api_tasks.py      # 任务 CRUD + 启停/预览
+│       ├── api_sessions.py   # 会话 CRUD + SSE 对话
+│       ├── api_dashboard.py  # Dashboard 统计（总测试次数 / 平均 TPOT / 最佳模型）
+│       ├── api_logs.py       # 运行记录与数据集管理 API
+│       ├── test_manager.py   # 旧版单测试管理器（api_test 使用）
+│       └── ws.py             # WebSocket 广播 Hub
 ├── web/                  # Vue 3 + Ant Design Vue 前端源码
+│   └── src/views/        # DashboardView / PerformanceView / TaskDetailView /
+│                          CreateTaskView / AccuracyView / SessionsView / SettingsView
 └── tests/                # 模拟 OpenAI 服务与 UI 冒烟测试
 ```
 

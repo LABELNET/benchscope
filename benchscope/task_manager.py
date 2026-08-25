@@ -106,6 +106,20 @@ class Task:
             except Exception:
                 log.exception("Task persist failed: %s", self.task_id)
 
+    def persist_run_json(self):
+        """将 snapshot() 写入 run_dir/run.json，供 Dashboard/Logs API 读取运行元数据。
+
+        与 persist() 并行：persist() 写 ~/.benchscope/tasks/<id>.json，
+        本方法写 logs/<run_id>/run.json。失败时 log.exception 但不抛，避免影响任务主流程。
+        """
+        try:
+            self.run_dir.mkdir(parents=True, exist_ok=True)
+            (self.run_dir / "run.json").write_text(
+                json.dumps(self.snapshot(), ensure_ascii=False, indent=2), encoding="utf-8"
+            )
+        except Exception:
+            log.exception("persist_run_json failed: %s", self.task_id)
+
 
 class TaskManager:
     def __init__(self, config, hub, tasks_dir: Path | None = None):
@@ -233,14 +247,18 @@ class TaskManager:
                 self.stop_task(task_id)
             self._tasks.pop(task_id, None)
             persist_path = self.tasks_dir / f"{task_id}.json"
-            if persist_path.exists():
-                persist_path.unlink()
+            try:
+                if persist_path.exists():
+                    persist_path.unlink()
+            except OSError:
+                # 权限/只读文件等:任务已从内存移除,持久化文件残留不影响功能
+                log.warning("unlink persist failed: %s", persist_path)
 
     # ------------------------------------------------------------------
     def _execute(self, task: Task):
         framework = task.framework
         tmpl = (self.config.get("bench_commands") or {}).get(framework, "")
-        runner = BenchRunner(tmpl)
+        runner = BenchRunner(command_template=tmpl)
         self._runners[task.task_id] = runner
 
         model_name = sanitize_name(Path(task.model).name or task.model)
@@ -256,9 +274,12 @@ class TaskManager:
         }
         mean_csv = task.run_dir / f"{model_name}_X{gpu_count}.log"
         p99_csv = task.run_dir / f"{model_name}_X{gpu_count}_p99.log"
+        full_log_path = task.run_dir / "full.log"
+        full_log_fp = open(full_log_path, "a", encoding="utf-8")
 
         try:
             self.hub.broadcast({"type": "task_started", "task_id": task.task_id, "task": task.snapshot()})
+            task.persist_run_json()  # 任务开始：写 run.json（status=running）
             cases_done = 0
             for case in task.cases:
                 if runner._stop_flag.is_set():
@@ -274,12 +295,13 @@ class TaskManager:
                         continue
                     conc = int(conc)
                     try:
-                        row = self._run_one(runner, task, case, conc, detail_fp, meta)
+                        row = self._run_one(runner, task, case, conc, detail_fp, full_log_fp, meta)
                         task.rows.append(row)
                         concurrency_ok += 1
                         write_summary_csv(mean_csv, [row], p99=False, append=True, case_header=concurrency_ok == 1, case=case, meta=meta)
                         write_summary_csv(p99_csv, [row], p99=True, append=True, case_header=concurrency_ok == 1, case=case, meta=meta)
                         task.persist()
+                        task.persist_run_json()  # 每完成一个并发：刷新 run.json
                         self.hub.broadcast({"type": "task_result", "task_id": task.task_id, "row": row})
                     except StopRequested:
                         break
@@ -288,6 +310,7 @@ class TaskManager:
                         err_row = {"case": case_label, "label": case_label, "input_len": case.get("input_len"), "output_len": case.get("output_len"), "concurrency": conc, "error": str(e)[:500]}
                         task.rows.append(err_row)
                         task.persist()
+                        task.persist_run_json()  # 每完成一个并发：刷新 run.json
                         self.hub.broadcast({"type": "task_result", "task_id": task.task_id, "row": err_row})
                 detail_fp.close()
                 cases_done += 1
@@ -303,11 +326,13 @@ class TaskManager:
             task.status = "stopped" if runner._stop_flag.is_set() else "done"
             task.finished_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             task.persist()
+            task.persist_run_json()  # 任务结束：写 run.json（done/stopped）
             self.hub.broadcast({"type": "task_done", "task_id": task.task_id, "task": task.snapshot()})
         except StopRequested:
             task.status = "stopped"
             task.finished_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             task.persist()
+            task.persist_run_json()  # 任务结束：写 run.json（stopped）
             self.hub.broadcast({"type": "task_done", "task_id": task.task_id, "task": task.snapshot()})
         except Exception as e:
             log.exception("Task execution failed")
@@ -315,12 +340,17 @@ class TaskManager:
             task.error = str(e)
             task.finished_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             task.persist()
+            task.persist_run_json()  # 任务结束：写 run.json（error）
             self.hub.broadcast({"type": "task_error", "task_id": task.task_id, "error": str(e), "task": task.snapshot()})
         finally:
+            try:
+                full_log_fp.close()
+            except Exception:
+                pass
             self._runners.pop(task.task_id, None)
             self._threads.pop(task.task_id, None)
 
-    def _run_one(self, runner, task, case, concurrency, detail_fp, meta):
+    def _run_one(self, runner, task, case, concurrency, detail_fp, full_log_fp, meta):
         ds = dict(task.payload.get("dataset", {}))
         ds.update({"input_len": case.get("input_len"), "output_len": case.get("output_len"), "path": case.get("path")})
         cmd = build_single_command(
@@ -332,9 +362,12 @@ class TaskManager:
 
         def stream(line: str):
             detail_fp.write(line)
+            full_log_fp.write(line)
+            full_log_fp.flush()
             self.hub.broadcast({"type": "task_log", "task_id": task.task_id, "case": case["label"], "concurrency": concurrency, "line": line})
 
-        metrics = runner.run(cmd, stream_cb=stream)
+        shell_init = (self.config.get("bench_shell_init") or "").strip()
+        metrics = runner.run(cmd, stream_cb=stream, shell_init=shell_init)
         return {
             "case": case["label"], "label": case["label"],
             "input_len": case.get("input_len"), "output_len": case.get("output_len"),

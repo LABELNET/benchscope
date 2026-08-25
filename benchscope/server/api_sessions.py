@@ -24,6 +24,8 @@ class CreateSessionRequest(BaseModel):
 class ChatRequest(BaseModel):
     message: str
     model: str = ""
+    quality: str = ""
+    enable_thinking: bool = True
 
 
 @router.get("")
@@ -51,6 +53,19 @@ def delete_session(session_id: str):
     return {"ok": True}
 
 
+class PerfRequest(BaseModel):
+    perf: dict = {}
+
+
+@router.patch("/{session_id}/perf")
+def update_perf(session_id: str, req: PerfRequest):
+    session = state.sessions.get_session(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+    state.sessions.update_perf(session_id, req.perf)
+    return {"ok": True}
+
+
 @router.delete("")
 def clear_sessions():
     state.sessions.clear_all()
@@ -64,7 +79,7 @@ def chat(session_id: str, req: ChatRequest):
         raise HTTPException(status_code=404, detail="Session not found")
 
     def event_stream():
-        for chunk in state.sessions.stream_chat(session_id, req.message, model=req.model):
+        for chunk in state.sessions.stream_chat(session_id, req.message, model=req.model, quality=req.quality, enable_thinking=req.enable_thinking):
             yield f"data: {chunk}\n\n"
 
     return StreamingResponse(event_stream(), media_type="text/event-stream")

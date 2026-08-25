@@ -4,8 +4,9 @@ const routes = [
   { path: '/', redirect: '/dashboard' },
   { path: '/dashboard', name: 'dashboard', component: () => import('@/views/DashboardView.vue') },
   { path: '/performance', name: 'performance', component: () => import('@/views/PerformanceView.vue') },
-  { path: '/performance/create', name: 'createTask', component: () => import('@/views/CreateTaskView.vue') },
-  { path: '/performance/:taskId', name: 'taskDetail', component: () => import('@/views/TaskDetailView.vue'), props: true },
+  // 单任务重设计：创建与详情都内联进 /performance，旧路由重定向回主页
+  { path: '/performance/create', redirect: '/performance' },
+  { path: '/performance/:taskId', redirect: '/performance' },
   { path: '/accuracy', name: 'accuracy', component: () => import('@/views/AccuracyView.vue') },
   { path: '/sessions', name: 'sessions', component: () => import('@/views/SessionsView.vue') },
   { path: '/settings', name: 'settings', component: () => import('@/views/SettingsView.vue') },

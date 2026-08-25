@@ -30,6 +30,9 @@ class ConfigPatch(BaseModel):
     request_rate: str | None = None
     bench_commands: dict | None = None
     framework: str | None = None
+    theme: str | None = None
+    locale: str | None = None
+    providers: list | None = None
 
 
 @router.post("")
