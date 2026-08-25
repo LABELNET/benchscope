@@ -7,6 +7,7 @@ from pathlib import Path
 
 from fastapi import APIRouter
 
+from benchscope.env_info import collect_env_info
 from benchscope.server.state import state
 
 log = logging.getLogger("benchscope.api_dashboard")
@@ -54,10 +55,17 @@ def dashboard_stats():
 
     return {
         "total_runs": total_runs,
+        "total_acc_runs": 0,  # 精度测试 v5.0 预留
         "running_tasks": running_tasks,
         "avg_tpot": avg_tpot,
         "best_model": best_model,
     }
+
+
+@router.get("/env")
+def dashboard_env():
+    """返回系统环境信息（硬件 / 操作系统 / 网络 / 框架版本），缺失项为 None。"""
+    return collect_env_info()
 
 
 def _load_run_json(d: Path) -> dict | None:

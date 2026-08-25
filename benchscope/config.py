@@ -82,6 +82,12 @@ class ConfigManager:
         raw = self.get("datasets_dir", "./datasets")
         return Path(os.path.expanduser(raw)).resolve()
 
+    @property
+    def data_dir(self) -> Path:
+        """服务端数据持久化目录（任务 / 会话等），默认 ~/.benchscope。"""
+        raw = self.get("data_dir", "~/.benchscope")
+        return Path(os.path.expanduser(raw)).resolve()
+
     def set_api(self, patch: dict) -> dict:
         with self._lock:
             api = deepcopy(self._data.setdefault("api", {}))

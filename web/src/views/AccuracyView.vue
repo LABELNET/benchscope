@@ -54,6 +54,31 @@ const features = [
 .feature-card {
   text-align: center;
   border-radius: 8px;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+.feature-card :deep(.ant-card-body) {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+.feature-card :deep(.ant-card-meta-title) {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 14px;
+}
+.feature-card :deep(.ant-card-meta-description) {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  min-height: 40px;
+  line-height: 20px;
+  margin-top: 4px;
+  font-size: 12px;
 }
 .feature-icon {
   font-size: 48px;

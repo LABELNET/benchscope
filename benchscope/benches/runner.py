@@ -265,11 +265,36 @@ class BenchRunner:
         return tmpl + cmd[len(tmpl):] if cmd[:len(tmpl)] == tmpl else tmpl + cmd
 
     # ------------------------------------------------------------------
-    # FAKE 模式：生成仿真 vllm 风格输出
+    # FAKE 模式：生成仿真 vllm/sglang 风格输出（优先复用 mock 包，见 mock/README.md）
     def _run_fake(self, cmd: list[str], stream_cb: Optional[StreamCallback] = None) -> dict:
         args = " ".join(cmd)
+        concurrency, input_len, output_len, request_rate = self._fake_args(cmd)
+        framework = "sglang" if any("sglang" in t for t in cmd) else "vllm"
+        output = self._fake_output(framework, concurrency, input_len, output_len, request_rate)
+        lines = output.splitlines()
+
+        # 模拟耗时（可被 kill 中断）
+        total_sleep = min(0.6, 0.2 + concurrency * 0.01)
+        slept = 0.0
+        while slept < total_sleep:
+            if self._stop_flag.is_set():
+                raise StopRequested("测试已被停止")
+            time.sleep(0.05)
+            slept += 0.05
+        if self._stop_flag.is_set():
+            raise StopRequested("测试已被停止")
+        if stream_cb:
+            stream_cb(f"$ {args}\n")
+            for ln in lines:
+                stream_cb(ln + "\n")
+        metrics = parse_metrics(output)
+        return metrics
+
+    def _fake_args(self, cmd: list[str]) -> tuple:
+        """从命令中提取并发度与输入/输出长度（解析不到用默认值）。"""
         concurrency = 1
         input_len, output_len = 1024, 1024
+        request_rate = "inf"
         for i, tok in enumerate(cmd):
             if tok == "--max-concurrency" and i + 1 < len(cmd):
                 concurrency = int(cmd[i + 1])
@@ -277,6 +302,41 @@ class BenchRunner:
                 input_len = int(cmd[i + 1])
             if tok == "--random-output-len" and i + 1 < len(cmd):
                 output_len = int(cmd[i + 1])
+            if tok == "--request-rate" and i + 1 < len(cmd):
+                request_rate = cmd[i + 1]
+        return concurrency, input_len, output_len, request_rate
+
+    def _fake_output(
+        self,
+        framework: str,
+        concurrency: int,
+        input_len: int,
+        output_len: int,
+        request_rate: str = "inf",
+    ) -> str:
+        """生成 FAKE 输出文本。
+
+        优先使用项目根目录 mock/ 包（能区分 vLLM / SGLang 两种输出格式）；
+        若 mock 包不可导入（例如 pip 独立安装、无源码目录），回退到内置的
+        vLLM 风格简化生成器，保证两种场景行为一致。
+        """
+        try:
+            from mock.bench_outputs import generate_output
+
+            return generate_output(
+                framework,
+                concurrency=concurrency,
+                input_len=input_len,
+                output_len=output_len,
+                request_rate=request_rate,
+                seed=int(time.time() * 1000) % 2**31,
+            )
+        except Exception:
+            log.warning("mock.bench_outputs 不可用，回退到内置仿真输出", exc_info=True)
+            return "\n".join(self._fake_lines_vllm(concurrency, input_len, output_len))
+
+    def _fake_lines_vllm(self, concurrency: int, input_len: int, output_len: int) -> list[str]:
+        """内置 vLLM 风格仿真输出（mock 包不可用时的兜底）。"""
         rng = random.Random(int(time.time() * 1000) % 2**31)
 
         c = max(concurrency, 1)
@@ -286,7 +346,7 @@ class BenchRunner:
         tpot = round(18 + 0.55 * c + rng.uniform(0, 3), 2)
         itl = round(tpot * rng.uniform(0.97, 1.02), 2)
 
-        lines = [
+        return [
             "============ Serving Benchmark Result ============",
             "Successful requests:                     %d" % c,
             "Failed requests:                         0",
@@ -314,20 +374,3 @@ class BenchRunner:
             "==================================================",
             "",
         ]
-        output = "\n".join(lines)
-        # 模拟耗时（可被 kill 中断）
-        total_sleep = min(0.6, 0.2 + c * 0.01)
-        slept = 0.0
-        while slept < total_sleep:
-            if self._stop_flag.is_set():
-                raise StopRequested("测试已被停止")
-            time.sleep(0.05)
-            slept += 0.05
-        if self._stop_flag.is_set():
-            raise StopRequested("测试已被停止")
-        if stream_cb:
-            stream_cb(f"$ {args}\n")
-            for ln in lines:
-                stream_cb(ln + "\n")
-        metrics = parse_metrics(output)
-        return metrics

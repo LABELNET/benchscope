@@ -597,7 +597,7 @@ onMounted(() => {
 
 .session-name {
   flex: 1;
-  font-size: 13px;
+  font-size: 12px;
   color: var(--ant-color-text, #333);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -753,7 +753,7 @@ onMounted(() => {
 }
 
 .thinking-text {
-  font-size: 13px;
+  font-size: 12px;
   color: #888;
   line-height: 1.6;
   white-space: pre-wrap;

@@ -35,6 +35,7 @@ export const api = {
 
   // Dashboard
   getDashboardStats: () => http.get('/api/dashboard/stats'),
+  getDashboardEnv: () => http.get('/api/dashboard/env'),
 
   // 日志
   listRuns: () => http.get('/api/logs/runs'),

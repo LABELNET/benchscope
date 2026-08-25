@@ -16,8 +16,6 @@
 
     <div class="topbar-right">
       <StatusBadge :label="t('service')" :ready="serviceReady" :extra="serviceExtra" />
-      <a-divider type="vertical" />
-      <StatusBadge :label="t('environment')" :ready="inferenceReady" :extra="inferenceExtra" />
     </div>
   </a-layout-header>
 </template>
@@ -33,12 +31,10 @@ import {
   FundOutlined,
 } from '@ant-design/icons-vue'
 import StatusBadge from '@/components/StatusBadge.vue'
-import { useConfigStore } from '@/store/config'
-import { t, i18nState } from '@/i18n'
+import { t } from '@/i18n'
 
 const route = useRoute()
 const router = useRouter()
-const config = useConfigStore()
 
 const activeKey = computed(() => {
   const path = route.path
@@ -58,14 +54,8 @@ const menuItems = computed(() => [
   { key: 'settings', icon: () => h(SettingOutlined), label: t('settings') },
 ])
 
-const inferenceReady = computed(() => config.status?.inference === 'ready')
 const serviceReady = computed(() => true)
 const serviceExtra = 'benchscope'
-const inferenceExtra = computed(() =>
-  inferenceReady.value
-    ? `${config.status?.models?.length || 0} ${t('models')}`
-    : config.status?.error || t('offline'),
-)
 
 function onMenuClick({ key }) {
   router.push(`/${key}`)

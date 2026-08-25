@@ -26,6 +26,7 @@ class ConfigPatch(BaseModel):
     gpu: dict | None = None
     logs_dir: str | None = None
     datasets_dir: str | None = None
+    data_dir: str | None = None
     tpot_threshold_ms: float | None = None
     request_rate: str | None = None
     bench_commands: dict | None = None

@@ -19,100 +19,90 @@
 
     <!-- 右侧内容 -->
     <div class="settings-content">
-      <!-- General -->
+      <!-- General：Language + Cache Paths 两个面板 -->
       <div v-if="activeTab === 'general'" class="tab-content">
-        <div class="content-section">
-          <div class="section-row">
-            <span class="section-label">{{ t('language') }}</span>
-            <a-select v-model:value="form.locale" @change="onLocaleChange" style="width: 160px" :options="localeOptions" />
+        <a-card size="small" :bordered="true" class="panel-card">
+          <template #title>{{ t('language') }}</template>
+          <div class="panel-row">
+            <a-select v-model:value="form.locale" @change="onLocaleChange" style="width: 200px" :options="localeOptions" />
           </div>
-        </div>
+        </a-card>
 
-        <div class="content-section">
-          <div class="section-label">{{ t('appearance') }}</div>
-          <div class="appearance-cards">
-            <div
-              v-for="opt in themeOptions"
-              :key="opt.value"
-              class="theme-card"
-              :class="{ active: form.theme === opt.value }"
-              @click="selectTheme(opt.value)"
-            >
-              <component :is="opt.icon" class="theme-icon" />
-              <span class="theme-label">{{ opt.label }}</span>
-            </div>
-          </div>
-        </div>
-
-        <!-- 其他设置 -->
-        <div class="content-section">
-          <div class="section-label">{{ t('otherSettings') }}</div>
-          <div class="section-row">
-            <span class="section-label" style="font-weight: 400">{{ t('defaultFramework') }}</span>
-            <a-select v-model:value="form.framework" style="width: 200px" :options="frameworkOptions" @change="saveField('framework')" />
-          </div>
-          <div class="section-row">
-            <span class="section-label" style="font-weight: 400">{{ t('tpotThreshold') }}</span>
-            <a-input-number v-model:value="form.tpot_threshold_ms" :min="0" addon-after="ms" style="width: 200px" @change="saveField('tpot_threshold_ms')" />
-          </div>
-          <div class="section-row">
-            <span class="section-label" style="font-weight: 400">{{ t('logsDir') }}</span>
+        <a-card size="small" :bordered="true" class="panel-card">
+          <template #title>{{ t('cachePaths') }}</template>
+          <div class="panel-row">
+            <span class="panel-label">{{ t('logsDir') }}</span>
             <a-input v-model:value="form.logs_dir" placeholder="./logs" style="width: 360px" @change="saveField('logs_dir')" />
           </div>
-          <div class="section-row">
-            <span class="section-label" style="font-weight: 400">{{ t('datasetsDir') }}</span>
+          <div class="panel-row">
+            <span class="panel-label">{{ t('datasetsDir') }}</span>
             <a-input v-model:value="form.datasets_dir" placeholder="./datasets" style="width: 360px" @change="saveField('datasets_dir')" />
           </div>
-          <div class="section-row">
-            <span class="section-label" style="font-weight: 400">{{ t('requestRate') }}</span>
-            <div style="display: flex; gap: 8px; align-items: center">
-              <a-select v-model:value="requestRateMode" style="width: 160px" :options="requestRateOptions" @change="saveRequestRate" />
-              <a-input-number v-if="requestRateMode === 'custom'" v-model:value="requestRateValue" :min="0" addon-after="req/s" style="width: 180px" @change="saveRequestRate" />
+          <div class="panel-row">
+            <div style="display: flex; flex-direction: column; gap: 2px">
+              <span class="panel-label">{{ t('dataDir') }}</span>
+              <span class="field-desc">{{ t('dataDirDesc') }}</span>
+            </div>
+            <a-input v-model:value="form.data_dir" placeholder="~/.benchscope" style="width: 360px" @change="saveField('data_dir')" />
+          </div>
+        </a-card>
+      </div>
+
+      <!-- Environment：本地测试环境面板 -->
+      <div v-if="activeTab === 'environment'" class="tab-content">
+        <a-card size="small" :bordered="true" class="panel-card">
+          <template #title>Envs</template>
+          <template #extra>
+            <span class="env-status" :class="envReady ? 'ok' : 'bad'">
+              <span class="env-dot"></span>
+              {{ envReady ? t('online') : t('offline') }}
+              <span v-if="envReady && config.status?.models?.length" class="env-models">
+                {{ config.status.models.length }} {{ t('models') }}
+              </span>
+            </span>
+          </template>
+
+          <div class="panel-row">
+            <span class="panel-label">{{ t('framework') }}</span>
+            <a-radio-group v-model:value="form.framework" :disabled="!envEditMode" button-style="solid">
+              <a-radio-button value="vllm">vLLM</a-radio-button>
+              <a-radio-button value="sglang">SGLang</a-radio-button>
+            </a-radio-group>
+          </div>
+          <div class="panel-row">
+            <span class="panel-label">{{ t('baseUrl') }}</span>
+            <a-input v-model:value="form.api.base_url" :disabled="!envEditMode" placeholder="http://127.0.0.1:8000" style="width: 380px" />
+          </div>
+          <div class="panel-row">
+            <span class="panel-label">{{ t('apiKey') }}</span>
+            <a-input-password v-model:value="form.api.api_key" :disabled="!envEditMode" :placeholder="t('apiKeyPlaceholder')" style="width: 380px" />
+          </div>
+
+          <div class="env-footer">
+            <a-button v-if="!envEditMode" type="primary" @click="envEditMode = true">{{ t('edit') }}</a-button>
+            <a-button v-else type="primary" :loading="saving" @click="saveEnvironment">{{ t('save') }}</a-button>
+            <a-button :loading="testing" @click="testEnvironment">{{ t('testConnection') }}</a-button>
+          </div>
+        </a-card>
+      </div>
+
+      <!-- Models：内置模型下载链接宫格 -->
+      <div v-if="activeTab === 'models'" class="tab-content">
+        <h3 style="margin: 0 0 8px">{{ t('builtinModels') }}</h3>
+        <p class="section-desc">{{ t('modelsGridHint') }}</p>
+
+        <div class="model-grid">
+          <div v-for="m in modelCatalog" :key="m.id" class="model-card" @click="openModel(m)">
+            <div class="model-avatar" :style="{ background: m.color }">{{ m.short }}</div>
+            <div class="model-info">
+              <div class="model-name">{{ m.name }}</div>
+              <div class="model-intro">{{ m.intro[locale] }}</div>
             </div>
           </div>
-          <div class="section-row">
-            <span class="section-label" style="font-weight: 400">{{ t('benchShellInit') }}</span>
-            <a-input
-              v-model:value="form.bench_shell_init"
-              :placeholder="t('benchShellInitPlaceholder')"
-              style="width: 480px"
-              @change="saveField('bench_shell_init')"
-            />
-          </div>
         </div>
       </div>
 
-      <!-- Models -->
-      <div v-if="activeTab === 'models'" class="tab-content">
-        <h3 style="margin: 0 0 8px">{{ t('modelsTitle') }}</h3>
-        <p class="section-desc">{{ t('modelsDesc') }}</p>
-
-        <!-- Provider table -->
-        <div class="provider-table-wrapper">
-          <a-table :columns="providerColumns" :data-source="providers" size="small" :pagination="false" row-key="name">
-            <template #bodyCell="{ column, record, index }">
-              <template v-if="column.key === 'status'">
-                <span class="provider-status-dot" :class="record.connected ? 'connected' : 'disconnected'"></span>
-                <span class="provider-status-text">{{ record.connected ? t('connectionOk') : t('connectionFail') }}</span>
-              </template>
-              <template v-if="column.key === 'actions'">
-                <a-button type="link" size="small" @click="editProvider(index)">{{ t('edit') }}</a-button>
-                <a-button type="link" size="small" @click="testProvider(index)">{{ t('testConnection') }}</a-button>
-                <a-button type="link" size="small" danger @click="removeProvider(index)">{{ t('delete') }}</a-button>
-              </template>
-            </template>
-          </a-table>
-        </div>
-
-        <div style="margin-top: 16px">
-          <a-button class="add-provider-btn" @click="showAddCustom = true">
-            <template #icon><plus-outlined /></template>
-            {{ t('addCustomProvider') }}
-          </a-button>
-        </div>
-      </div>
-
-      <!-- Plugins -->
+      <!-- Plugins：占位 -->
       <div v-if="activeTab === 'plugins'" class="tab-content">
         <h3 style="margin: 0 0 8px">{{ t('plugins') }}</h3>
         <p class="section-desc">{{ t('pluginsDesc') }}</p>
@@ -120,29 +110,41 @@
       </div>
     </div>
 
-    <!-- Add/Edit custom provider modal -->
-    <a-modal v-model:open="showAddCustom" :title="editIndex >= 0 ? t('editProvider') : t('addCustomProvider')" @ok="saveProvider" :ok-text="t('okText')" :cancel-text="t('cancel')">
-      <a-form layout="vertical">
-        <a-form-item :label="t('providerName')">
-          <a-input v-model:value="newCustom.name" :placeholder="t('providerNamePlaceholder')" />
-        </a-form-item>
-        <a-form-item :label="t('baseUrl')">
-          <a-input v-model:value="newCustom.base_url" :placeholder="t('baseUrlPlaceholder')" />
-        </a-form-item>
-        <a-form-item :label="t('endpoint')">
-          <a-input v-model:value="newCustom.endpoint" :placeholder="t('endpointPlaceholder')" />
-        </a-form-item>
-        <a-form-item :label="t('apiKey')">
-          <a-input-password v-model:value="newCustom.api_key" :placeholder="t('apiKeyPlaceholder')" />
-        </a-form-item>
-        <a-form-item :label="t('framework')">
-          <a-radio-group v-model:value="newCustom.framework" button-style="solid">
-            <a-radio-button value="vllm">vLLM</a-radio-button>
-            <a-radio-button value="sglang">SGLang</a-radio-button>
-          </a-radio-group>
-        </a-form-item>
-      </a-form>
-    </a-modal>
+    <!-- 模型详情右侧面板 -->
+    <a-drawer
+      v-model:open="drawerOpen"
+      :width="440"
+      placement="right"
+      :title="selectedModel?.name || ''"
+    >
+      <div v-if="selectedModel" class="model-detail">
+        <div class="detail-logo" :style="{ background: selectedModel.color }">{{ selectedModel.short }}</div>
+        <h3 class="detail-name">{{ selectedModel.name }}</h3>
+        <div class="detail-org">{{ selectedModel.org }}</div>
+        <p class="detail-intro">{{ selectedModel.intro[locale] }}</p>
+
+        <div class="detail-row">
+          <span class="detail-label">{{ t('supportedPrecision') }}</span>
+          <span class="detail-tags">
+            <a-tag v-for="p in selectedModel.precision" :key="p" color="blue">{{ p }}</a-tag>
+          </span>
+        </div>
+        <div class="detail-row">
+          <span class="detail-label">{{ t('accessLink') }}</span>
+          <a class="detail-link" :href="selectedModel.homepage" target="_blank" rel="noopener noreferrer">{{ selectedModel.homepage }}</a>
+        </div>
+        <div class="detail-row column">
+          <span class="detail-label">{{ t('downloadCmd') }}</span>
+          <a-typography-text code copyable class="download-cmd">{{ selectedModel.download }}</a-typography-text>
+        </div>
+      </div>
+
+      <template #footer>
+        <div class="drawer-footer">
+          <a-button type="primary" @click="deployModel">{{ t('deploy') }}</a-button>
+        </div>
+      </template>
+    </a-drawer>
   </div>
 </template>
 
@@ -150,39 +152,33 @@
 import { computed, onMounted, reactive, ref } from 'vue'
 import { message } from 'ant-design-vue'
 import {
-  SettingOutlined, DatabaseOutlined, ApiOutlined,
-  PlusOutlined,
-  BulbOutlined, CloudOutlined, DesktopOutlined,
+  SettingOutlined, DesktopOutlined, DatabaseOutlined, ApiOutlined,
 } from '@ant-design/icons-vue'
 import { api } from '@/api'
 import { useConfigStore } from '@/store/config'
-import { t, setLocale } from '@/i18n'
+import { t, setLocale, i18nState } from '@/i18n'
+import { modelCatalog } from '@/data/modelCatalog'
 
 const config = useConfigStore()
 const activeTab = ref('general')
+const envEditMode = ref(false)
 const testing = ref(false)
-const showAddCustom = ref(false)
-const editIndex = ref(-1)
-const providers = ref([])
+const saving = ref(false)
+const drawerOpen = ref(false)
+const selectedModel = ref(null)
 
 const form = reactive({
-  theme: 'light',
   locale: 'en',
-  framework: 'vllm',
-  tpot_threshold_ms: 100,
   logs_dir: './logs',
   datasets_dir: './datasets',
-  request_rate: 'inf',
+  data_dir: '~/.benchscope',
+  framework: 'vllm',
   api: { base_url: '', endpoint: '/v1/chat/completions', api_key: '', extra_headers: {} },
 })
 
-const requestRateMode = ref('inf')
-const requestRateValue = ref(10)
-
-const newCustom = reactive({ name: '', base_url: 'http://127.0.0.1:8000', endpoint: '/v1/chat/completions', api_key: '', framework: 'vllm' })
-
 const menuItems = computed(() => [
   { key: 'general', icon: SettingOutlined, label: t('general') },
+  { key: 'environment', icon: DesktopOutlined, label: t('environment') },
   { key: 'models', icon: DatabaseOutlined, label: t('modelsTab') },
   { key: 'plugins', icon: ApiOutlined, label: t('plugins') },
 ])
@@ -192,164 +188,85 @@ const localeOptions = computed(() => [
   { value: 'zh', label: '中文' },
 ])
 
-const themeOptions = computed(() => [
-  { value: 'light', icon: BulbOutlined, label: t('light') },
-  { value: 'dark', icon: CloudOutlined, label: t('dark') },
-  { value: 'system', icon: DesktopOutlined, label: t('system') },
-])
+const locale = computed(() => i18nState.locale)
 
-const frameworkOptions = computed(() => [
-  { label: 'vLLM', value: 'vllm' },
-  { label: 'SGLang', value: 'sglang' },
-])
-
-const requestRateOptions = computed(() => [
-  { label: t('requestRateInf'), value: 'inf' },
-  { label: t('requestRateCustom'), value: 'custom' },
-])
-
-const providerColumns = computed(() => [
-  { title: t('providerNameCol'), dataIndex: 'name', key: 'name' },
-  { title: t('baseUrl'), dataIndex: 'base_url', key: 'base_url' },
-  { title: t('frameworkCol'), dataIndex: 'framework', key: 'framework' },
-  { title: t('statusCol'), key: 'status', width: 120 },
-  { title: '', key: 'actions', width: 200 },
-])
+const envReady = computed(() => config.status?.inference === 'ready')
 
 onMounted(async () => {
   try {
     await config.load()
     const c = config.config || {}
     Object.assign(form, {
-      theme: c.theme || 'light',
       locale: c.locale || 'en',
-      framework: c.framework || 'vllm',
-      tpot_threshold_ms: c.tpot_threshold_ms ?? 100,
       logs_dir: c.logs_dir || './logs',
       datasets_dir: c.datasets_dir || './datasets',
-      request_rate: c.request_rate || 'inf',
+      data_dir: c.data_dir || '~/.benchscope',
+      framework: c.framework || 'vllm',
       api: {
-        base_url: c.api?.base_url || '',
+        base_url: c.api?.base_url || 'http://127.0.0.1:8000',
         endpoint: c.api?.endpoint || '/v1/chat/completions',
         api_key: c.api?.api_key || '',
         extra_headers: c.api?.extra_headers || {},
       },
     })
-    // Sync request rate mode/value
-    const rr = c.request_rate
-    if (rr === 'inf' || rr === undefined || rr === null || rr === '') {
-      requestRateMode.value = 'inf'
-      requestRateValue.value = 10
-    } else {
-      requestRateMode.value = 'custom'
-      requestRateValue.value = Number(rr) || 10
-    }
-    // Load providers from config
-    if (c.providers?.length) {
-      providers.value = c.providers.map(p => ({ ...p, connected: false }))
-    } else {
-      const defaultUrl = form.api.base_url || 'http://127.0.0.1:8000'
-      providers.value = [{ name: 'Default', base_url: defaultUrl, api_key: form.api.api_key, framework: form.framework, connected: false }]
-    }
-    // 自动测试所有 provider 连接
-    autoTestAll()
   } catch { /* ignore */ }
 })
 
 function onLocaleChange() {
   setLocale(form.locale)
-  // 持久化到后端（无需手动保存）
   config.save({ locale: form.locale }).catch(() => {})
-}
-
-function selectTheme(theme) {
-  form.theme = theme
-  // 立即应用到 config store，触发 App.vue 的 resolvedTheme 更新
-  config.$patch({
-    config: { ...(config.config || {}), theme },
-  })
-  // 持久化到后端（无需手动保存）
-  config.save({ theme }).catch(() => {})
-}
-
-async function testProvider(index) {
-  const provider = providers.value[index]
-  testing.value = true
-  try {
-    const result = await api.testConnection({
-      base_url: provider.base_url,
-      endpoint: provider.endpoint || '/v1/chat/completions',
-      api_key: provider.api_key || '',
-      extra_headers: {},
-    })
-    providers.value[index] = { ...provider, connected: result.ok }
-    if (result.ok) {
-      message.success(`${provider.name} ${t('connectionOk')}`)
-    } else {
-      message.error(`${provider.name} ${t('connectionFail')}`)
-    }
-  } catch (e) {
-    providers.value[index] = { ...provider, connected: false }
-    message.error(e.message)
-  } finally {
-    testing.value = false
-  }
-}
-
-function removeProvider(index) {
-  providers.value.splice(index, 1)
-  persistProviders()
-}
-
-function editProvider(index) {
-  editIndex.value = index
-  const p = providers.value[index]
-  Object.assign(newCustom, { name: p.name, base_url: p.base_url, endpoint: p.endpoint || '/v1/chat/completions', api_key: p.api_key || '', framework: p.framework || 'vllm' })
-  showAddCustom.value = true
-}
-
-function saveProvider() {
-  if (!newCustom.name) { message.warning(t('enterProviderNameWarn')); return }
-  if (editIndex.value >= 0) {
-    providers.value[editIndex.value] = { ...providers.value[editIndex.value], ...newCustom }
-  } else {
-    providers.value.push({ ...newCustom, connected: false })
-  }
-  Object.assign(newCustom, { name: '', base_url: 'http://127.0.0.1:8000', endpoint: '/v1/chat/completions', api_key: '', framework: 'vllm' })
-  editIndex.value = -1
-  showAddCustom.value = false
-  persistProviders()
-}
-
-function persistProviders() {
-  config.save({ providers: providers.value.map(({ connected, ...rest }) => rest) }).catch(() => {})
 }
 
 function saveField(key) {
   config.save({ [key]: form[key] }).catch(() => {})
 }
 
-function saveRequestRate() {
-  const v = requestRateMode.value === 'inf' ? 'inf' : String(requestRateValue.value ?? 0)
-  form.request_rate = v
-  config.save({ request_rate: v }).catch(() => {})
+async function saveEnvironment() {
+  saving.value = true
+  try {
+    await config.save({
+      framework: form.framework,
+      api: { ...form.api, extra_headers: form.api.extra_headers || {} },
+    })
+    message.success(t('saved'))
+    envEditMode.value = false
+    config.refreshStatus()
+  } catch (e) {
+    message.error(e.message || t('connectionFail'))
+  } finally {
+    saving.value = false
+  }
 }
 
-async function autoTestAll() {
-  for (let i = 0; i < providers.value.length; i++) {
-    try {
-      const provider = providers.value[i]
-      const result = await api.testConnection({
-        base_url: provider.base_url,
-        endpoint: provider.endpoint || '/v1/chat/completions',
-        api_key: provider.api_key || '',
-        extra_headers: {},
-      })
-      providers.value[i] = { ...provider, connected: result.ok }
-    } catch {
-      providers.value[i] = { ...providers.value[i], connected: false }
+async function testEnvironment() {
+  testing.value = true
+  try {
+    const result = await api.testConnection({
+      base_url: form.api.base_url,
+      endpoint: form.api.endpoint || '/v1/chat/completions',
+      api_key: form.api.api_key || '',
+      extra_headers: form.api.extra_headers || {},
+    })
+    if (result.ok) {
+      message.success(t('connectionOk'))
+      config.refreshStatus()
+    } else {
+      message.error(result.error || t('connectionFail'))
     }
+  } catch (e) {
+    message.error(e.message || t('connectionFail'))
+  } finally {
+    testing.value = false
   }
+}
+
+function openModel(m) {
+  selectedModel.value = m
+  drawerOpen.value = true
+}
+
+function deployModel() {
+  message.info(t('notImplemented'))
 }
 </script>
 
@@ -415,7 +332,7 @@ async function autoTestAll() {
   flex: 1;
   overflow-y: auto;
   padding: 32px 40px;
-  max-width: 800px;
+  max-width: 960px;
 }
 
 .tab-content {
@@ -427,114 +344,204 @@ async function autoTestAll() {
   to { opacity: 1; transform: translateY(0); }
 }
 
-.content-section {
-  margin-bottom: 28px;
+.panel-card {
+  margin-bottom: 20px;
+  border-radius: 12px;
 }
 
-.section-row {
+.panel-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 12px 0;
-  border-bottom: 1px solid var(--ant-color-border, #f0f0f0);
+  padding: 10px 0;
 }
 
-.section-label {
-  font-size: 14px;
+.panel-row + .panel-row {
+  border-top: 1px solid var(--ant-color-border, #f0f0f0);
+}
+
+.panel-label {
+  font-size: 12px;
   color: var(--ant-color-text, #333);
   font-weight: 500;
 }
 
+.field-desc {
+  font-size: 12px;
+  color: var(--ant-color-text-tertiary, #999);
+}
+
 .section-desc {
-  font-size: 14px;
+  font-size: 12px;
   color: var(--ant-color-text-tertiary, #999);
   margin: 0 0 24px;
 }
 
-/* ===== Appearance cards ===== */
-.appearance-cards {
-  display: flex;
-  gap: 12px;
-  margin-top: 12px;
-}
-
-.theme-card {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
+/* ===== Environment ===== */
+.env-status {
+  display: inline-flex;
   align-items: center;
-  gap: 8px;
-  padding: 20px 16px;
-  border: 1px solid var(--ant-color-border, #e8e8e8);
-  border-radius: 12px;
-  cursor: pointer;
-  transition: all 0.2s;
-  background: var(--ant-color-bg-container, #fff);
-}
-
-.theme-card:hover {
-  border-color: var(--ant-color-primary, #1677ff);
-  box-shadow: 0 2px 8px rgba(22, 119, 255, 0.1);
-}
-
-.theme-card.active {
-  border-color: var(--ant-color-primary, #1677ff);
-  background: var(--ant-color-primary-bg, #f0f5ff);
-}
-
-.theme-icon {
-  font-size: 22px;
+  gap: 6px;
+  font-size: 12px;
   color: var(--ant-color-text-secondary, #666);
 }
 
-.theme-label {
-  font-size: 14px;
-  color: var(--ant-color-text, #333);
-}
-
-/* ===== Provider table ===== */
-.provider-table-wrapper {
-  margin-top: 16px;
-  border: 1px solid var(--ant-color-border, #f0f0f0);
-  border-radius: 8px;
-  overflow: hidden;
-}
-
-.provider-status-dot {
-  display: inline-block;
+.env-dot {
   width: 8px;
   height: 8px;
   border-radius: 50%;
-  margin-right: 6px;
-}
-
-.provider-status-dot.connected {
-  background: #52c41a;
-}
-
-.provider-status-dot.disconnected {
   background: var(--ant-color-text-quaternary, #d9d9d9);
 }
 
-.provider-status-text {
-  font-size: 13px;
-  color: var(--ant-color-text-secondary, #666);
+.env-status.ok .env-dot { background: #52c41a; }
+.env-status.bad .env-dot { background: #ff4d4f; }
+
+.env-models {
+  font-size: 12px;
+  color: var(--ant-color-text-tertiary, #999);
 }
 
-.add-provider-btn {
-  flex: 1;
-  height: 48px;
-  border: 1px dashed var(--ant-color-border, #d9d9d9);
-  border-radius: 10px;
-  font-size: 14px;
-  color: var(--ant-color-text-secondary, #666);
-  background: var(--ant-color-bg-layout, #fafafa);
+.env-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid var(--ant-color-border, #f0f0f0);
 }
 
-.add-provider-btn:hover {
+/* ===== Models 宫格 ===== */
+.model-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+  gap: 16px;
+}
+
+.model-card {
+  display: flex;
+  gap: 12px;
+  padding: 16px;
+  border: 1px solid var(--ant-color-border, #e8e8e8);
+  border-radius: 12px;
+  cursor: pointer;
+  background: var(--ant-color-bg-container, #fff);
+  transition: all 0.2s;
+}
+
+.model-card:hover {
   border-color: var(--ant-color-primary, #1677ff);
-  color: var(--ant-color-primary, #1677ff);
-  background: var(--ant-color-primary-bg, #f0f5ff);
+  box-shadow: 0 2px 8px rgba(22, 119, 255, 0.12);
+  transform: translateY(-2px);
 }
 
+.model-avatar {
+  width: 44px;
+  height: 44px;
+  border-radius: 10px;
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 15px;
+  flex-shrink: 0;
+}
+
+.model-info {
+  min-width: 0;
+}
+
+.model-name {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ant-color-text, #333);
+}
+
+.model-intro {
+  margin-top: 4px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--ant-color-text-secondary, #666);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* ===== 模型详情抽屉 ===== */
+.model-detail {
+  padding: 8px 4px;
+}
+
+.detail-logo {
+  width: 64px;
+  height: 64px;
+  border-radius: 14px;
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 22px;
+  font-weight: 700;
+  margin-bottom: 14px;
+}
+
+.detail-name {
+  margin: 0 0 4px;
+  font-size: 20px;
+}
+
+.detail-org {
+  font-size: 12px;
+  color: var(--ant-color-text-tertiary, #999);
+  margin-bottom: 12px;
+}
+
+.detail-intro {
+  font-size: 12px;
+  line-height: 1.7;
+  color: var(--ant-color-text, #333);
+  margin-bottom: 16px;
+}
+
+.detail-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 12px 0;
+  border-top: 1px solid var(--ant-color-border, #f0f0f0);
+}
+
+.detail-row.column {
+  flex-direction: column;
+  align-items: flex-start;
+}
+
+.detail-label {
+  font-size: 12px;
+  color: var(--ant-color-text-tertiary, #999);
+  flex-shrink: 0;
+  min-width: 88px;
+}
+
+.detail-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.detail-link {
+  font-size: 13px;
+  word-break: break-all;
+}
+
+.download-cmd {
+  font-size: 12px;
+  word-break: break-all;
+}
+
+.drawer-footer {
+  display: flex;
+  justify-content: flex-end;
+}
 </style>

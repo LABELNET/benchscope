@@ -13,8 +13,8 @@ class AppState:
         self.config = ConfigManager()
         self.hub = WebSocketHub()
         self.monitor = StatusMonitor(self.config, self.hub)
-        self.tasks = TaskManager(self.config, self.hub)
-        self.sessions = SessionManager(self.config)
+        self.tasks = TaskManager(self.config, self.hub, tasks_dir=self.config.data_dir / "tasks")
+        self.sessions = SessionManager(self.config, sessions_dir=self.config.data_dir / "sessions")
 
 
 state = AppState()

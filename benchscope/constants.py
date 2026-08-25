@@ -32,7 +32,7 @@ STATUS_RUNNING = "running"
 DEFAULT_CONFIG = {
     "framework": FRAMEWORK_VLLM,
     "api": {
-        "base_url": "http://192.168.1.67:8000",
+        "base_url": "http://127.0.0.1:8000",
         "endpoint": "/v1/chat/completions",
         "api_key": "",
         "extra_headers": {},
@@ -40,6 +40,7 @@ DEFAULT_CONFIG = {
     "gpu": {"auto": True, "name": "", "count": 8},
     "logs_dir": "./logs",
     "datasets_dir": "./datasets",
+    "data_dir": "~/.benchscope",  # 服务端数据持久化目录（任务 / 会话等）
     "tpot_threshold_ms": 100,
     "request_rate": "inf",  # inf 或数字
     "bench_commands": {

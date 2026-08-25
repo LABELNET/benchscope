@@ -9,7 +9,7 @@
         >
           <template #icon>
             <span class="result-icon">
-              <thunderbolt-outlined />
+              <experiment-outlined />
             </span>
           </template>
           <template #extra>
@@ -20,7 +20,7 @@
           </template>
         </a-result>
         <div class="features">
-          <a-row :gutter="24" justify="center">
+          <a-row :gutter="[24, 24]" justify="center">
             <a-col :xs="24" :sm="8" v-for="feat in features" :key="feat.title">
               <a-card size="small" class="feature-card" hoverable>
                 <template #cover>
@@ -171,9 +171,9 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { message, Modal } from 'ant-design-vue'
 import {
   DownloadOutlined,
+  ExperimentOutlined,
   LoadingOutlined,
   PlayCircleOutlined,
-  ThunderboltOutlined,
 } from '@ant-design/icons-vue'
 import { useTestStore } from '@/store/test'
 import { useConfigStore } from '@/store/config'
@@ -454,6 +454,29 @@ onMounted(async () => {
 .feature-card {
   text-align: center;
   border-radius: 8px;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+.feature-card :deep(.ant-card-body) {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+.feature-card :deep(.ant-card-meta-title) {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.feature-card :deep(.ant-card-meta-description) {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  min-height: 40px;
+  line-height: 20px;
+  margin-top: 4px;
 }
 .feature-icon {
   font-size: 48px;

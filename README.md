@@ -109,6 +109,9 @@ python -m benchscope.cli --port 8080 --no-browser
 cd web && npm install && npm run dev    # http://127.0.0.1:5173
 ```
 
+- **One-command full env** — `./scripts/dev.sh` starts mock OpenAI (8001) + FAKE-bench backend (8080) + frontend (5173) at once; `stop`/`status` subcommands manage them. Logs under `logs/dev/`.
+- **No real vLLM/SGLang environment?** Use the bundled mock env — `./mock/run_mock.sh` starts a mock OpenAI-compatible inference service plus a FAKE-bench backend (no GPU / real CLI needed). See [`mock/README.md`](mock/README.md) for mocking vLLM / SGLang bench output and SSE streaming chat.
+
 - Run the UI without a vLLM/SGLang install: `BENCHSCOPE_FAKE_BENCH=1 python -m benchscope`.
 - Mock an inference service locally: `python tests/mock_openai_server.py` (port 8001), then point **Base URL** to `http://127.0.0.1:8001` in Settings.
 
