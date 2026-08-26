@@ -25,7 +25,7 @@
 
 所有指标随并发度 / 输入输出长度做**符合直觉的缩放**（并发越高吞吐越高、
 时延越大），并支持 ``seed`` 复现。可被 ``BENCHSCOPE_FAKE_BENCH=1`` 的
-FAKE 模式与 ``mock/cli.py`` 共同复用，是 mock 数据的唯一来源。
+FAKE 模式与 ``mocks/cli.py`` 共同复用，是 mock 数据的唯一来源。
 """
 from __future__ import annotations
 

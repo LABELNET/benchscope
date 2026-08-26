@@ -12,8 +12,8 @@
 
 .. code-block:: bash
 
-    python -m mock.openai_server                 # http://127.0.0.1:8001
-    python -m mock.openai_server --port 8001 --host 127.0.0.1
+    python -m mocks.openai_server                 # http://127.0.0.1:8001
+    python -m mocks.openai_server --port 8001 --host 127.0.0.1
 """
 from __future__ import annotations
 
@@ -133,7 +133,7 @@ async def _sse_stream(model: str, reply: str, thinking: str) -> AsyncGenerator[s
 
 
 def main(argv=None) -> int:
-    parser = argparse.ArgumentParser(prog="mock.openai_server", description="mock OpenAI 兼容推理服务")
+    parser = argparse.ArgumentParser(prog="mocks.openai_server", description="mock OpenAI 兼容推理服务")
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=8001)
     args = parser.parse_args(argv)

@@ -56,7 +56,7 @@ start_openai() {
     return 0
   fi
   echo "  [..] 启动 mock OpenAI 服务 (port $OPENAI_PORT) ..."
-  nohup "$PY" -m mock.openai_server --host 127.0.0.1 --port "$OPENAI_PORT" >"$LOG_DIR/openai.log" 2>&1 &
+  nohup "$PY" -m mocks.openai_server --host 127.0.0.1 --port "$OPENAI_PORT" >"$LOG_DIR/openai.log" 2>&1 &
   echo $! >"$LOG_DIR/openai.pid"
   sleep 1
   if port_up "$OPENAI_PORT"; then

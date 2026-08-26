@@ -39,67 +39,103 @@
       <a-spin />
     </div>
 
-    <!-- 有任务：四块式详情 -->
+    <!-- 有任务：三行布局 -->
     <div v-if="theTask" class="perf-detail">
-      <!-- 块1: 任务详情面板 (固定上方) — 模型为标题,右侧 Progress/Elapsed/Service/按钮 -->
-      <a-card size="small" class="task-top-panel" :body-style="{ padding: '10px 14px' }">
-        <template #title>
-          <div class="panel-title-left">
-            <span class="panel-title-model" :title="theTask.model">{{ theTask.model }}</span>
-            <span class="title-sep">|</span>
-            <span class="meta-text">
-              <loading-outlined v-if="theTask.status === 'running'" class="title-spin" />
-              {{ t('progress') }} {{ doneCount }}/{{ totalCount }}
-            </span>
-            <span class="meta-text">{{ t('elapsed') }} {{ elapsedText }}</span>
-            <span class="meta-text">
-              {{ t('perfStatus') }}:
-              <span class="status-value" :class="statusClass(theTask.status)">{{ statusText(theTask.status) }}</span>
-            </span>
-          </div>
-        </template>
-        <template #extra>
-          <div class="top-actions">
-            <a-button v-if="canStart" type="primary" size="small" @click="startTask">{{ t('startTest') }}</a-button>
-            <a-button v-if="theTask.status === 'running'" size="small" danger @click="stopTask">{{ t('stopTest') }}</a-button>
-            <a-button v-if="canClose" size="small" danger ghost @click="closeTask">{{ t('close') }}</a-button>
-          </div>
-        </template>
-        <!-- 面板内容:框架/精度/数据集 + Service Status + Service URL + 测试 case -->
-        <div class="panel-body">
-          <div class="info-row">
-            <span class="info-item"><span class="info-label">{{ t('framework') }}</span><a-tag :color="theTask.framework === 'vllm' ? 'blue' : 'purple'" size="small">{{ theTask.framework_name || theTask.framework }}</a-tag></span>
-            <span class="info-item" v-if="theTask.precision"><span class="info-label">{{ t('precision') }}</span>{{ theTask.precision }}</span>
-            <span class="info-item"><span class="info-label">{{ t('dataset') }}</span>{{ datasetText }}</span>
-            <span class="info-item" v-if="theTask.concurrency_list?.length"><span class="info-label">{{ t('concurrency') }}</span>{{ theTask.concurrency_list.join(', ') }}</span>
-            <span class="info-item" v-if="theTask.request_rate && theTask.request_rate !== 'inf'"><span class="info-label">{{ t('requestRateLabel') }}</span>{{ theTask.request_rate }}</span>
-            <span class="info-item">
+      <!-- 第一行：Perf + Cases + Console (各占 1/3，等高) -->
+      <div class="row-1">
+        <!-- Perf 面板 -->
+        <a-card size="small" class="perf-panel" :body-style="{ padding: '10px 14px', display: 'flex', flexDirection: 'column', flex: '1', minHeight: '0' }">
+          <template #title>
+            <div class="panel-title-left">
+              <span class="title-text">Perf</span>
+              <span class="title-sep">|</span>
+              <span class="panel-title-model" :title="theTask.model">{{ theTask.model }}</span>
+            </div>
+          </template>
+          <template #extra>
+            <div class="panel-title-right">
+              <span class="meta-text">
+                <loading-outlined v-if="theTask.status === 'running'" class="title-spin" />
+                {{ t('progress') }} {{ doneCount }}/{{ totalCount }}
+              </span>
+              <span class="meta-text">{{ t('elapsed') }} {{ elapsedText }}</span>
+              <span class="meta-text">
+                {{ t('perfStatus') }}:
+                <span class="status-value" :class="statusClass(theTask.status)">{{ statusText(theTask.status) }}</span>
+              </span>
+            </div>
+          </template>
+          <!-- 内容：每项一行，两端对齐，详情值字体样式一致 -->
+          <div class="panel-body">
+            <div class="info-row">
+              <span class="info-label">{{ t('model') }}</span>
+              <span class="info-value">{{ theTask.model }}</span>
+            </div>
+            <div class="info-row">
+              <span class="info-label">{{ t('framework') }}</span>
+              <span class="info-value">{{ theTask.framework_name || theTask.framework }}</span>
+            </div>
+            <div class="info-row" v-if="theTask.precision">
+              <span class="info-label">{{ t('precision') }}</span>
+              <span class="info-value">{{ theTask.precision }}</span>
+            </div>
+            <div class="info-row">
+              <span class="info-label">{{ t('dataset') }}</span>
+              <span class="info-value">{{ datasetText }}</span>
+            </div>
+            <div class="info-row" v-if="theTask.concurrency_list?.length">
+              <span class="info-label">{{ t('concurrency') }}</span>
+              <span class="info-value">{{ theTask.concurrency_list.join(', ') }}</span>
+            </div>
+            <div class="info-row" v-if="theTask.request_rate && theTask.request_rate !== 'inf'">
+              <span class="info-label">{{ t('requestRateLabel') }}</span>
+              <span class="info-value">{{ theTask.request_rate }}</span>
+            </div>
+            <div class="info-row">
               <span class="info-label">{{ t('serviceStatus') }}</span>
-              <span :style="{ color: serviceReady ? 'var(--ant-color-success, #52c41a)' : 'var(--ant-color-error, #f5222d)' }">
+              <span class="info-value" :style="{ color: serviceReady ? 'var(--ant-color-success, #52c41a)' : 'var(--ant-color-error, #f5222d)' }">
                 {{ serviceReady ? t('online') : t('offline') }}
               </span>
-            </span>
-            <span class="info-item"><span class="info-label">{{ t('serviceUrl') }}</span>{{ serviceUrl || '-' }}</span>
-          </div>
-          <div class="case-grid">
-            <div v-for="(c, i) in theTask.cases || []" :key="i" class="case-item">
-              <span class="case-label">{{ c.label }}</span>
-              <span class="case-meta" v-if="c.input_len">{{ c.input_len }}/{{ c.output_len }}</span>
-              <a-tag
-                v-for="conc in theTask.concurrency_list || []"
-                :key="conc"
-                :color="caseConcDone(c.label, conc) ? 'green' : caseConcRunning(c.label, conc) ? 'processing' : 'default'"
-                size="small"
-              >{{ conc }}</a-tag>
+            </div>
+            <div class="info-row">
+              <span class="info-label">{{ t('serviceUrl') }}</span>
+              <span class="info-value">{{ serviceUrl || '-' }}</span>
             </div>
           </div>
-        </div>
-      </a-card>
+          <!-- footer：右侧操作按钮 -->
+          <div class="panel-footer">
+            <div class="footer-actions">
+              <a-button v-if="canStart" type="primary" size="small" @click="startTask">{{ t('startTest') }}</a-button>
+              <a-button v-if="theTask.status === 'running'" size="small" danger @click="stopTask">{{ t('stopTest') }}</a-button>
+              <a-button v-if="canClose" size="small" danger ghost @click="closeTask">{{ t('close') }}</a-button>
+            </div>
+          </div>
+        </a-card>
 
-      <!-- 块2-4: 控制台(左固定) + 右侧可滑动 -->
-      <div class="perf-body">
-        <!-- 块2: 控制台面板 (左固定 420px) -->
-        <a-card size="small" class="terminal-left" :body-style="{ flex: '1', minHeight: '0', padding: '0', display: 'flex', flexDirection: 'column' }">
+        <!-- Cases 面板：显示并发 case 列表 (1K1K 等) -->
+        <a-card size="small" class="cases-panel" :body-style="{ padding: '10px 14px', display: 'flex', flexDirection: 'column', flex: '1', minHeight: '0' }">
+          <template #title>{{ t('casesPanelTitle') }}</template>
+          <div class="cases-body">
+            <div v-for="(c, i) in theTask.cases || []" :key="i" class="case-row">
+              <span class="case-label">{{ c.label }}</span>
+              <span class="case-meta" v-if="c.input_len">{{ c.input_len }}/{{ c.output_len }}</span>
+              <span class="case-tags">
+                <a-tag
+                  v-for="conc in theTask.concurrency_list || []"
+                  :key="conc"
+                  :color="caseConcDone(c.label, conc) ? 'green' : caseConcRunning(c.label, conc) ? 'processing' : 'default'"
+                  size="small"
+                >{{ conc }}</a-tag>
+              </span>
+            </div>
+            <div v-if="!theTask.cases?.length" class="empty-hint">{{ t('noData') }}</div>
+          </div>
+          <!-- footer：空（保持三面板等高） -->
+          <div class="panel-footer empty-footer"></div>
+        </a-card>
+
+        <!-- Console 面板 (白底黑字) -->
+        <a-card size="small" class="console-panel" :body-style="{ flex: '1', minHeight: '0', padding: '0', display: 'flex', flexDirection: 'column' }">
           <template #title>{{ t('terminal') }}</template>
           <template #extra>
             <a-button size="small" type="link" @click="downloadLog">
@@ -110,46 +146,46 @@
           <div class="terminal-box" ref="termBox" @scroll="onTermScroll">
             <div v-for="(line, i) in activeLogs" :key="i" class="term-line">{{ line }}</div>
           </div>
+          <!-- footer：空（保持三面板等高） -->
+          <div class="panel-footer empty-footer"></div>
         </a-card>
-
-        <!-- 块3+4: 右侧实时数据 + 数据分析 (可滑动) -->
-        <div class="right-scroll">
-          <!-- 块3: 实时数据面板 — 标题右侧放阈值等信息,内容仅表格 -->
-          <a-card size="small" class="right-card">
-            <template #title>{{ t('realtimeData') }}</template>
-            <template #extra>
-              <div class="rt-extra">
-                <span class="rt-threshold">
-                  <span class="info-label">{{ t('tpotThresholdLabel') }}</span>
-                  <a-input-number
-                    v-if="thresholdEditing"
-                    v-model:value="thresholdInput"
-                    size="small"
-                    :step="10"
-                    :min="1"
-                    style="width: 90px"
-                    @blur="saveThreshold"
-                    @press-enter="saveThreshold"
-                  />
-                  <span v-else class="threshold-value" @click="editThreshold">
-                    {{ theTask.tpot_threshold_ms || '-' }}ms
-                  </span>
-                </span>
-              </div>
-            </template>
-            <MetricsTable
-              :rows="annotatedRows"
-              :threshold="theTask.tpot_threshold_ms"
-              :pagination="false"
-            />
-          </a-card>
-          <!-- 块4: 数据分析面板 -->
-          <a-card size="small" class="right-card">
-            <template #title>{{ t('dataAnalysis') }}</template>
-            <MetricsCharts :rows="theTask.rows || []" :metric-defs="metricDefs" />
-          </a-card>
-        </div>
       </div>
+
+      <!-- 第二行：实时数据面板 -->
+      <a-card size="small" class="full-row-card">
+        <template #title>{{ t('realtimeData') }}</template>
+        <template #extra>
+          <div class="rt-extra">
+            <span class="rt-threshold">
+              <span class="info-label">{{ t('tpotThresholdLabel') }}</span>
+              <a-input-number
+                v-if="thresholdEditing"
+                v-model:value="thresholdInput"
+                size="small"
+                :step="10"
+                :min="1"
+                style="width: 90px"
+                @blur="saveThreshold"
+                @press-enter="saveThreshold"
+              />
+              <span v-else class="threshold-value" @click="editThreshold">
+                {{ theTask.tpot_threshold_ms || '-' }}ms
+              </span>
+            </span>
+          </div>
+        </template>
+        <MetricsTable
+          :rows="annotatedRows"
+          :threshold="theTask.tpot_threshold_ms"
+          :request-rate="theTask.request_rate || 'inf'"
+        />
+      </a-card>
+
+      <!-- 第三行：统计图面板 -->
+      <a-card size="small" class="full-row-card">
+        <template #title>{{ t('statistics') }}</template>
+        <MetricsCharts :rows="theTask.rows || []" />
+      </a-card>
     </div>
 
     <!-- 创建任务 Modal -->
@@ -219,7 +255,6 @@ const canStart = computed(() => {
 })
 const canClose = computed(() => {
   if (!theTask.value) return false
-  // 进行中不能关闭,只能停止
   return theTask.value.status !== 'running'
 })
 
@@ -250,23 +285,13 @@ const annotatedRows = computed(() => {
     if (!valid.length) continue
     const below = valid.filter(([v]) => v < threshold)
     const best = below.length
-      ? below.reduce((a, b) => (a[0] >= b[0] ? a : b))      // 低于阈值中最接近阈值
-      : valid.reduce((a, b) => (a[0] <= b[0] ? a : b))        // 无低于阈值则取最小
+      ? below.reduce((a, b) => (a[0] >= b[0] ? a : b))
+      : valid.reduce((a, b) => (a[0] <= b[0] ? a : b))
     best[1].best = true
     best[1].best_tpot = best[0]
   }
   return rows
 })
-
-// 6 条实时曲线定义 — 3 列布局:第一列吞吐 / 第二列 TTFT / 第三列 TPOT
-const metricDefs = computed(() => [
-  { key: 'output_mean', label: t('metricOutputMean'), color: '#1677ff' },
-  { key: 'ttft_mean', label: t('metricTtftMean'), color: '#faad14' },
-  { key: 'tpot_mean', label: t('metricTpotMean'), color: '#52c41a' },
-  { key: 'total_mean', label: t('metricTotalMean'), color: '#1677ff' },
-  { key: 'ttft_p99', label: t('metricTtftP99'), color: '#faad14' },
-  { key: 'tpot_p99', label: t('metricTpotP99'), color: '#52c41a' },
-])
 
 // 运行时长
 const now = ref(Date.now())
@@ -289,9 +314,6 @@ const elapsedText = computed(() => {
   return `${Math.floor(sec / 60)}${t('elapsedMin')}${sec % 60}${t('elapsedSec')}`
 })
 
-function statusBadge(s) {
-  return s === 'running' ? 'processing' : s === 'done' ? 'success' : s === 'error' ? 'error' : s === 'stopped' ? 'warning' : 'default'
-}
 function statusText(s) {
   const map = { pending: t('pending'), running: t('running'), done: t('done'), stopped: t('stopped'), error: t('error') }
   return map[s] || s
@@ -323,14 +345,12 @@ async function startTask() {
   } catch (e) { message.error(e.message) }
 }
 async function stopTask() {
-  // 进行中只能停止;停止后后端广播 stopped,store 自动清理任务 → 恢复默认
   try {
     await test.stopTask(taskId.value)
     message.info(t('stopTest'))
   } catch (e) { message.error(e.message) }
 }
 async function closeTask() {
-  // close:中间弹框确认,确认后从后端删除任务 → 恢复默认界面,任务不留在后台,需要重新创建
   Modal.confirm({
     title: t('close'),
     content: t('closeConfirm'),
@@ -345,7 +365,6 @@ async function closeTask() {
   })
 }
 
-// 阈值就地编辑:点击变输入框,失焦保存
 function editThreshold() {
   thresholdInput.value = theTask.value?.tpot_threshold_ms || 100
   thresholdEditing.value = true
@@ -361,7 +380,6 @@ async function saveThreshold() {
   } catch (e) { message.error(e.message) }
 }
 
-// 控制台日志下载:文件名 任务ID_时分秒.txt
 function downloadLog() {
   const lines = activeLogs.value
   if (!lines.length) { message.info(t('noData')); return }
@@ -381,7 +399,6 @@ function downloadLog() {
   URL.revokeObjectURL(url)
 }
 
-// 控制台滚动处理:用户在底部附近时自动滚动,向上阅读时不打扰
 function onTermScroll() {
   if (!termBox.value) return
   const el = termBox.value
@@ -391,13 +408,12 @@ function scrollTermToBottom() {
   if (termBox.value) termBox.value.scrollTop = termBox.value.scrollHeight
 }
 
-// 自动滚动控制台(仅当用户在底部附近时)
+// 内容更新时始终滚到底,确保看到最新数据
 watch(() => activeLogs.value.length, async () => {
   await nextTick()
-  if (termBox.value && userNearBottom.value) scrollTermToBottom()
+  if (termBox.value) scrollTermToBottom()
 })
 
-// 任务切换:加载完整快照(含 rows)+ 历史日志并滚到底(数据状态来自后台,刷新即恢复)
 watch(taskId, async (id, oldId) => {
   if (!id || id === oldId) return
   userNearBottom.value = true
@@ -430,7 +446,7 @@ onMounted(async () => {
   height: 100%;
   display: flex;
   flex-direction: column;
-  overflow: hidden;
+  overflow: auto;
   padding: 16px 20px;
 }
 
@@ -493,37 +509,64 @@ onMounted(async () => {
   justify-content: center;
 }
 
-/* 四块式详情 */
+/* 三行布局 */
 .perf-detail {
-  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
   min-height: 0;
+}
+
+/* 第一行：Perf + Cases + Console，各占 1/3 等高
+   Perf 面板内容决定高度，Cases/Console 内容超出时滑动 */
+.row-1 {
+  display: flex;
+  gap: 12px;
+  align-items: stretch;
+}
+.row-1 > :deep(.ant-card) {
+  flex: 1 1 0;
+  min-width: 0;
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  gap: 12px;
 }
-.task-top-panel {
-  flex-shrink: 0;
+
+/* Perf 面板：标题左侧 "Perf | 模型名称" 采用标题字号颜色 */
+.panel-title-left {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.title-text {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ant-color-text, rgba(0, 0, 0, 0.88));
 }
 .panel-title-model {
-  font-weight: 600;
   font-size: 14px;
+  font-weight: 600;
+  color: var(--ant-color-text, rgba(0, 0, 0, 0.88));
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  max-width: 360px;
+  max-width: 180px;
   display: inline-block;
   vertical-align: middle;
 }
-.panel-title-left {
+.panel-title-right {
   display: inline-flex;
   align-items: center;
   gap: 10px;
   font-weight: normal;
   min-width: 0;
+  flex-wrap: wrap;
+  justify-content: flex-end;
 }
 .title-sep {
-  color: var(--ant-color-border, #d9d9d9);
+  color: var(--ant-color-text-secondary, #666);
+  font-weight: 600;
 }
 .title-spin {
   margin-right: 2px;
@@ -533,78 +576,108 @@ onMounted(async () => {
 .st-running { color: var(--ant-color-primary, #1677ff); }
 .st-done { color: var(--ant-color-success, #52c41a); }
 .st-error { color: var(--ant-color-error, #f5222d); }
-.top-actions {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-shrink: 0;
-}
 .meta-text {
   font-size: 12px;
   color: var(--ant-color-text-secondary, #666);
 }
+/* Perf 面板 body：不滚动，内容决定面板高度 */
 .panel-body {
+  flex: 0 1 auto;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 6px;
 }
 .info-row {
   display: flex;
+  justify-content: space-between;
   align-items: center;
-  flex-wrap: wrap;
-  gap: 16px;
   font-size: 12px;
-}
-.info-item {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
+  padding: 2px 0;
 }
 .info-label {
   color: var(--ant-color-text-tertiary, #999);
+  flex-shrink: 0;
 }
-.case-grid {
-  max-height: 120px;
+.info-value {
+  color: var(--ant-color-text, #000);
+  text-align: right;
+  word-break: break-all;
+  font-size: 12px;
+  font-weight: 400;
+}
+.mono-url {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+}
+
+/* Cases 面板 */
+.cases-body {
+  flex: 1;
+  min-height: 0;
   overflow: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
 }
-.case-item {
+.case-row {
   display: flex;
   align-items: center;
-  flex-wrap: wrap;
-  gap: 4px;
+  gap: 8px;
+  font-size: 12px;
   padding: 3px 0;
   border-bottom: 1px solid var(--ant-color-border, #f0f0f0);
-  font-size: 12px;
 }
 .case-label {
   font-weight: 600;
   min-width: 60px;
+  color: var(--ant-color-text, #000);
 }
 .case-meta {
   color: var(--ant-color-text-tertiary, #999);
-  font-size: 11px;
+  font-size: 12px;
+}
+.case-tags {
+  margin-left: auto;
+  display: inline-flex;
+  gap: 2px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+.empty-hint {
+  text-align: center;
+  color: var(--ant-color-text-tertiary, #999);
+  font-size: 12px;
+  padding: 24px 0;
 }
 
-/* 控制台 + 右侧 */
-.perf-body {
-  flex: 1;
-  min-height: 0;
-  display: flex;
-  gap: 12px;
-  overflow: hidden;
-}
-.terminal-left {
-  width: 420px;
+/* Footer：所有面板等高，空 footer 占位 */
+.panel-footer {
   flex-shrink: 0;
-  min-height: 0;
+  padding-top: 8px;
+  border-top: 1px solid var(--ant-color-border, #f0f0f0);
+  margin-top: 6px;
+  min-height: 36px;
+}
+.empty-footer {
+  border-top: 1px solid transparent;
+  padding-top: 0;
+  min-height: 8px;
+}
+.footer-actions {
   display: flex;
-  flex-direction: column;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+/* Console 面板：白底黑字 */
+.console-panel :deep(.ant-card-body) {
+  background: #fff;
 }
 .terminal-box {
-  flex: 1;
+  flex: 1 1 0;
   min-height: 0;
-  background: #1e1e1e;
-  color: #d4d4d4;
+  background: #ffffff;
+  color: #000000;
   padding: 8px 10px;
   border-radius: 6px;
   font-size: 11px;
@@ -614,21 +687,15 @@ onMounted(async () => {
   white-space: pre-wrap;
   word-break: break-all;
   scroll-behavior: smooth;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  border: 1px solid var(--ant-color-border, #e8e8e8);
 }
 .term-line {
   min-height: 14px;
 }
-.right-scroll {
-  flex: 1;
-  min-width: 0;
-  overflow-y: auto;
-  overflow-x: hidden;
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  padding-right: 4px;
-}
-.right-card {
+
+/* 第二行 / 第三行：整行卡片 */
+.full-row-card {
   flex-shrink: 0;
 }
 .rt-extra {

@@ -8,21 +8,21 @@
 .. code-block:: bash
 
     # vLLM 风格
-    python -m mock.cli vllm bench serve --max-concurrency 32 --num-prompts 32 \
+    python -m mocks.cli vllm bench serve --max-concurrency 32 --num-prompts 32 \
         --model Qwen2.5-72B-Instruct --random-input-len 3072 --random-output-len 1024
 
     # SGLang 风格
-    python -m mock.cli python -m sglang.bench_serving --max-concurrency 16 \
+    python -m mocks.cli python -m sglang.bench_serving --max-concurrency 16 \
         --model Qwen2.5-72B-Instruct --random-input-len 1024 --random-output-len 1024
 
     # 或显式指定框架
-    python -m mock.cli --framework sglang --max-concurrency 8 --seed 42
+    python -m mocks.cli --framework sglang --max-concurrency 8 --seed 42
 
     # 逐行流式输出（模拟真实 bench 过程，便于观察 UI 实时更新）
-    python -m mock.cli vllm bench serve --max-concurrency 64 --stream-interval 0.05
+    python -m mocks.cli vllm bench serve --max-concurrency 64 --stream-interval 0.05
 
     # 把输出存到文件
-    python -m mock.cli vllm bench serve --max-concurrency 32 --save /tmp/mock_vllm.txt
+    python -m mocks.cli vllm bench serve --max-concurrency 32 --save /tmp/mock_vllm.txt
 
 支持的解析参数：``--max-concurrency`` / ``--num-prompts`` / ``--random-input-len`` /
 ``--random-output-len`` / ``--request-rate`` / ``--seed`` / ``--dataset-name`` /
@@ -37,10 +37,10 @@ import time
 from pathlib import Path
 
 try:  # 作为项目内包运行
-    from mock.bench_outputs import generate_output
-except ImportError:  # 兜底：mock 文件夹不在 sys.path 时
+    from mocks.bench_outputs import generate_output
+except ImportError:  # 兜底：mocks 文件夹不在 sys.path 时
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-    from mock.bench_outputs import generate_output  # noqa: E402
+    from mocks.bench_outputs import generate_output  # noqa: E402
 
 
 # 与真实 bench 一致的参数默认值

@@ -9,9 +9,9 @@
 # 前端另行启动：cd web && npm run dev  →  http://127.0.0.1:5173
 #
 # 用法：
-#   ./mock/run_mock.sh                 # 默认端口 8001 / 8080
-#   OPENAI_PORT=9001 PORT=9000 ./mock/run_mock.sh
-#   NO_OPENAI=1 ./mock/run_mock.sh     # 只启动后端（不需要对话功能时）
+#   ./mocks/run_mock.sh                 # 默认端口 8001 / 8080
+#   OPENAI_PORT=9001 PORT=9000 ./mocks/run_mock.sh
+#   NO_OPENAI=1 ./mocks/run_mock.sh     # 只启动后端（不需要对话功能时）
 #
 # 按 Ctrl+C 退出，两个进程都会被终止。
 set -euo pipefail
@@ -44,7 +44,7 @@ trap cleanup EXIT INT TERM
 
 if [ "${NO_OPENAI:-0}" != "1" ]; then
   echo "[mock] 启动 mock OpenAI server ..."
-  "$PY" -m mock.openai_server --host 127.0.0.1 --port "$OPENAI_PORT" &
+  "$PY" -m mocks.openai_server --host 127.0.0.1 --port "$OPENAI_PORT" &
   OPENAI_PID=$!
   sleep 1.5
 fi

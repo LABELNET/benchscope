@@ -265,7 +265,7 @@ class BenchRunner:
         return tmpl + cmd[len(tmpl):] if cmd[:len(tmpl)] == tmpl else tmpl + cmd
 
     # ------------------------------------------------------------------
-    # FAKE 模式：生成仿真 vllm/sglang 风格输出（优先复用 mock 包，见 mock/README.md）
+    # FAKE 模式：生成仿真 vllm/sglang 风格输出（优先复用 mocks 包，见 mocks/README.md）
     def _run_fake(self, cmd: list[str], stream_cb: Optional[StreamCallback] = None) -> dict:
         args = " ".join(cmd)
         concurrency, input_len, output_len, request_rate = self._fake_args(cmd)
@@ -316,12 +316,12 @@ class BenchRunner:
     ) -> str:
         """生成 FAKE 输出文本。
 
-        优先使用项目根目录 mock/ 包（能区分 vLLM / SGLang 两种输出格式）；
-        若 mock 包不可导入（例如 pip 独立安装、无源码目录），回退到内置的
+        优先使用项目根目录 mocks/ 包（能区分 vLLM / SGLang 两种输出格式）；
+        若 mocks 包不可导入（例如 pip 独立安装、无源码目录），回退到内置的
         vLLM 风格简化生成器，保证两种场景行为一致。
         """
         try:
-            from mock.bench_outputs import generate_output
+            from mocks.bench_outputs import generate_output
 
             return generate_output(
                 framework,
@@ -332,11 +332,11 @@ class BenchRunner:
                 seed=int(time.time() * 1000) % 2**31,
             )
         except Exception:
-            log.warning("mock.bench_outputs 不可用，回退到内置仿真输出", exc_info=True)
+            log.warning("mocks.bench_outputs 不可用，回退到内置仿真输出", exc_info=True)
             return "\n".join(self._fake_lines_vllm(concurrency, input_len, output_len))
 
     def _fake_lines_vllm(self, concurrency: int, input_len: int, output_len: int) -> list[str]:
-        """内置 vLLM 风格仿真输出（mock 包不可用时的兜底）。"""
+        """内置 vLLM 风格仿真输出（mocks 包不可用时的兜底）。"""
         rng = random.Random(int(time.time() * 1000) % 2**31)
 
         c = max(concurrency, 1)
