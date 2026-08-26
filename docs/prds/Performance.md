@@ -3,7 +3,7 @@
 > **版本**：v1.0.5  
 > **最后更新**：2026-08-26  
 > **文档状态**：Performance 任务执行页双模式（并发 / 阈值）核心逻辑策略与联动关系说明  
-> **前置文档**：[PRD_260826-1.md](./PRD_260826-1.md)
+> **前置文档**：[VERSION_1_0_5.md](../versions/VERSION_1_0_5.md)
 
 ---
 
@@ -39,6 +39,18 @@ Performance 任务执行页存在两种执行模式，由任务创建时的 `mod
 | 阈值条件显示 | **仅阈值模式**显示只读条件，格式与 Perf 内容一致（仅文字，不可编辑）：`TTOT mean(ms) ≤ Xms`、`Output token throughput (tok/s) ≤ Y tok/s`；并发模式不显示 |
 | Output 条件显示 | 任务 `output_throughput_threshold > 0` 时才显示该条 |
 | 阈值模式请求显示 | 每个 case **独立**显示测试状态（请求数**不联动**）：已执行/执行中的 case 显示该 case 已测试过的**完整请求数列表**（已完成标绿、当前正在测试标蓝）；未执行的 case 显示灰色 `Pending`；并发模式仍显示全部请求数 tag（按并发升序） |
+| 多组相同条件 | 每组独立（唯一 `case_id`），显示 `g{id}` 组 id 标签，状态/进度互不联动（见 2.1） |
+
+### 2.1 多组条件唯一组 id（case_id）
+
+多组条件（如阈值模式下两个条件组同为 `1024x1024`）时，各组必须可区分，否则 Cases / Realtime / Statistics 均按 label 叠加合并。
+
+- **数据链路**：创建页 `length_pairs` 每项第 4 个元素为条件组唯一 `id`（如 `[1024, 1024, "1024x1024", 1]`）→ 后端 `build_cases` 生成 `case_id` → 每条结果行（row）携带 `case_id`；`task_log` 广播同样携带，用于前端定位当前执行位置。
+- **Cases 面板**：每个 case 行显示 `g{case_id}` 组 id 标签（如 `1024x1024 g1` / `1024x1024 g2`）；已测试请求数、当前执行位置均按 case 身份（`case_id` 优先，缺省回退 label）匹配，互不联动。
+- **Realtime Data**：分组键为 `caseKey = label#g{case_id}`（如 `1024x1024#g1`），相同 label 的多组独立成组，组内各自执行 Best/BestPerf 高亮。
+- **Statistics**：12 张统计图序列键同样 case_id 感知（`label#g{case_id}`），相同条件多组独立成线、图例可区分。
+- **后端聚合**：`_annotate_best` / `_find_best`（xlsx 与运行详情最佳标记）按 `case_id or label` 分组；详情页 merged/display rows 透传 `case_id`。
+- **兼容性**：旧任务（无 `case_id`）自动回退按 label 匹配，行为不变。
 
 ---
 
@@ -46,7 +58,7 @@ Performance 任务执行页存在两种执行模式，由任务创建时的 `mod
 
 ### 3.1 表格排序
 
-表格数据按 **case(label) 分组**（如 `256x256`、`1K1K`），**组内**按请求数量（并发）**从小到大**排列；每组**单独执行** Best/BestPerf 高亮（每组有且仅有一个），组间互不影响。
+表格数据按 **case 身份分组**（分组键 `caseKey = label#g{case_id}`，相同 label 的多组独立分组；旧任务无 `case_id` 回退 label，如 `256x256`、`1K1K`），**组内**按请求数量（并发）**从小到大**排列；每组**单独执行** Best/BestPerf 高亮（每组有且仅有一个），组间互不影响。
 
 ### 3.2 Best 标记（本地面板阈值）
 
@@ -114,6 +126,18 @@ bestRow.best = true
   - 文件写入**任务记录缓存目录**（`task.run_dir/`，与 `run.json`/CSV/日志同目录），并同时返回给浏览器下载
   - 组标题行在 Excel 中加粗 + 浅蓝底色；表头加粗
 
+### 3.8 Progress 计数策略（Perf 面板 header）
+
+Perf 面板 header 右侧 `Progress done/total` 的计数与执行模式相关：
+
+| 模式 | 计数规则 |
+| --- | --- |
+| 并发模式 | `total = case 数 × concurrency_list 档位数`（并发点预知、固定）；`done = 已有结果（成功或失败）的行数` |
+| 阈值模式 | **按 Cases 计数**：`total = case 总数`（固定）；`done = 已有任意结果行的 case 数`（按 `case_id` 去重）；单个 case 任务显示 `1/1`，N 个 case 显示 `N/N` |
+
+- **原因**：阈值模式并发点由策略**动态探测**（1→2→4→8…，`concurrency_list` 持续增长），若作为进度分母会产生不稳定、与 Cases 数量不对齐的数值（如 `32/36`）。
+- 阈值模式进度与 Cases 面板数量严格一致：每完成一个 case，`done` 递增 1；与 Cases 面板的 `g{case_id}` 分组一一对应。
+
 ---
 
 ## 4. 双模式联动关系
@@ -149,6 +173,8 @@ bestRow.best = true
 | 并发模式 | 无 BestPerf、无阈值条件显示 |
 | 阈值模式 | BestPerf + Best 同时可用 |
 | 阈值输入非整数 | 保存时取整（`Math.round`），小于 0 忽略 |
+| 多组相同条件（阈值模式） | 每组独立运行与展示（唯一 `case_id`），不叠加合并 |
+| 阈值模式 Progress | 按 case 数计数（`1/1`、`2/2`、`N/N`），不随动态并发点增长 |
 
 ---
 
@@ -161,4 +187,13 @@ bestRow.best = true
   - `(0,300)` → 并发 16（output 262 ≤ 300 中最大并发）
   - `(20,300)` → 并发 2（双条件同时满足中最大并发）
   - 任务阈值 BestPerf `(100,0)` → 并发 161（同策略）
+- 多组相同条件验证（`mode=threshold`，两组 `1024x1024`，`case_id=1/2`）：
+  - 任务快照 cases 各带唯一 `case_id`；执行后 rows 均携带 `case_id`，两组数据独立（Cases / Realtime / Statistics 不叠加）
+  - Progress 按 case 数计数：2 个 case → `1/2` → `2/2`；单个 case → `1/1`
 - 无 lint 错误，`dev.sh stop/start` 重启后接口与产物正常。
+
+---
+
+## 7. 相关文档约定
+
+> **约定**：后续对 Performance 页面的设计/界面修改、逻辑与策略调整、UI 调整，均需同步更新本文档。

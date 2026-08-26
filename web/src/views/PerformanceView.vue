@@ -134,15 +134,16 @@
                 <span class="info-value">{{ theTask.output_throughput_threshold }} tok/s</span>
               </div>
             </div>
-            <div v-for="(c, i) in theTask.cases || []" :key="i" class="case-row">
+            <div v-for="(c, i) in theTask.cases || []" :key="c.case_id || c.label || i" class="case-row">
               <span class="case-label">{{ c.label }}</span>
+              <a-tag v-if="c.case_id" size="small" class="case-gid">g{{ c.case_id }}</a-tag>
               <span class="case-meta" v-if="c.input_len">{{ c.input_len }}/{{ c.output_len }}</span>
               <span class="case-tags">
                 <!-- 阈值模式：已执行/执行中的 case 显示完整请求数列表（当前测试的标蓝、已完成标绿），未执行显示 Pending -->
                 <template v-if="theTask.mode === 'threshold'">
-                  <template v-if="caseTestedTags(c.label).length">
+                  <template v-if="caseTestedTags(c).length">
                     <a-tag
-                      v-for="tt in caseTestedTags(c.label)"
+                      v-for="tt in caseTestedTags(c)"
                       :key="tt.conc"
                       :color="tt.running ? 'processing' : 'green'"
                       size="small"
@@ -155,7 +156,7 @@
                   <a-tag
                     v-for="conc in sortedConcurrency"
                     :key="conc"
-                    :color="caseConcColor(c.label, conc)"
+                    :color="caseConcColor(c, conc)"
                     size="small"
                   >{{ conc }}</a-tag>
                 </template>
@@ -230,7 +231,7 @@
           :threshold="theTask.tpot_threshold_ms"
           :request-rate="theTask.request_rate || 'inf'"
           :output-threshold="effectiveOutputThreshold"
-          group-by="label"
+          group-by="caseKey"
           :task-id="taskId"
           exportable
         />
@@ -299,13 +300,30 @@ const activeLogs = computed(() => (taskId.value ? test.logLines[taskId.value] ||
 const serviceReady = computed(() => config.status?.inference === 'ready')
 const serviceUrl = computed(() => config.apiBase || '')
 
+// 进度计数：
+//   并发模式：case 数 × 并发档位数（并发点是预知的）
+//   阈值模式：按 Cases 计数——每个 case 算 1 个进度单位，总共几个 case 就显示几个
+//   （并发点由阈值策略动态探测，不再作为进度分母，避免出现 32/36 这类不稳定/不对齐的数值）
 const totalCount = computed(() => {
   if (!theTask.value) return 0
+  if (theTask.value.mode === 'threshold') {
+    return theTask.value.cases?.length || 0
+  }
   return (theTask.value.cases?.length || 0) * (theTask.value.concurrency_list?.length || 0)
 })
 const doneCount = computed(() => {
   if (!theTask.value) return 0
-  return (theTask.value.rows || []).filter((r) => r.metrics || r.error).length
+  const rows = theTask.value.rows || []
+  if (theTask.value.mode === 'threshold') {
+    // 一个 case 出现任意一条结果（成功或失败）即视为该 case 已完成
+    const done = new Set()
+    for (const r of rows) {
+      if (!(r.metrics || r.error)) continue
+      done.add(r.case_id !== undefined && r.case_id !== null ? `g${r.case_id}` : (r.label || r.case || '-'))
+    }
+    return done.size
+  }
+  return rows.filter((r) => r.metrics || r.error).length
 })
 const canStart = computed(() => {
   if (!theTask.value) return false
@@ -374,10 +392,11 @@ const annotatedRows = computed(() => {
     if (bestRow) bestRow[flag] = true
   }
 
-  // 按 case 分组；每组内按并发升序，并单独执行阈值高亮
+  // 按 case 分组（case_id 优先，相同 label 的多组独立分组）；每组内按并发升序，并单独执行阈值高亮
   const groupMap = new Map()
   for (const r of rows) {
-    const key = r.label || r.case || '-'
+    r.caseKey = rowCaseKey(r)
+    const key = r.caseKey
     if (!groupMap.has(key)) groupMap.set(key, [])
     groupMap.get(key).push(r)
   }
@@ -431,30 +450,41 @@ function statusClass(s) {
   if (s === 'done') return 'st-done'
   return ''
 }
-function caseConcDone(label, conc) {
-  return (theTask.value?.rows || []).some((r) => r.label === label && r.concurrency === conc && (r.metrics || r.error))
+// 唯一组标识：有 case_id 用 case_id，旧数据回退 label（相同条件多组也能区分）
+function caseKeyOf(caseObj) {
+  return caseObj && caseObj.case_id !== undefined && caseObj.case_id !== null
+    ? `${caseObj.label}#g${caseObj.case_id}`
+    : (caseObj?.label || '-')
 }
-function caseConcRunning(label, conc) {
+function rowCaseKey(r) {
+  return r.case_id !== undefined && r.case_id !== null ? `${r.label}#g${r.case_id}` : (r.label || r.case || '-')
+}
+function caseConcDone(caseObj, conc) {
+  const key = caseKeyOf(caseObj)
+  return (theTask.value?.rows || []).some((r) => rowCaseKey(r) === key && r.concurrency === conc && (r.metrics || r.error))
+}
+function caseConcRunning(caseObj, conc) {
   if (theTask.value?.status !== 'running') return false
   const pos = test.currentPos[taskId.value]
-  return !!pos && pos.case === label && pos.concurrency === conc
+  return !!pos && rowCaseKey({ label: pos.case, case_id: pos.case_id }) === caseKeyOf(caseObj) && pos.concurrency === conc
 }
-function caseConcColor(label, conc) {
-  if (caseConcDone(label, conc)) return 'green'
-  if (caseConcRunning(label, conc)) return 'processing'
+function caseConcColor(caseObj, conc) {
+  if (caseConcDone(caseObj, conc)) return 'green'
+  if (caseConcRunning(caseObj, conc)) return 'processing'
   return 'default'
 }
 
 // 阈值模式：case 已测试过的请求数列表（含当前正在测试的，当前测试标 running），按请求数升序；未开始执行返回空数组
-function caseTestedTags(label) {
+function caseTestedTags(caseObj) {
+  const key = caseKeyOf(caseObj)
   const set = new Set()
   for (const r of theTask.value?.rows || []) {
-    if (r.label === label && (r.metrics || r.error)) set.add(Number(r.concurrency))
+    if (rowCaseKey(r) === key && (r.metrics || r.error)) set.add(Number(r.concurrency))
   }
   let runningConc = null
   if (theTask.value?.status === 'running') {
     const pos = test.currentPos[taskId.value]
-    if (pos && pos.case === label) {
+    if (pos && rowCaseKey({ label: pos.case, case_id: pos.case_id }) === key) {
       runningConc = Number(pos.concurrency)
       set.add(runningConc)
     }
@@ -769,6 +799,13 @@ onMounted(async () => {
   font-weight: 600;
   min-width: 60px;
   color: var(--ant-color-text, #000);
+}
+.case-gid {
+  font-size: 11px;
+  line-height: 16px;
+  color: #8c8c8c;
+  border-color: #d9d9d9;
+  margin: 0;
 }
 .case-meta {
   color: var(--ant-color-text-tertiary, #999);

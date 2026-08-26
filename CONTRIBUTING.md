@@ -34,4 +34,4 @@ cd web && npm install && npm run dev   # http://127.0.0.1:5173
 
 ## Roadmap
 
-See [ROADMAP.md](ROADMAP.md) for the version plan. Feature ideas or bug reports are welcome via [issues](https://github.com/LABELNET/benchscope/issues).
+See [docs/Roadmap.md](docs/Roadmap.md) for the version plan. Feature ideas or bug reports are welcome via [issues](https://github.com/LABELNET/benchscope/issues).

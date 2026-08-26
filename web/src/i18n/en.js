@@ -183,7 +183,7 @@ export default {
 
   // UI refinement batch
   perfTestRecords: 'Perf Records',
-  accTestRecords: 'Acc Records',
+  accTestRecords: 'Eval Records',
   accuracyPlanned: 'Accuracy testing is planned for v5.0',
   deleteRun: 'Delete',
   deleteRunConfirm: 'Delete this test record? Related files will be removed.',
@@ -218,14 +218,11 @@ export default {
   baseTitle: 'Base',
   conditionTitle: 'Conditions',
   goSettings: 'Settings',
-  online: 'Online',
-  offline: 'Offline',
   inputLabel: 'Input',
   outputLabel: 'Output',
   datasetLabel: 'Dataset',
   requestCounts: 'Request counts',
   requestCountsHint: 'Ascending order, editable',
-  requestRate: 'Request rate',
   followHint: 'When Follow, --max-concurrency follows request counts',
   noCondition: 'No condition group, click + to add',
   addCondition: 'Add condition group',

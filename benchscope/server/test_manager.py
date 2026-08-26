@@ -34,9 +34,11 @@ def build_cases(dataset: dict, model: str) -> list[dict]:
     cases: list[dict] = []
     if ds_type == DATASET_RANDOM:
         pairs = dataset.get("length_pairs") or []
-        for il, ol, label in pairs:
+        for item in pairs:
+            il, ol, label, *rest = item
             cases.append({
                 "label": label,
+                "case_id": rest[0] if rest else None,  # 唯一组 id，区分相同条件的多组
                 "input_len": il,
                 "output_len": ol,
                 "path": None,
@@ -47,6 +49,7 @@ def build_cases(dataset: dict, model: str) -> list[dict]:
             label = dataset["label"]
         cases.append({
             "label": label,
+            "case_id": None,
             "input_len": None,
             "output_len": None,
             "path": dataset.get("path"),

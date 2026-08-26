@@ -323,7 +323,8 @@ function buildPayload() {
     tokenizer: '',
     dataset: {
       type: 'random',
-      length_pairs: conditions.value.map((c) => [c.inputLen, c.outputLen, `${c.inputLen}x${c.outputLen}`]),
+      // [inputLen, outputLen, label, case_id]：case_id 为唯一组 id，保证相同条件（如 1024x1024）的多组不叠加
+      length_pairs: conditions.value.map((c) => [c.inputLen, c.outputLen, `${c.inputLen}x${c.outputLen}`, c.id]),
     },
     concurrency_list: mode.value === 'threshold' ? [1] : [...(g.requestRates || [])],
     gpu: {},

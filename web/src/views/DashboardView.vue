@@ -136,7 +136,7 @@
       </a-table>
     </a-card>
 
-    <!-- Acc Records（v5.0 预留） -->
+    <!-- Eval Records（v5.0 预留） -->
     <a-card size="small" class="records-card">
       <template #title>{{ t('accTestRecords') }}</template>
       <template #extra>

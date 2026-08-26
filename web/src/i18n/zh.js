@@ -191,7 +191,7 @@ export default {
 
   // UI 精修批次
   perfTestRecords: 'Perf Records',
-  accTestRecords: 'Acc Records',
+  accTestRecords: 'Eval Records',
   accuracyPlanned: '精度测试功能规划中,待 v5.0',
   deleteRun: '删除',
   deleteRunConfirm: '确定删除该测试记录?相关文件将被移除。',
@@ -226,14 +226,11 @@ export default {
   baseTitle: 'Base',
   conditionTitle: '条件',
   goSettings: '设置',
-  online: '在线',
-  offline: '离线',
   inputLabel: '输入',
   outputLabel: '输出',
   datasetLabel: '数据集',
   requestCounts: '请求数条件',
   requestCountsHint: '顺序从小到大，可编辑新增',
-  requestRate: '请求速率',
   followHint: '指定 Follow 时 --max-concurrency 与请求数条件一致',
   noCondition: '暂无条件组，点击右侧 + 添加',
   addCondition: '添加条件组',

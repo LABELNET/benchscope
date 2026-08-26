@@ -31,13 +31,18 @@ def build_cases(dataset: dict, model: str) -> list[dict]:
     cases: list[dict] = []
     if ds_type == DATASET_RANDOM:
         pairs = dataset.get("length_pairs") or []
-        for il, ol, label in pairs:
-            cases.append({"label": label, "input_len": il, "output_len": ol, "path": None})
+        for item in pairs:
+            il, ol, label, *rest = item
+            cases.append({
+                "label": label,
+                "case_id": rest[0] if rest else None,  # 唯一组 id，区分相同条件的多组
+                "input_len": il, "output_len": ol, "path": None,
+            })
     else:
         label = "ShareGPT" if ds_type == DATASET_SHAREGPT else "Custom"
         if ds_type == DATASET_SHAREGPT and dataset.get("label"):
             label = dataset["label"]
-        cases.append({"label": label, "input_len": None, "output_len": None, "path": dataset.get("path")})
+        cases.append({"label": label, "case_id": None, "input_len": None, "output_len": None, "path": dataset.get("path")})
     return cases
 
 
@@ -308,7 +313,7 @@ class TaskManager:
                             break
                         except Exception as e:
                             log.exception("Concurrency %s failed", conc)
-                            err_row = {"case": case_label, "label": case_label, "input_len": case.get("input_len"), "output_len": case.get("output_len"), "concurrency": conc, "error": str(e)[:500]}
+                            err_row = {"case": case_label, "label": case_label, "case_id": case.get("case_id"), "input_len": case.get("input_len"), "output_len": case.get("output_len"), "concurrency": conc, "error": str(e)[:500]}
                             self._record_row(task, err_row, mean_csv, p99_csv, case, meta, concurrency_ok == 0)
                             concurrency_ok += 1
                 detail_fp.close()
@@ -364,12 +369,12 @@ class TaskManager:
             detail_fp.write(line)
             full_log_fp.write(line)
             full_log_fp.flush()
-            self.hub.broadcast({"type": "task_log", "task_id": task.task_id, "case": case["label"], "concurrency": concurrency, "line": line})
+            self.hub.broadcast({"type": "task_log", "task_id": task.task_id, "case": case["label"], "case_id": case.get("case_id"), "concurrency": concurrency, "line": line})
 
         shell_init = (self.config.get("bench_shell_init") or "").strip()
         metrics = runner.run(cmd, stream_cb=stream, shell_init=shell_init)
         return {
-            "case": case["label"], "label": case["label"],
+            "case": case["label"], "label": case["label"], "case_id": case.get("case_id"),
             "input_len": case.get("input_len"), "output_len": case.get("output_len"),
             "concurrency": concurrency, "cmd": " ".join(cmd), "metrics": metrics,
         }
@@ -440,7 +445,7 @@ class TaskManager:
                 raise
             except Exception as e:
                 log.exception("Threshold concurrency %s failed", conc)
-                row = {"case": case["label"], "label": case["label"], "input_len": case.get("input_len"),
+                row = {"case": case["label"], "label": case["label"], "case_id": case.get("case_id"), "input_len": case.get("input_len"),
                        "output_len": case.get("output_len"), "concurrency": conc, "error": str(e)[:500]}
                 self._record_row(task, row, mean_csv, p99_csv, case, meta, rows_in_case == 0)
                 rows_in_case += 1
@@ -482,7 +487,7 @@ class TaskManager:
             return rows
         by_case: dict = {}
         for r in rows:
-            by_case.setdefault(r.get("label"), []).append(r)
+            by_case.setdefault(r.get("case_id") or r.get("label"), []).append(r)
         for label, items in by_case.items():
             valid = []
             for r in items:

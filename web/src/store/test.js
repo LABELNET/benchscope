@@ -55,19 +55,21 @@ export const useTestStore = defineStore('test', {
           if (!task) break
           const row = msg.row
           if (!task.rows) task.rows = []
-          const idx = task.rows.findIndex((r) => r.label === row.label && r.concurrency === row.concurrency)
+          // 用 case_id 优先定位（相同 label 的多组互不干扰），旧数据无 case_id 时回退 label
+          const rowKey = row.case_id || row.label
+          const idx = task.rows.findIndex((r) => (r.case_id || r.label) === rowKey && r.concurrency === row.concurrency)
           if (idx >= 0) task.rows.splice(idx, 1, row)
           else task.rows.push(row)
           // 该并发已完成:若当前位置匹配则清出,以便推进到下一个并发
           const pos = this.currentPos[msg.task_id]
-          if (pos && pos.case === row.label && pos.concurrency === row.concurrency) {
+          if (pos && (pos.case_id || pos.case) === rowKey && pos.concurrency === row.concurrency) {
             this.currentPos[msg.task_id] = null
           }
           break
         }
         case 'task_log':
           if (!this.logLines[msg.task_id]) this.logLines[msg.task_id] = []
-          this.currentPos[msg.task_id] = { case: msg.case, concurrency: msg.concurrency }
+          this.currentPos[msg.task_id] = { case: msg.case, case_id: msg.case_id, concurrency: msg.concurrency }
           const lines = this.logLines[msg.task_id]
           lines.push(msg.line)
           if (lines.length > 8000) lines.splice(0, lines.length - 8000)

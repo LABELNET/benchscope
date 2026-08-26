@@ -32,4 +32,4 @@ python -m twine check dist/*
 python -m twine upload dist/*
 ```
 
-> The full product spec lives in `PROJECTS-README.md`; this file tracks the version milestones.
+> The full product spec lives in [Projects.md](docs/Projects.md); this file tracks the version milestones.

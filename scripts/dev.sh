@@ -27,28 +27,40 @@ mkdir -p "$LOG_DIR"
 PY="$ROOT/.venv/bin/python"
 [ -x "$PY" ] || PY="${PYTHON:-python3}"
 
-# 环境可能没有 lsof/ss/fuser，统一用 Python 探测端口（bind 失败 = 已被监听）
+# 环境可能没有 lsof/ss/fuser，统一用 Python 探测端口（TCP 连接成功 = 已被监听）。
+# 注意不能用 bind 探测：macOS(BSD) 下 SO_REUSEADDR 允许 wildcard 覆盖特定地址监听，会误判。
 port_up() {
   python3 - "$1" <<'PY'
 import socket, sys
 s = socket.socket()
-s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+s.settimeout(0.5)
 try:
-    s.bind(("0.0.0.0", int(sys.argv[1])))
+    s.connect(("127.0.0.1", int(sys.argv[1])))
 except OSError:
-    sys.exit(0)   # 已被占用 → UP
+    sys.exit(1)   # 连接失败 → DOWN
 else:
     s.close()
-    sys.exit(1)   # 空闲 → DOWN
+    sys.exit(0)   # 连接成功 → UP
 PY
 }
 
-# 通过 /proc 找到监听指定端口的进程 PID（不依赖 lsof）
+# 查找监听指定端口的进程 PID：优先 lsof（macOS/Linux），无 lsof 时回退 /proc（Linux）
 pids_on_port() {
   python3 - "$1" <<'PY'
-import os, re, sys
-port = int(sys.argv[1])
-hexport = "%04X" % port
+import os, re, shutil, subprocess, sys
+port = sys.argv[1]
+lsof = shutil.which("lsof")
+if lsof:
+    try:
+        out = subprocess.run([lsof, "-tiTCP:" + port, "-sTCP:LISTEN"],
+                             capture_output=True, text=True, timeout=5).stdout
+        pids = [p for p in out.split() if p.isdigit()]
+        if pids:
+            print(" ".join(pids))
+            sys.exit(0)
+    except Exception:
+        pass
+hexport = "%04X" % int(port)
 inodes = set()
 for f in ("/proc/net/tcp", "/proc/net/tcp6"):
     try:
@@ -107,7 +119,7 @@ start_openai() {
   echo "  [..] 启动 mock OpenAI 服务 (port $OPENAI_PORT) ..."
   nohup "$PY" -m mocks.openai_server --host 127.0.0.1 --port "$OPENAI_PORT" >"$LOG_DIR/openai.log" 2>&1 &
   echo $! >"$LOG_DIR/openai.pid"
-  sleep 1
+  sleep 3
   if port_up "$OPENAI_PORT"; then
     echo "  [UP]   mock OpenAI 服务  http://127.0.0.1:$OPENAI_PORT"
   else
@@ -124,7 +136,7 @@ start_backend() {
   echo "  [..] 启动 benchscope 后端 (FAKE bench, port $BACKEND_PORT) ..."
   nohup env BENCHSCOPE_FAKE_BENCH=1 "$PY" -m benchscope.cli --port "$BACKEND_PORT" --no-browser >"$LOG_DIR/backend.log" 2>&1 &
   echo $! >"$LOG_DIR/backend.pid"
-  sleep 2
+  sleep 3
   if port_up "$BACKEND_PORT"; then
     echo "  [UP]   benchscope 后端  http://127.0.0.1:$BACKEND_PORT"
   else

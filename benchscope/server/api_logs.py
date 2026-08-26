@@ -178,6 +178,7 @@ def _to_merged_rows(records: list[dict]) -> list[dict]:
         m = r.get("metrics", {})
         out.append({
             "label": r.get("label") or r.get("case"),
+            "case_id": r.get("case_id"),  # 唯一组 id，相同 label 的多组可区分
             "input_len": r.get("input_len"),
             "output_len": r.get("output_len"),
             "concurrency": r.get("concurrency"),
@@ -224,6 +225,7 @@ def _to_display_rows(records: list[dict], key: str) -> list[dict]:
         m = r.get("metrics", {})
         out.append({
             "label": r.get("label") or r.get("case"),
+            "case_id": r.get("case_id"),  # 唯一组 id，相同 label 的多组可区分
             "input_len": r.get("input_len"),
             "output_len": r.get("output_len"),
             "concurrency": r.get("concurrency"),
@@ -250,7 +252,8 @@ def _find_best(rows: list[dict], threshold) -> dict:
         return {}
     by_case: dict = {}
     for r in rows:
-        by_case.setdefault(r.get("label"), []).append(r)
+        # case_id 优先（相同 label 的多组独立计算 best），旧数据回退 label
+        by_case.setdefault(r.get("case_id") or r.get("label"), []).append(r)
     best = {}
     for label, items in by_case.items():
         valid = [(float(r["tpot"]), r) for r in items if r.get("tpot") is not None]

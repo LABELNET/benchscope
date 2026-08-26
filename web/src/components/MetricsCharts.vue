@@ -71,13 +71,16 @@ function setRef(key, el) {
 
 function buildOption(def) {
   // 每个 case 一个序列；x 轴为请求数（record.concurrency）
+  // 序列键 case_id 优先（相同 label 的多组独立成线，如 1024x1024#g1 / 1024x1024#g2），旧数据回退 label
   const seriesMap = {}
   const xSet = new Set()
   for (const row of props.rows) {
     const m = row.metrics || {}
     const v = m[def.key]
     if (v === undefined || v === null) continue
-    const label = row.label || row.case || 'unknown'
+    const rawLabel = row.label || row.case || 'unknown'
+    const hasGid = row.case_id !== undefined && row.case_id !== null
+    const label = hasGid ? `${rawLabel}#g${row.case_id}` : rawLabel
     if (!seriesMap[label]) seriesMap[label] = []
     seriesMap[label].push({ x: Number(row.concurrency), y: Number(v) })
     xSet.add(Number(row.concurrency))
@@ -102,9 +105,10 @@ function buildOption(def) {
       type: 'category',
       data: xData,
       name: t('xRequests'),
-      nameLocation: 'middle',
-      nameGap: 14,
-      nameTextStyle: { fontSize: 10, color: 'rgba(0,0,0,0.45)' },
+      // Requests 文字放到 x 轴末端、轴线上方，避免与刻度/图内内容重叠
+      nameLocation: 'end',
+      nameGap: -10,
+      nameTextStyle: { fontSize: 10, color: 'rgba(0,0,0,0.45)', align: 'right' },
       axisLine: { lineStyle: { color: '#d9d9d9' } },
       axisLabel: { fontSize: 10 },
       splitLine: { show: true, lineStyle: { type: 'dashed', color: '#f0f0f0' } },
