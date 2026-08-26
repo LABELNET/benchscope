@@ -27,6 +27,7 @@ class ConfigPatch(BaseModel):
     logs_dir: str | None = None
     datasets_dir: str | None = None
     data_dir: str | None = None
+    models_dir: str | None = None
     tpot_threshold_ms: float | None = None
     request_rate: str | None = None
     bench_commands: dict | None = None
@@ -176,3 +177,40 @@ def put_params_yaml(framework: str, req: YamlUpdateRequest):
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(content, encoding="utf-8")
     return {"ok": True, "framework": framework, "version": version}
+
+
+# ---------------------------------------------------------------- 内置数据集
+
+@router.get("/datasets")
+def list_builtin_datasets():
+    """返回内置数据集定义 + 缓存状态（Settings → Datasets 面板）。"""
+    from benchscope.builtin_datasets import dataset_status, load_builtin_datasets
+
+    cache_root = state.config.data_dir / "datasets"
+    datasets = load_builtin_datasets()
+    return {
+        "datasets": [
+            {**ds, "status": dataset_status(ds, cache_root)}
+            for ds in datasets
+        ],
+    }
+
+
+class DatasetDownloadRequest(BaseModel):
+    id: str
+
+
+@router.post("/datasets/download")
+def download_dataset(req: DatasetDownloadRequest):
+    """下载内置数据集到 data_dir/datasets/{id}/。"""
+    from benchscope.builtin_datasets import download_builtin_dataset, load_builtin_datasets
+
+    ds = next((d for d in load_builtin_datasets() if d.get("id") == req.id), None)
+    if ds is None:
+        raise HTTPException(status_code=404, detail=f"未知数据集: {req.id}")
+    try:
+        result = download_builtin_dataset(ds, state.config.data_dir)
+    except Exception as e:
+        log.exception("数据集 %s 下载失败", req.id)
+        raise HTTPException(status_code=502, detail=f"下载失败: {e}")
+    return {"ok": True, **result}

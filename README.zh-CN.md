@@ -32,6 +32,10 @@ benchscope
 benchscope --port 8080 --no-browser
 ```
 
+## 开发
+
+见 [docs/Readme.md](docs/Readme.md) 文档。
+
 ## 开源
 
 - **许可证** — [Apache License 2.0](LICENSE)

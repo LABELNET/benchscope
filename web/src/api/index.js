@@ -23,6 +23,8 @@ export const api = {
   getParams: (framework) => http.get(`/api/config/params/${framework}`),
   getParamsYaml: (framework) => http.get(`/api/config/params-yaml/${framework}`),
   saveParamsYaml: (framework, content) => http.put(`/api/config/params-yaml/${framework}`, { content }),
+  getDatasets: () => http.get('/api/config/datasets'),
+  downloadDataset: (id) => http.post('/api/config/datasets/download', { id }),
 
   // 任务
   listTasks: () => http.get('/api/tasks'),

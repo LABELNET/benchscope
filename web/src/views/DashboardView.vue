@@ -179,6 +179,7 @@
 
 <script setup>
 import { computed, onMounted, ref } from 'vue'
+import { useRouter } from 'vue-router'
 import { ReloadOutlined } from '@ant-design/icons-vue'
 import { message } from 'ant-design-vue'
 import { api } from '@/api'
@@ -187,6 +188,7 @@ import { t } from '@/i18n'
 import RunDetailPanel from '@/components/RunDetailPanel.vue'
 
 const config = useConfigStore()
+const router = useRouter()
 
 const dash = '—'
 const loading = ref(false)
@@ -263,7 +265,8 @@ async function loadEnv() {
 }
 
 function onMore() {
-  message.info(t('notImplemented'))
+  // 联动 Datas 页面：Perf/Eval Records 的「更多」跳转到记录管理页
+  router.push('/datas')
 }
 
 function openDetail(runId) {

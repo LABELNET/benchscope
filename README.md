@@ -32,6 +32,10 @@ benchscope
 benchscope --port 8080 --no-browser
 ```
 
+## Development
+
+See [docs/Readme.md](docs/Readme.md).
+
 ## Open Source
 
 - **License** — [Apache License 2.0](LICENSE)

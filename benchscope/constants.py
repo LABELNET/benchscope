@@ -41,6 +41,7 @@ DEFAULT_CONFIG = {
     "logs_dir": "./logs",
     "datasets_dir": "./datasets",
     "data_dir": "~/.benchscope",  # 服务端数据持久化目录（任务 / 会话等）
+    "models_dir": "~/.benchscope/models",  # 模型下载缓存目录
     "tpot_threshold_ms": 100,
     "request_rate": "inf",  # inf 或数字
     "bench_commands": {

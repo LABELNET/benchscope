@@ -88,6 +88,12 @@ class ConfigManager:
         raw = self.get("data_dir", "~/.benchscope")
         return Path(os.path.expanduser(raw)).resolve()
 
+    @property
+    def models_dir(self) -> Path:
+        """模型下载缓存目录，默认 ~/.benchscope/models。"""
+        raw = self.get("models_dir", "~/.benchscope/models")
+        return Path(os.path.expanduser(raw)).resolve()
+
     def set_api(self, patch: dict) -> dict:
         with self._lock:
             api = deepcopy(self._data.setdefault("api", {}))

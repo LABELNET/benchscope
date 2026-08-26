@@ -29,6 +29,7 @@ import {
   MessageOutlined,
   SettingOutlined,
   FundOutlined,
+  DatabaseOutlined,
 } from '@ant-design/icons-vue'
 import StatusBadge from '@/components/StatusBadge.vue'
 import { t } from '@/i18n'
@@ -42,6 +43,7 @@ const activeKey = computed(() => {
   if (path.startsWith('/performance')) return 'performance'
   if (path.startsWith('/accuracy')) return 'accuracy'
   if (path.startsWith('/sessions')) return 'sessions'
+  if (path.startsWith('/datas')) return 'datas'
   if (path.startsWith('/settings')) return 'settings'
   return 'dashboard'
 })
@@ -51,6 +53,7 @@ const menuItems = computed(() => [
   { key: 'performance', icon: () => h(ExperimentOutlined), label: t('performance') },
   { key: 'accuracy', icon: () => h(FundOutlined), label: t('accuracy') },
   { key: 'sessions', icon: () => h(MessageOutlined), label: t('sessions') },
+  { key: 'datas', icon: () => h(DatabaseOutlined), label: t('datas') },
   { key: 'settings', icon: () => h(SettingOutlined), label: t('settings') },
 ])
 

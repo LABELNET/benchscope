@@ -15,6 +15,7 @@ Settings 页面左侧 4 个侧边栏：
 | --- | --- | --- |
 | General | ⚙️ Setting | 2 个面板：Language、Cache Paths |
 | Envs | 🖥️ Desktop | 1 个运行环境面板（环境配置 + 状态 + 编辑/保存/测试连接） |
+| Datasets（1.0.6） | ☁️ CloudDownload | 内置数据集下载面板（见 2.5） |
 | Models | 🗄️ Database | 内置模型下载宫格 + 右侧详情面板 |
 | Plugins | 🔌 Api | 占位（v5.0 预留） |
 
@@ -35,10 +36,21 @@ Settings 页面左侧 4 个侧边栏：
 | --- | --- | --- | --- |
 | Logs Directory | `logs_dir` | `./logs` | 运行日志 / run.json / CSV / xlsx 目录 |
 | Datasets Directory | `datasets_dir` | `./datasets` | ShareGPT 缓存与上传数据集目录 |
-| Data Directory | `data_dir` | `~/.benchscope` | **服务端数据持久化目录**：任务（`data_dir/tasks`）、会话（`data_dir/sessions`） |
+| Data Directory | `data_dir` | `~/.benchscope` | **服务端数据持久化目录**：任务（`data_dir/tasks`）、会话（`data_dir/sessions`）、内置数据集缓存（`data_dir/datasets`） |
+| Model Directory（1.0.6） | `models_dir` | `~/.benchscope/models` | **模型下载缓存目录**（默认统一在 `.benchscope` 下） |
 
 - 输入框失焦（`@change`）即保存，**静默持久化**（无 toast）。
 - 后端 `ConfigManager` 对路径做 `expanduser` + `resolve`。
+
+---
+
+## 2.5 Datasets（内置数据集面板，1.0.6 新增）
+
+- 数据源：`GET /api/config/datasets`（`benchscope/configs/datasets.yaml` 定义 + 缓存状态）
+- 内置数据集：ShareGPT（ModelScope）/ Alpaca / GSM8K / Dolly（HF）
+- 卡片内容：名称 + 缓存状态（已缓存/未缓存）、描述、**访问链接**（新窗口）、**下载命令**（可复制）、**下载按钮**
+- 下载：`POST /api/config/datasets/download`（`{id}`）→ 缓存到 `data_dir/datasets/{id}/`；modelscope 源按文件大小降序选数据文件（排除 `dataset_infos.json` 元数据）
+- 约束：huggingface 源在部分网络环境不可达时下载失败（返回 502）；下载为同步阻塞（大文件耗时较长）
 
 ---
 

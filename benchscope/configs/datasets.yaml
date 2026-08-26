@@ -1,0 +1,40 @@
+# 内置数据集定义（Settings → Datasets 面板）
+# 字段：id / name / description / url（访问链接）/ download（展示用下载命令）
+#       source: type(modelscope|url) + dataset_id/file 或 url（实际下载源，缓存到 data_dir/datasets）
+datasets:
+  - id: sharegpt
+    name: ShareGPT
+    description: ShareGPT 对话数据集（ModelScope 自动下载），用于 ShareGPT 模式基准测试
+    url: https://www.modelscope.cn/datasets/gliang1001/ShareGPT_V3_unfiltered_cleaned_split
+    download: "modelscope download --dataset gliang1001/ShareGPT_V3_unfiltered_cleaned_split --local_dir ./sharegpt"
+    source:
+      type: modelscope
+      dataset_id: gliang1001/ShareGPT_V3_unfiltered_cleaned_split
+      file: .json
+
+  - id: alpaca
+    name: Alpaca
+    description: Stanford Alpaca 指令微调数据集（52K 对话样本），对话格式基准测试
+    url: https://huggingface.co/datasets/tatsu-lab/alpaca
+    download: "huggingface-cli download tatsu-lab/alpaca --repo-type dataset --local-dir ./alpaca"
+    source:
+      type: url
+      url: https://huggingface.co/datasets/tatsu-lab/alpaca/resolve/main/alpaca_data.json
+
+  - id: gsm8k
+    name: GSM8K
+    description: 小学数学推理题数据集（8.5K 训练题），精度/推理能力测试候选
+    url: https://huggingface.co/datasets/openai/gsm8k
+    download: "huggingface-cli download openai/gsm8k --repo-type dataset --local-dir ./gsm8k"
+    source:
+      type: url
+      url: https://huggingface.co/datasets/openai/gsm8k/resolve/main/gsm8k_train.jsonl
+
+  - id: dolly
+    name: Dolly
+    description: Databricks Dolly-15k 指令微调数据集（15K 样本），对话格式基准测试
+    url: https://huggingface.co/datasets/databricks/databricks-dolly-15k
+    download: "huggingface-cli download databricks/databricks-dolly-15k --repo-type dataset --local-dir ./dolly"
+    source:
+      type: url
+      url: https://huggingface.co/datasets/databricks/databricks-dolly-15k/resolve/main/databricks-dolly-15k.jsonl

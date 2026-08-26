@@ -10,6 +10,7 @@ const routes = [
   { path: '/performance/:taskId', redirect: '/performance' },
   { path: '/accuracy', name: 'accuracy', component: () => import('@/views/AccuracyView.vue') },
   { path: '/sessions', name: 'sessions', component: () => import('@/views/SessionsView.vue') },
+  { path: '/datas', name: 'datas', component: () => import('@/views/DatasView.vue') },
   { path: '/settings', name: 'settings', component: () => import('@/views/SettingsView.vue') },
   // 兼容旧路由
   { path: '/vllm', redirect: '/performance' },

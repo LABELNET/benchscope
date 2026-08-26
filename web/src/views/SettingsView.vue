@@ -45,6 +45,10 @@
             </div>
             <a-input v-model:value="form.data_dir" placeholder="~/.benchscope" style="width: 360px" @change="saveField('data_dir')" />
           </div>
+          <div class="panel-row">
+            <span class="panel-label">{{ t('modelsDir') }}</span>
+            <a-input v-model:value="form.models_dir" placeholder="~/.benchscope/models" style="width: 360px" @change="saveField('models_dir')" />
+          </div>
         </a-card>
       </div>
 
@@ -84,6 +88,39 @@
             <a-button :loading="testing" @click="testEnvironment">{{ t('testConnection') }}</a-button>
           </div>
         </a-card>
+      </div>
+
+      <!-- Datasets：内置数据集 -->
+      <div v-if="activeTab === 'datasets'" class="tab-content">
+        <h3 style="margin: 0 0 8px">{{ t('builtinDatasets') }}</h3>
+        <p class="section-desc">{{ t('datasetsHint') }}</p>
+
+        <a-spin :spinning="datasetsLoading">
+          <div v-if="datasets.length" class="ds-list">
+            <div v-for="ds in datasets" :key="ds.id" class="ds-card">
+              <div class="ds-head">
+                <span class="ds-name">{{ ds.name }}</span>
+                <span v-if="ds.status?.cached" class="ds-status cached">{{ t('datasetCached') }}</span>
+                <span v-else class="ds-status">{{ t('datasetNotCached') }}</span>
+              </div>
+              <p class="ds-desc">{{ ds.description }}</p>
+              <div class="ds-row">
+                <span class="ds-label">{{ t('accessLink') }}</span>
+                <a class="ds-link" :href="ds.url" target="_blank" rel="noopener noreferrer">{{ ds.url }}</a>
+              </div>
+              <div class="ds-row column">
+                <span class="ds-label">{{ t('downloadCmd') }}</span>
+                <a-typography-text code copyable class="ds-cmd">{{ ds.download }}</a-typography-text>
+              </div>
+              <div class="ds-footer">
+                <a-button type="primary" size="small" :loading="downloadingId === ds.id" @click="downloadDataset(ds)">
+                  {{ t('download') }}
+                </a-button>
+              </div>
+            </div>
+          </div>
+          <a-empty v-else-if="!datasetsLoading" :description="t('noData')" />
+        </a-spin>
       </div>
 
       <!-- Models：内置模型下载链接宫格 -->
@@ -153,6 +190,7 @@ import { computed, onMounted, reactive, ref } from 'vue'
 import { message } from 'ant-design-vue'
 import {
   SettingOutlined, DesktopOutlined, DatabaseOutlined, ApiOutlined,
+  CloudDownloadOutlined,
 } from '@ant-design/icons-vue'
 import { api } from '@/api'
 import { useConfigStore } from '@/store/config'
@@ -166,12 +204,16 @@ const testing = ref(false)
 const saving = ref(false)
 const drawerOpen = ref(false)
 const selectedModel = ref(null)
+const datasets = ref([])
+const datasetsLoading = ref(false)
+const downloadingId = ref('')
 
 const form = reactive({
   locale: 'en',
   logs_dir: './logs',
   datasets_dir: './datasets',
   data_dir: '~/.benchscope',
+  models_dir: '~/.benchscope/models',
   framework: 'vllm',
   api: { base_url: '', endpoint: '/v1/chat/completions', api_key: '', extra_headers: {} },
 })
@@ -179,6 +221,7 @@ const form = reactive({
 const menuItems = computed(() => [
   { key: 'general', icon: SettingOutlined, label: t('general') },
   { key: 'environment', icon: DesktopOutlined, label: t('environment') },
+  { key: 'datasets', icon: CloudDownloadOutlined, label: t('datasetsTab') },
   { key: 'models', icon: DatabaseOutlined, label: t('modelsTab') },
   { key: 'plugins', icon: ApiOutlined, label: t('plugins') },
 ])
@@ -201,6 +244,7 @@ onMounted(async () => {
       logs_dir: c.logs_dir || './logs',
       datasets_dir: c.datasets_dir || './datasets',
       data_dir: c.data_dir || '~/.benchscope',
+      models_dir: c.models_dir || '~/.benchscope/models',
       framework: c.framework || 'vllm',
       api: {
         base_url: c.api?.base_url || 'http://127.0.0.1:8000',
@@ -209,8 +253,34 @@ onMounted(async () => {
         extra_headers: c.api?.extra_headers || {},
       },
     })
+    loadDatasets()
   } catch { /* ignore */ }
 })
+
+async function loadDatasets() {
+  datasetsLoading.value = true
+  try {
+    const resp = await api.getDatasets()
+    datasets.value = resp.datasets || []
+  } catch {
+    datasets.value = []
+  } finally {
+    datasetsLoading.value = false
+  }
+}
+
+async function downloadDataset(ds) {
+  downloadingId.value = ds.id
+  try {
+    await api.downloadDataset(ds.id)
+    message.success(`${ds.name} ${t('saved')}`)
+    await loadDatasets()
+  } catch (e) {
+    message.error(e.message || t('connectionFail'))
+  } finally {
+    downloadingId.value = ''
+  }
+}
 
 function onLocaleChange() {
   setLocale(form.locale)
@@ -543,5 +613,75 @@ function deployModel() {
 .drawer-footer {
   display: flex;
   justify-content: flex-end;
+}
+
+/* ===== Datasets 内置数据集 ===== */
+.ds-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.ds-card {
+  border: 1px solid var(--ant-color-border, #e8e8e8);
+  border-radius: 10px;
+  padding: 14px 16px;
+  background: var(--ant-color-bg-container, #fff);
+}
+.ds-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 6px;
+}
+.ds-name {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ant-color-text, #333);
+}
+.ds-status {
+  font-size: 11px;
+  color: var(--ant-color-text-tertiary, #999);
+  border: 1px solid var(--ant-color-border-secondary, #d9d9d9);
+  border-radius: 8px;
+  padding: 0 8px;
+  line-height: 18px;
+}
+.ds-status.cached {
+  color: var(--ant-color-success, #52c41a);
+  border-color: #95de64;
+}
+.ds-desc {
+  font-size: 12px;
+  color: var(--ant-color-text-secondary, #666);
+  margin: 0 0 8px;
+}
+.ds-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 4px 0;
+  font-size: 12px;
+}
+.ds-row.column {
+  flex-direction: column;
+  align-items: flex-start;
+}
+.ds-label {
+  color: var(--ant-color-text-tertiary, #999);
+  flex-shrink: 0;
+  min-width: 64px;
+}
+.ds-link {
+  word-break: break-all;
+  font-size: 12px;
+}
+.ds-cmd {
+  font-size: 12px;
+  word-break: break-all;
+}
+.ds-footer {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 8px;
 }
 </style>

@@ -1,7 +1,7 @@
 # benchscope 项目总览 / Project Overview
 
 > **文档状态**：基于现有功能重新生成的项目功能说明（替代原 PROJECTS-README.md）  
-> **关联**：[Roadmap.md](./Roadmap.md)（版本路线）· [README.md](../README.md)（根 README）· [docs/README.md](./README.md)（文档目录）
+> **关联**：[Roadmap.md](./Roadmap.md)（版本路线）· [README.md](../README.md)（根 README）· [docs/Readme.md](./Readme.md)（文档目录）
 
 ---
 

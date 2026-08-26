@@ -16,9 +16,10 @@
 | [prds/Performance.md](prds/Performance.md) | 性能任务执行页：双模式（并发/阈值）、Cases / Realtime / Statistics 面板、唯一组 id、Best/BestPerf 高亮、进度计数 |
 | [prds/Performance-Create.md](prds/Performance-Create.md) | 创建任务子页（`/performance/create`）：三步表单、条件组、参数 YAML、payload 构建 |
 | [prds/Dashboard.md](prds/Dashboard.md) | Dashboard：Overview 六宫格、Envs info 四宫格、Perf/Eval Records 表格 |
+| [prds/Datas.md](prds/Datas.md) | Datas（1.0.6）：Perfs 分页记录 + 最佳记录 + 详情（mean/median/p99）+ 对比分析、Evals 占位 |
 | [prds/Accuracy.md](prds/Accuracy.md) | Accuracy 占位页与 v5.0 规划 |
 | [prds/Sessions.md](prds/Sessions.md) | Sessions：会话管理、SSE 流式、思考解析、性能栏 |
-| [prds/Settings.md](prds/Settings.md) | Settings：General / Envs / Models / Plugins 四栏 |
+| [prds/Settings.md](prds/Settings.md) | Settings：General / Envs / Datasets / Models / Plugins 五栏 |
 
 > 命名规则：`<页面名>.md`；有子页面时 `Sessions-xxx.md` 形式。
 
@@ -28,6 +29,7 @@
 
 | 文档 | 内容 |
 | --- | --- |
+| [versions/VERSION_1_0_6.md](versions/VERSION_1_0_6.md) | **1.0.6（开发中）**：当前迭代版本，后续开发内容按时间顺序追加 |
 | [versions/VERSION_1_0_4.md](versions/VERSION_1_0_4.md) | 1.0.4 规划与 1.0.5 范围定义/收口期文档归档（原 `.trae/` 内容，按时间顺序） |
 | [versions/VERSION_1_0_5.md](versions/VERSION_1_0_5.md) | 1.0.5 版本概述 + 各迭代 PRD 汇总（260824 → 260825 → 260826-1 → 260826-2，按时间顺序）+ TODO |
 
