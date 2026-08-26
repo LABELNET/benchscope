@@ -1,7 +1,7 @@
 """SGLang `python -m sglang.bench_serving` 命令构建。"""
 from __future__ import annotations
 
-from benchscope.benches.base import BenchOptions, ParamDef, build_arg_list
+from benchscope.benches.base import BenchOptions, ParamDef, build_arg_list, normalize_extra_args
 
 FRAMEWORK = "sglang"
 
@@ -57,6 +57,13 @@ def build_command(opts: BenchOptions) -> list[str]:
     for item in _expand_curated(opts):
         if item[0] not in used:
             flags.append(item)
+            used.add(item[0])
+
+    # Step2 编辑的 yaml / extra_args 参数（跳过已存在的 flag 避免重复）
+    for item in normalize_extra_args(opts.extra_args):
+        if item[0] not in used:
+            flags.append(item)
+            used.add(item[0])
 
     return cmd + build_arg_list(flags)
 

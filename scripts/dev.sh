@@ -7,12 +7,13 @@
 #
 # 启动内容：
 #   1. mock OpenAI 推理服务   http://127.0.0.1:8001  （Sessions 对话 / 连接测试）
-#   2. benchscope 后端        http://127.0.0.1:8080  （BENCHSCOPE_FAKE_BENCH=1，
-#                                                      无真实 vLLM/SGLang 也能跑任务）
-#   3. 前端 vite dev server   http://127.0.0.1:5173  （热重载，proxy /api、/ws 到 8080）
+#   2. 前端构建 + benchscope 后端 http://127.0.0.1:8080（统一对外入口：
+#      后端托管 vite build 产物 benchscope/webui，BENCHSCOPE_FAKE_BENCH=1
+#      无真实 vLLM/SGLang 也能跑任务）。前端不单独开 5173 dev server。
 #
-# 环境变量覆盖：OPENAI_PORT（默认 8001）、PORT（后端，默认 8080）；前端固定 5173。
-# 日志：logs/dev/*.log（openai.log / backend.log / vite.log）
+# 每次 start 都会重新执行前端构建（npm run build），确保 8080 上的页面为最新代码。
+# 环境变量覆盖：OPENAI_PORT（默认 8001）、PORT（后端，默认 8080）。
+# 日志：logs/dev/*.log（openai.log / backend.log / build.log）
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -20,17 +21,65 @@ cd "$ROOT"
 
 OPENAI_PORT="${OPENAI_PORT:-8001}"
 BACKEND_PORT="${PORT:-8080}"
-FRONTEND_PORT=5173
 LOG_DIR="$ROOT/logs/dev"
 mkdir -p "$LOG_DIR"
 
 PY="$ROOT/.venv/bin/python"
 [ -x "$PY" ] || PY="${PYTHON:-python3}"
 
-port_up() { lsof -iTCP:"$1" -sTCP:LISTEN -n -P >/dev/null 2>&1; }
+# 环境可能没有 lsof/ss/fuser，统一用 Python 探测端口（bind 失败 = 已被监听）
+port_up() {
+  python3 - "$1" <<'PY'
+import socket, sys
+s = socket.socket()
+s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+try:
+    s.bind(("0.0.0.0", int(sys.argv[1])))
+except OSError:
+    sys.exit(0)   # 已被占用 → UP
+else:
+    s.close()
+    sys.exit(1)   # 空闲 → DOWN
+PY
+}
+
+# 通过 /proc 找到监听指定端口的进程 PID（不依赖 lsof）
+pids_on_port() {
+  python3 - "$1" <<'PY'
+import os, re, sys
+port = int(sys.argv[1])
+hexport = "%04X" % port
+inodes = set()
+for f in ("/proc/net/tcp", "/proc/net/tcp6"):
+    try:
+        with open(f) as fh:
+            for line in fh:
+                parts = line.split()
+                if len(parts) >= 10 and parts[1].endswith(":" + hexport) and parts[3] == "0A":
+                    inodes.add(parts[9])
+    except OSError:
+        pass
+pids = set()
+for pid in os.listdir("/proc"):
+    if not pid.isdigit():
+        continue
+    try:
+        for fd in os.listdir("/proc/%s/fd" % pid):
+            try:
+                tgt = os.readlink("/proc/%s/fd/%s" % (pid, fd))
+            except OSError:
+                continue
+            m = re.match(r"socket:\[(\d+)\]", tgt)
+            if m and m.group(1) in inodes:
+                pids.add(int(pid))
+    except OSError:
+        continue
+print(" ".join(str(p) for p in sorted(pids)))
+PY
+}
 
 status() {
-  for spec in "$OPENAI_PORT:mock OpenAI 服务" "$BACKEND_PORT:benchscope 后端(FAKE)" "$FRONTEND_PORT:前端 vite"; do
+  for spec in "$OPENAI_PORT:mock OpenAI 服务" "$BACKEND_PORT:benchscope 后端 + 前端(统一入口 8080)"; do
     port="${spec%%:*}"; name="${spec#*:}"
     if port_up "$port"; then echo "  [UP]   $name  http://127.0.0.1:$port"; else echo "  [DOWN] $name  http://127.0.0.1:$port"; fi
   done
@@ -38,8 +87,8 @@ status() {
 
 stop() {
   echo "停止服务..."
-  for port in "$OPENAI_PORT" "$BACKEND_PORT" "$FRONTEND_PORT"; do
-    pids="$(lsof -tiTCP:"$port" -sTCP:LISTEN 2>/dev/null || true)"
+  for port in "$OPENAI_PORT" "$BACKEND_PORT"; do
+    pids="$(pids_on_port "$port")"
     if [ -n "$pids" ]; then
       kill $pids 2>/dev/null || true
       echo "  已停止端口 $port (pid: ${pids//$'\n'/ })"
@@ -84,19 +133,28 @@ start_backend() {
   fi
 }
 
-start_frontend() {
-  if port_up "$FRONTEND_PORT"; then
-    echo "  [ok] 前端 vite 已在运行 (http://127.0.0.1:$FRONTEND_PORT)"
-    return 0
-  fi
-  echo "  [..] 启动前端 vite (port $FRONTEND_PORT) ..."
-  nohup npm --prefix "$ROOT/web" run dev >"$LOG_DIR/vite.log" 2>&1 &
-  echo $! >"$LOG_DIR/vite.pid"
-  sleep 3
-  if port_up "$FRONTEND_PORT"; then
-    echo "  [UP]   前端 vite  http://127.0.0.1:$FRONTEND_PORT"
+# 每次 start 前强制重新构建前端（vite build → benchscope/webui），保证 8080 上是最新代码
+build_frontend() {
+  echo "  [..] 编译前端 (npm run build → benchscope/webui) ..."
+  # 优先使用现代 Node（≥18，vite5 要求），并清除 VS Code shim 注入的 NODE_OPTIONS / BASH_ENV
+  local node_bin=""
+  local cand
+  for cand in /root/.workbuddy/binaries/node/versions/*/bin/node "${CODEBUDDY_NODE_BIN:-}"; do
+    [ -z "$cand" ] && continue
+    if [ -x "$cand" ] && "$cand" -e "process.exit(Number(process.versions.node.split('.')[0]) < 18 ? 1 : 0)" 2>/dev/null; then
+      node_bin="$cand"
+      break
+    fi
+  done
+  if [ -n "$node_bin" ]; then
+    env -u NODE_OPTIONS -u BASH_ENV PATH="$(dirname "$node_bin"):$PATH" npm --prefix "$ROOT/web" run build >"$LOG_DIR/build.log" 2>&1
   else
-    echo "  [FAIL] 前端启动失败，见 logs/dev/vite.log"
+    env -u NODE_OPTIONS -u BASH_ENV npm --prefix "$ROOT/web" run build >"$LOG_DIR/build.log" 2>&1
+  fi
+  if [ -d "$ROOT/benchscope/webui/assets" ] && [ -f "$ROOT/benchscope/webui/index.html" ]; then
+    echo "  [ok]  前端编译完成 → benchscope/webui"
+  else
+    echo "  [FAIL] 前端编译失败，见 logs/dev/build.log"
     return 1
   fi
 }
@@ -105,16 +163,15 @@ case "${1:-start}" in
   start)
     echo "========================================================"
     echo "  benchscope 开发 + 模拟环境"
-    echo "  mock OpenAI  : http://127.0.0.1:$OPENAI_PORT"
-    echo "  后端 (FAKE)  : http://127.0.0.1:$BACKEND_PORT"
-    echo "  前端 vite    : http://127.0.0.1:$FRONTEND_PORT"
-    echo "  日志         : logs/dev/*.log"
+    echo "  mock OpenAI : http://127.0.0.1:$OPENAI_PORT"
+    echo "  统一入口    : http://127.0.0.1:$BACKEND_PORT  (前端静态页 + API，每次 start 自动重新编译前端)"
+    echo "  日志        : logs/dev/*.log"
     echo "========================================================"
     start_openai
+    build_frontend
     start_backend
-    start_frontend
     echo
-    echo "  全部就绪 → 浏览器打开 http://127.0.0.1:$FRONTEND_PORT"
+    echo "  全部就绪 → 浏览器打开 http://127.0.0.1:$BACKEND_PORT"
     echo "  Settings → Inference API 的 Base URL 填 http://127.0.0.1:$OPENAI_PORT 即可联调"
     ;;
   stop) stop ;;

@@ -12,7 +12,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
-from benchscope.benches.base import BenchOptions
+from benchscope.benches.base import BenchOptions, merge_extra_args
 from benchscope.benches.runner import BenchRunner, StopRequested
 from benchscope.benches import sglang_bench, vllm_bench
 from benchscope.constants import (
@@ -89,6 +89,8 @@ class TestRun:
             "concurrency_list": self.payload.get("concurrency_list", []),
             "request_rate": self.payload.get("request_rate", "inf"),
             "tpot_threshold_ms": self.payload.get("tpot_threshold_ms"),
+            "output_throughput_threshold": self.payload.get("output_throughput_threshold", 0),
+            "mode": self.payload.get("mode", "concurrency"),
             "dataset": self.payload.get("dataset", {}),
         }
         if include_rows:
@@ -118,12 +120,20 @@ def build_single_command(
 
 
 def build_command_lines(payload: dict, config) -> list[dict]:
-    """为 payload 中的所有用例×并发构建命令列表（预览用）。"""
+    """为 payload 中的所有用例×并发构建命令列表（预览用）。
+
+    阈值模式（mode=threshold）下并发由策略动态决定，预览仅给出从 1 并发开始的
+    首条命令；Step2「性能参数」编辑的 yaml 参数会以 --key=value 形式附加到命令。
+    """
     framework = payload.get("framework", "vllm")
     model = payload.get("model", "")
     tokenizer = payload.get("tokenizer", "")
     dataset = dict(payload.get("dataset", {}))
     cases = build_cases(dataset, model)
+    mode = payload.get("mode", "concurrency")
+    conc_list = payload.get("concurrency_list", [])
+    if mode == "threshold":
+        conc_list = conc_list[:1] or [1]  # 阈值模式：预览从 1 并发开始
     lines = []
     for case in cases:
         ds = dict(dataset)
@@ -132,13 +142,14 @@ def build_command_lines(payload: dict, config) -> list[dict]:
             "output_len": case.get("output_len"),
             "path": case.get("path"),
         })
-        for conc in payload.get("concurrency_list", []):
+        for conc in conc_list:
             if conc == "inf" or conc is None:
                 continue
             cmd = build_single_command(
                 framework, model, tokenizer, dict(config.api), ds,
                 int(conc), payload.get("request_rate", "inf"),
-                payload.get("curated", {}), payload.get("extra_args", []),
+                payload.get("curated", {}),
+                merge_extra_args(payload, payload.get("extra_args", [])),
             )
             lines.append({"case": case["label"], "concurrency": int(conc), "cmd": " ".join(cmd)})
     return lines

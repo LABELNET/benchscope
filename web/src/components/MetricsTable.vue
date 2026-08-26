@@ -2,16 +2,23 @@
   <div class="metrics-table">
     <a-table
       :columns="visibleColumns"
-      :data-source="cappedRows"
+      :data-source="tableData"
       :row-key="rowKey"
       :pagination="false"
       size="small"
-      :scroll="{ y: 16 * 28 + 36, x: tableWidth }"
+      :scroll="{ y: scrollY, x: tableWidth }"
       :row-class-name="rowClass"
       bordered
     >
       <template #bodyCell="{ column, record }">
-        <template v-if="column.key === 'label'">
+        <template v-if="record.group">
+          <span v-if="column.key === 'label'" class="group-title">
+            <span class="group-label">{{ record.label }}</span>
+            <span class="group-count">{{ record.groupCount }} {{ t('rows') }}</span>
+          </span>
+          <template v-else></template>
+        </template>
+        <template v-else-if="column.key === 'label'">
           {{ record.label }}
           <span v-if="record.input_len" class="case-meta">({{ record.input_len }}/{{ record.output_len }})</span>
         </template>
@@ -24,11 +31,15 @@
         <template v-else-if="column.key === 'successful'">
           {{ successRate(record) }}
         </template>
+        <template v-else-if="column.key === 'output_mean'">
+          <span :class="{ 'pass-val': outputPass(record) }">{{ num(record.metrics?.output_mean) }}</span>
+        </template>
         <template v-else-if="column.key === 'status'">
           <span class="status-tags">
             <a-tag v-if="record.error" color="red" size="small">{{ t('failed') }}</a-tag>
             <template v-else>
               <a-tag color="green" size="small">{{ t('success') }}</a-tag>
+              <a-tag v-if="record.bestPerf" color="gold" size="small">{{ t('bestPerf') }}</a-tag>
               <a-tag v-if="record.best" color="gold" size="small">{{ t('best') }}</a-tag>
             </template>
           </span>
@@ -37,31 +48,39 @@
     </a-table>
     <div class="table-footer">
       <span class="row-count">{{ rows.length }} {{ t('rows') }}</span>
-      <a-dropdown :trigger="['click']">
-        <a-button size="small" type="text">
-          <template #icon><setting-outlined /></template>
-          {{ t('columnSettings') }}
+      <div class="footer-actions">
+        <a-dropdown :trigger="['click']">
+          <a-button size="small" type="text">
+            <template #icon><setting-outlined /></template>
+            {{ t('columnSettings') }}
+          </a-button>
+          <template #overlay>
+            <a-menu>
+              <a-menu-item-group v-for="grp in columnGroups" :key="grp.group" :title="grp.label">
+                <a-menu-item v-for="col in grp.items" :key="col.key">
+                  <a-checkbox
+                    :checked="visibleKeys.includes(col.key)"
+                    @change="(e) => toggleCol(col.key, e.target.checked)"
+                  >{{ col.title }}</a-checkbox>
+                </a-menu-item>
+              </a-menu-item-group>
+            </a-menu>
+          </template>
+        </a-dropdown>
+        <a-button v-if="exportable" size="small" type="text" :loading="exporting" @click="exportExcel">
+          <template #icon><download-outlined /></template>
+          {{ t('download') }}
         </a-button>
-        <template #overlay>
-          <a-menu>
-            <a-menu-item-group v-for="grp in columnGroups" :key="grp.group" :title="grp.label">
-              <a-menu-item v-for="col in grp.items" :key="col.key">
-                <a-checkbox
-                  :checked="visibleKeys.includes(col.key)"
-                  @change="(e) => toggleCol(col.key, e.target.checked)"
-                >{{ col.title }}</a-checkbox>
-              </a-menu-item>
-            </a-menu-item-group>
-          </a-menu>
-        </template>
-      </a-dropdown>
+      </div>
     </div>
   </div>
 </template>
 
 <script setup>
 import { computed, ref } from 'vue'
-import { SettingOutlined } from '@ant-design/icons-vue'
+import { DownloadOutlined, SettingOutlined } from '@ant-design/icons-vue'
+import { message } from 'ant-design-vue'
+import http from '@/api'
 import { t } from '@/i18n'
 
 const props = defineProps({
@@ -69,12 +88,19 @@ const props = defineProps({
   threshold: { type: Number, default: null },
   requestRate: { type: [String, Number], default: 'inf' },
   maxRows: { type: Number, default: 16 },
+  // Output Token Threshold：output_mean 达到该值即金色高亮（与任务阈值独立）
+  outputThreshold: { type: Number, default: null },
+  // 按该字段分组显示：每个组插入一行组标题；组内数据保持传入顺序
+  groupBy: { type: String, default: null },
+  // 导出 Excel：需要任务 ID（写入任务记录缓存目录）；exportable 控制下载按钮显示
+  taskId: { type: String, default: '' },
+  exportable: { type: Boolean, default: false },
 })
 
 // 列定义：key + title + 数据路径 + 默认可见
 const ALL_COLUMNS = computed(() => [
   // 任务相关
-  { key: 'label', title: t('caseCol'), group: 'task', width: 90, fixed: 'left', default: true },
+  { key: 'label', title: t('caseCol'), group: 'task', width: 150, fixed: 'left', default: true },
   { key: 'requests', title: t('requestsCol'), group: 'task', width: 80, default: true },
   { key: 'concurrency', title: t('concurrencyCol'), group: 'task', width: 90, default: true },
   { key: 'successful', title: t('successfulCol'), group: 'task', width: 90, default: true },
@@ -102,7 +128,7 @@ const ALL_COLUMNS = computed(() => [
   { key: 'itl_median', title: t('medianItlCol'), group: 'itl', width: 120, default: false },
   { key: 'itl_p99', title: t('p99ItlCol'), group: 'itl', width: 100, default: false },
   // 状态
-  { key: 'status', title: t('statusCol'), group: 'task', width: 80, fixed: 'right', default: true },
+  { key: 'status', title: t('statusCol'), group: 'task', width: 180, fixed: 'right', default: true },
 ])
 
 const visibleKeys = ref(ALL_COLUMNS.value.filter((c) => c.default).map((c) => c.key))
@@ -148,8 +174,30 @@ const columnGroups = computed(() => {
 
 const tableWidth = computed(() => visibleColumns.value.reduce((sum, c) => sum + (c.width || 80), 0))
 
-// 仅显示前 maxRows 行（竖向滚动由表格内部 scroll.y 处理）
-const cappedRows = computed(() => props.rows.slice(0, props.maxRows))
+// 表格数据：默认仅显示前 maxRows 行；分组模式下按 groupBy 分组，每组前插入一行组标题（扁平结构，避免触发树形缩进）
+const tableData = computed(() => {
+  if (!props.groupBy) return props.rows.slice(0, props.maxRows)
+  const map = new Map()
+  for (const r of props.rows) {
+    const key = String(r[props.groupBy] ?? '-')
+    if (!map.has(key)) map.set(key, [])
+    map.get(key).push(r)
+  }
+  const out = []
+  for (const [label, items] of map.entries()) {
+    out.push({ key: `group-${label}`, group: true, label, groupCount: items.length })
+    out.push(...items.slice(0, props.maxRows))
+  }
+  return out
+})
+
+// 竖向滚动高度：分组模式按总行数（含组标题行）动态计算，最多 24 行
+const scrollY = computed(() => {
+  if (!props.groupBy) return 16 * 28 + 36
+  const groups = new Set(props.rows.map((r) => String(r[props.groupBy] ?? '-'))).size
+  const n = Math.min(props.rows.length + groups, 24)
+  return n * 28 + 36
+})
 
 function num(v) {
   if (v === undefined || v === null || v === '') return '-'
@@ -178,17 +226,89 @@ function successRate(record) {
   }
   const total = Number(ok) + Number(fail)
   if (!total) return '-'
-  return ((Number(ok) / total) * 100).toFixed(2) + '%'
+  return Math.round((Number(ok) / total) * 100) + '%'
+}
+
+// Output Token Threshold 达标：output_mean <= 阈值（阈值未设置或非正数时无效）
+function outputPass(record) {
+  const thr = props.outputThreshold
+  if (thr == null || Number(thr) <= 0) return false
+  const v = record.metrics?.output_mean
+  if (v === undefined || v === null) return false
+  const n = Number(v)
+  return !isNaN(n) && n <= Number(thr)
 }
 
 function rowKey(record) {
+  if (record.group) return record.key
   return `${record.label || record.case || ''}-${record.concurrency}`
 }
 
 function rowClass(record) {
-  // 仅 Best 行高亮绿色,其他行均为默认灰底黑字
+  // 组标题行
+  if (record.group) return 'row-group'
+  // BestPerf（任务阈值）行金色高亮；Best（本地面板阈值）行绿色高亮
+  if (record.bestPerf) return 'row-bestperf'
   if (record.best) return 'row-best'
   return ''
+}
+
+// 导出 Excel：将当前表格内容（含分组标题行）发送后端生成 xlsx 并下载，同时写入任务记录缓存目录
+const exporting = ref(false)
+
+function cellText(key, record) {
+  switch (key) {
+    case 'label':
+      if (record.group) return record.label
+      return record.input_len ? `${record.label} (${record.input_len}/${record.output_len})` : record.label
+    case 'requests':
+      return String(record.concurrency)
+    case 'concurrency':
+      return concurrencyText(record)
+    case 'successful':
+      return successRate(record)
+    case 'status': {
+      if (record.error) return t('failed')
+      let s = t('success')
+      if (record.bestPerf) s += ' ' + t('bestPerf')
+      if (record.best) s += ' ' + t('best')
+      return s
+    }
+    default:
+      return num(record.metrics?.[key])
+  }
+}
+
+async function exportExcel() {
+  if (!props.taskId) {
+    message.warning(t('noTask'))
+    return
+  }
+  exporting.value = true
+  try {
+    const headers = visibleColumns.value.map((c) => c.title)
+    const rows = tableData.value.map((r) => ({
+      group: !!r.group,
+      values: visibleColumns.value.map((c) => cellText(c.key, r)),
+    }))
+    const blob = await http.post(`/api/tasks/${props.taskId}/export`, { headers, rows }, { responseType: 'blob' })
+    const d = new Date()
+    const pad = (n) => String(n).padStart(2, '0')
+    const fname = `realtime_${props.taskId}_${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}.xlsx`
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = fname
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    URL.revokeObjectURL(url)
+    message.success(t('exported'))
+  } catch (e) {
+    message.error(e?.message || t('exportFailed'))
+  } finally {
+    exporting.value = false
+  }
 }
 </script>
 
@@ -215,6 +335,11 @@ function rowClass(record) {
 .metrics-table .num-cell {
   font-weight: 600;
 }
+/* Output Token Threshold 达标值：金色高亮 */
+.metrics-table .pass-val {
+  color: #faad14;
+  font-weight: 600;
+}
 .metrics-table .status-tags {
   display: inline-flex;
   align-items: center;
@@ -225,6 +350,30 @@ function rowClass(record) {
   color: #999;
   font-size: 11px;
   margin-left: 4px;
+}
+/* 组标题行：横跨的分组条 */
+.metrics-table .group-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.metrics-table .group-label {
+  font-weight: 600;
+  color: #1677ff;
+}
+.metrics-table .group-count {
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--ant-color-text-secondary, #666);
+}
+.metrics-table .row-group > td {
+  background-color: #e6f4ff !important;
+  color: #000;
+  font-weight: 600;
+  border-bottom: 1px solid #91caff !important;
+}
+.metrics-table .row-group:hover > td {
+  background-color: #bae0ff !important;
 }
 /* 仅 Best 行高亮绿色,其他行默认灰底黑字 */
 .metrics-table .ant-table-tbody > tr > td {
@@ -241,12 +390,24 @@ function rowClass(record) {
 .metrics-table .row-best:hover > td {
   background-color: #c5e8ad !important;
 }
+.metrics-table .row-bestperf > td {
+  background-color: #fff1b8 !important;
+  color: #000;
+}
+.metrics-table .row-bestperf:hover > td {
+  background-color: #ffe58f !important;
+}
 .metrics-table .table-footer {
   display: flex;
   justify-content: space-between;
   align-items: center;
   padding: 4px 4px 0;
   margin-top: 4px;
+}
+.metrics-table .footer-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
 }
 .metrics-table .row-count {
   font-size: 11px;

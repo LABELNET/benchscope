@@ -99,3 +99,80 @@ def get_params(framework: str):
     else:
         raise HTTPException(status_code=404, detail="未知框架")
     return {"framework": framework, "params": [p.__dict__ for p in CURATED_PARAMS]}
+
+
+# ---------------------------------------------------------------------------
+# 框架默认参数 yaml（创建 Perf 任务 Step2「性能参数」面板读取/保存）
+#   benchscope/configs/vllm-default.yaml / sglang-default.yaml
+#   第一行固定为版本号：version: <Framework> <Version>
+# ---------------------------------------------------------------------------
+from pathlib import Path
+
+_CONFIGS_DIR = Path(__file__).resolve().parent.parent / "configs"
+
+
+def _params_yaml_path(framework: str) -> Path | None:
+    if framework not in ("vllm", "sglang"):
+        return None
+    return _CONFIGS_DIR / f"{framework}-default.yaml"
+
+
+def _parse_yaml(content: str) -> tuple[list[dict], str]:
+    """逐行解析 yaml 为 {key, value}（重复 key 只保留最后一个），version 单独返回。"""
+    lines: list[dict] = []
+    version = ""
+    seen: dict[str, int] = {}
+    for ln in (content or "").splitlines():
+        s = ln.strip()
+        if not s or s.startswith("#"):
+            continue
+        if ":" not in s:
+            continue
+        k, v = s.split(":", 1)
+        k, v = k.strip(), v.strip()
+        if k == "version":
+            version = v
+            continue
+        if k in seen:
+            lines[seen[k]]["value"] = v  # 重复 key 用最后一个值
+            continue
+        seen[k] = len(lines)
+        lines.append({"key": k, "value": v})
+    return lines, version
+
+
+@router.get("/params-yaml/{framework}")
+def get_params_yaml(framework: str):
+    """读取框架默认参数 yaml，逐行解析为 {key, value}，version 单独返回（自动去重）。"""
+    path = _params_yaml_path(framework)
+    if path is None or not path.exists():
+        raise HTTPException(status_code=404, detail=f"参数文件不存在: {framework}")
+    content = path.read_text(encoding="utf-8")
+    lines, version = _parse_yaml(content)
+    return {"framework": framework, "version": version, "content": content, "lines": lines}
+
+
+class YamlUpdateRequest(BaseModel):
+    content: str
+
+
+@router.put("/params-yaml/{framework}")
+def put_params_yaml(framework: str, req: YamlUpdateRequest):
+    """写回框架默认参数 yaml（Step2 编辑保存后，变更参数进入后续步骤）。
+
+    写回前自动去重：version 仅保留一次并置于首行，其余 key 保留最后一个值。
+    """
+    path = _params_yaml_path(framework)
+    if path is None:
+        raise HTTPException(status_code=404, detail=f"未知框架: {framework}")
+    lines, version = _parse_yaml(req.content)
+    if version:
+        content = f"version: {version}\n"
+    else:
+        content = ""
+    content += "\n".join(f"{ln['key']}: {ln['value']}" for ln in lines)
+    if content and not content.endswith("\n"):
+        content += "\n"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(content, encoding="utf-8")
+    return {"ok": True, "framework": framework, "version": version}

@@ -11,7 +11,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
-from benchscope.benches.base import BenchOptions
+from benchscope.benches.base import BenchOptions, merge_extra_args
 from benchscope.benches.runner import BenchRunner, StopRequested
 from benchscope.benches import sglang_bench, vllm_bench
 from benchscope.constants import DATASET_RANDOM, DATASET_SHAREGPT, FRAMEWORK_NAMES
@@ -91,6 +91,8 @@ class Task:
             "concurrency_list": self.payload.get("concurrency_list", []),
             "request_rate": self.payload.get("request_rate", "inf"),
             "tpot_threshold_ms": self.payload.get("tpot_threshold_ms"),
+            "mode": self.payload.get("mode", "concurrency"),
+            "output_throughput_threshold": self.payload.get("output_throughput_threshold", 0),
             "dataset": self.payload.get("dataset", {}),
         }
         if include_rows:
@@ -281,37 +283,34 @@ class TaskManager:
             self.hub.broadcast({"type": "task_started", "task_id": task.task_id, "task": task.snapshot()})
             task.persist_run_json()  # 任务开始：写 run.json（status=running）
             cases_done = 0
+            mode = task.payload.get("mode", "concurrency")
             for case in task.cases:
                 if runner._stop_flag.is_set():
                     break
                 case_label = case["label"]
                 detail_path = task.run_dir / f"{model_name}_{case_label}_X{gpu_count}.log"
                 detail_fp = open(detail_path, "a", encoding="utf-8")
-                concurrency_ok = 0
-                for conc in task.payload.get("concurrency_list", []):
-                    if runner._stop_flag.is_set():
-                        break
-                    if conc == "inf" or conc is None:
-                        continue
-                    conc = int(conc)
-                    try:
-                        row = self._run_one(runner, task, case, conc, detail_fp, full_log_fp, meta)
-                        task.rows.append(row)
-                        concurrency_ok += 1
-                        write_summary_csv(mean_csv, [row], p99=False, append=True, case_header=concurrency_ok == 1, case=case, meta=meta)
-                        write_summary_csv(p99_csv, [row], p99=True, append=True, case_header=concurrency_ok == 1, case=case, meta=meta)
-                        task.persist()
-                        task.persist_run_json()  # 每完成一个并发：刷新 run.json
-                        self.hub.broadcast({"type": "task_result", "task_id": task.task_id, "row": row})
-                    except StopRequested:
-                        break
-                    except Exception as e:
-                        log.exception("Concurrency %s failed", conc)
-                        err_row = {"case": case_label, "label": case_label, "input_len": case.get("input_len"), "output_len": case.get("output_len"), "concurrency": conc, "error": str(e)[:500]}
-                        task.rows.append(err_row)
-                        task.persist()
-                        task.persist_run_json()  # 每完成一个并发：刷新 run.json
-                        self.hub.broadcast({"type": "task_result", "task_id": task.task_id, "row": err_row})
+                if mode == "threshold":
+                    self._execute_case_threshold(runner, task, case, detail_fp, full_log_fp, mean_csv, p99_csv, meta)
+                else:
+                    concurrency_ok = 0
+                    for conc in task.payload.get("concurrency_list", []):
+                        if runner._stop_flag.is_set():
+                            break
+                        if conc == "inf" or conc is None:
+                            continue
+                        conc = int(conc)
+                        try:
+                            row = self._run_one(runner, task, case, conc, detail_fp, full_log_fp, meta)
+                            self._record_row(task, row, mean_csv, p99_csv, case, meta, concurrency_ok == 0)
+                            concurrency_ok += 1
+                        except StopRequested:
+                            break
+                        except Exception as e:
+                            log.exception("Concurrency %s failed", conc)
+                            err_row = {"case": case_label, "label": case_label, "input_len": case.get("input_len"), "output_len": case.get("output_len"), "concurrency": conc, "error": str(e)[:500]}
+                            self._record_row(task, err_row, mean_csv, p99_csv, case, meta, concurrency_ok == 0)
+                            concurrency_ok += 1
                 detail_fp.close()
                 cases_done += 1
 
@@ -357,7 +356,8 @@ class TaskManager:
             task.framework, task.model, task.payload.get("tokenizer", ""),
             dict(self.config.api), ds, concurrency,
             task.payload.get("request_rate", "inf"),
-            task.payload.get("curated", {}), task.payload.get("extra_args", []),
+            task.payload.get("curated", {}),
+            merge_extra_args(task.payload, task.payload.get("extra_args", [])),
         )
 
         def stream(line: str):
@@ -373,6 +373,105 @@ class TaskManager:
             "input_len": case.get("input_len"), "output_len": case.get("output_len"),
             "concurrency": concurrency, "cmd": " ".join(cmd), "metrics": metrics,
         }
+
+    def _record_row(self, task, row, mean_csv, p99_csv, case, meta, case_header):
+        """记录一行结果：追加 rows、写 CSV、持久化、广播 task_result。"""
+        task.rows.append(row)
+        write_summary_csv(mean_csv, [row], p99=False, append=True, case_header=case_header, case=case, meta=meta)
+        write_summary_csv(p99_csv, [row], p99=True, append=True, case_header=case_header, case=case, meta=meta)
+        task.persist()
+        task.persist_run_json()  # 每完成一个并发：刷新 run.json
+        self.hub.broadcast({"type": "task_result", "task_id": task.task_id, "row": row})
+
+    def _execute_case_threshold(self, runner, task, case, detail_fp, full_log_fp, mean_csv, p99_csv, meta):
+        """阈值模式执行策略（对单个 case）：
+
+        1. 从 1 并发开始执行，以 2 的次方递增（1,2,4,8,...）寻找超阈值点；
+        2. 若 1 并发已超阈值 → 1 并发为最佳，结束（情景1）；
+        3. 若执行到 hi=2^k 超阈值（lo=2^(k-1) 满足）→ 在 (lo, hi] 内二分，
+           每次测试 (lo+hi)/2 取整，直到 lo+1 == hi，lo 即为满足阈值的最大并发；
+        4. 若达到上限仍满足 → 上限并发为最佳。
+        已测试的并发会动态追加到 payload.concurrency_list 并广播 task_snapshot，
+        前端进度（done/total）随执行实时增长。
+        """
+        payload = task.payload
+        try:
+            tpot_thr = float(payload.get("tpot_threshold_ms")) if payload.get("tpot_threshold_ms") not in (None, "") else 0.0
+        except (TypeError, ValueError):
+            tpot_thr = 0.0
+        try:
+            out_thr = float(payload.get("output_throughput_threshold") or 0)
+        except (TypeError, ValueError):
+            out_thr = 0.0
+        max_conc = int(payload.get("max_concurrency_search") or 4096)
+        rows_in_case = 0
+
+        def violated(row) -> bool:
+            m = row.get("metrics") or {}
+            if tpot_thr > 0 and m.get("tpot_mean") is not None:
+                try:
+                    if float(m["tpot_mean"]) > tpot_thr:
+                        return True
+                except (TypeError, ValueError):
+                    pass
+            if out_thr > 0 and m.get("output") is not None:
+                try:
+                    if float(m["output"]) > out_thr:
+                        return True
+                except (TypeError, ValueError):
+                    pass
+            return False
+
+        def push_conc(conc):
+            clist = payload.setdefault("concurrency_list", [])
+            if conc not in clist:
+                clist.append(conc)
+                task.persist()
+                task.persist_run_json()
+                self.hub.broadcast({"type": "task_snapshot", "task_id": task.task_id, "task": task.snapshot()})
+
+        def run_conc(conc):
+            nonlocal rows_in_case
+            conc = int(conc)
+            push_conc(conc)
+            try:
+                row = self._run_one(runner, task, case, conc, detail_fp, full_log_fp, meta)
+            except StopRequested:
+                raise
+            except Exception as e:
+                log.exception("Threshold concurrency %s failed", conc)
+                row = {"case": case["label"], "label": case["label"], "input_len": case.get("input_len"),
+                       "output_len": case.get("output_len"), "concurrency": conc, "error": str(e)[:500]}
+                self._record_row(task, row, mean_csv, p99_csv, case, meta, rows_in_case == 0)
+                rows_in_case += 1
+                return row  # 失败不视为违反阈值，继续向上探测
+            self._record_row(task, row, mean_csv, p99_csv, case, meta, rows_in_case == 0)
+            rows_in_case += 1
+            return row
+
+        # 从 1 并发开始
+        if runner._stop_flag.is_set():
+            return
+        lo = 1
+        row = run_conc(lo)
+        if violated(row):
+            return  # 情景1：1 并发已超阈值，最佳并发为 1
+        # 2 的次方递增
+        while not runner._stop_flag.is_set() and lo * 2 <= max_conc:
+            hi = lo * 2
+            row = run_conc(hi)
+            if violated(row):
+                # 二分 (lo, hi]：lo 满足阈值，hi 超阈值
+                while not runner._stop_flag.is_set() and hi - lo > 1:
+                    mid = (lo + hi) // 2
+                    row = run_conc(mid)
+                    if violated(row):
+                        hi = mid
+                    else:
+                        lo = mid
+                return
+            lo = hi
+        # 到达上限仍满足 → 上限为最佳
 
     def _annotate_best(self, rows, threshold):
         if threshold is None:

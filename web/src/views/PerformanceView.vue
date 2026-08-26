@@ -13,10 +13,16 @@
             </span>
           </template>
           <template #extra>
-            <a-button type="primary" size="large" @click="createModalOpen = true">
-              <template #icon><play-circle-outlined /></template>
-              {{ t('startTest') }}
-            </a-button>
+            <a-space size="middle">
+              <a-button type="primary" size="large" @click="goCreate('concurrency')">
+                <template #icon><play-circle-outlined /></template>
+                {{ t('concurrencyMode') }}
+              </a-button>
+              <a-button type="primary" size="large" ghost @click="goCreate('threshold')">
+                <template #icon><dashboard-outlined /></template>
+                {{ t('thresholdMode') }}
+              </a-button>
+            </a-space>
           </template>
         </a-result>
         <div class="features">
@@ -48,8 +54,6 @@
           <template #title>
             <div class="panel-title-left">
               <span class="title-text">Perf</span>
-              <span class="title-sep">|</span>
-              <span class="panel-title-model" :title="theTask.model">{{ theTask.model }}</span>
             </div>
           </template>
           <template #extra>
@@ -75,6 +79,10 @@
               <span class="info-label">{{ t('framework') }}</span>
               <span class="info-value">{{ theTask.framework_name || theTask.framework }}</span>
             </div>
+            <div class="info-row">
+              <span class="info-label">{{ t('modeLabel') }}</span>
+              <span class="info-value">{{ theTask.mode === 'threshold' ? t('thresholdMode') : t('concurrencyMode') }}</span>
+            </div>
             <div class="info-row" v-if="theTask.precision">
               <span class="info-label">{{ t('precision') }}</span>
               <span class="info-value">{{ theTask.precision }}</span>
@@ -83,13 +91,9 @@
               <span class="info-label">{{ t('dataset') }}</span>
               <span class="info-value">{{ datasetText }}</span>
             </div>
-            <div class="info-row" v-if="theTask.concurrency_list?.length">
-              <span class="info-label">{{ t('concurrency') }}</span>
-              <span class="info-value">{{ theTask.concurrency_list.join(', ') }}</span>
-            </div>
-            <div class="info-row" v-if="theTask.request_rate && theTask.request_rate !== 'inf'">
-              <span class="info-label">{{ t('requestRateLabel') }}</span>
-              <span class="info-value">{{ theTask.request_rate }}</span>
+            <div class="info-row">
+              <span class="info-label">{{ t('concurrencyCol') }}</span>
+              <span class="info-value">{{ concurrencyDisplay }}</span>
             </div>
             <div class="info-row">
               <span class="info-label">{{ t('serviceStatus') }}</span>
@@ -115,17 +119,46 @@
         <!-- Cases 面板：显示并发 case 列表 (1K1K 等) -->
         <a-card size="small" class="cases-panel" :body-style="{ padding: '10px 14px', display: 'flex', flexDirection: 'column', flex: '1', minHeight: '0' }">
           <template #title>{{ t('casesPanelTitle') }}</template>
+          <template #extra>
+            <span class="cases-mode">{{ theTask.mode === 'threshold' ? t('thresholdMode') : t('concurrencyMode') }}</span>
+          </template>
           <div class="cases-body">
+            <!-- 阈值模式：显示任务阈值条件（TTOT mean(ms) ≤ x ms；Output token throughput ≤ y tok/s；仅文字，不可编辑，并发模式不显示） -->
+            <div v-if="theTask.mode === 'threshold'" class="threshold-conds">
+              <div class="info-row">
+                <span class="info-label">{{ t('tpotCondLabel') }} ≤</span>
+                <span class="info-value">{{ theTask.tpot_threshold_ms || '-' }}ms</span>
+              </div>
+              <div class="info-row" v-if="theTask.output_throughput_threshold">
+                <span class="info-label">{{ t('outputCondLabel') }} ≤</span>
+                <span class="info-value">{{ theTask.output_throughput_threshold }} tok/s</span>
+              </div>
+            </div>
             <div v-for="(c, i) in theTask.cases || []" :key="i" class="case-row">
               <span class="case-label">{{ c.label }}</span>
               <span class="case-meta" v-if="c.input_len">{{ c.input_len }}/{{ c.output_len }}</span>
               <span class="case-tags">
-                <a-tag
-                  v-for="conc in theTask.concurrency_list || []"
-                  :key="conc"
-                  :color="caseConcDone(c.label, conc) ? 'green' : caseConcRunning(c.label, conc) ? 'processing' : 'default'"
-                  size="small"
-                >{{ conc }}</a-tag>
+                <!-- 阈值模式：已执行/执行中的 case 显示完整请求数列表（当前测试的标蓝、已完成标绿），未执行显示 Pending -->
+                <template v-if="theTask.mode === 'threshold'">
+                  <template v-if="caseTestedTags(c.label).length">
+                    <a-tag
+                      v-for="tt in caseTestedTags(c.label)"
+                      :key="tt.conc"
+                      :color="tt.running ? 'processing' : 'green'"
+                      size="small"
+                    >{{ tt.conc }}</a-tag>
+                  </template>
+                  <a-tag v-else color="default" size="small">{{ t('pending') }}</a-tag>
+                </template>
+                <!-- 并发模式：显示全部请求数 -->
+                <template v-else>
+                  <a-tag
+                    v-for="conc in sortedConcurrency"
+                    :key="conc"
+                    :color="caseConcColor(c.label, conc)"
+                    size="small"
+                  >{{ conc }}</a-tag>
+                </template>
               </span>
             </div>
             <div v-if="!theTask.cases?.length" class="empty-hint">{{ t('noData') }}</div>
@@ -159,17 +192,35 @@
             <span class="rt-threshold">
               <span class="info-label">{{ t('tpotThresholdLabel') }}</span>
               <a-input-number
-                v-if="thresholdEditing"
-                v-model:value="thresholdInput"
+                v-if="tpotThresholdEditing"
+                v-model:value="tpotThresholdInput"
                 size="small"
                 :step="10"
-                :min="1"
+                :min="0"
+                :precision="0"
                 style="width: 90px"
-                @blur="saveThreshold"
-                @press-enter="saveThreshold"
+                @blur="saveTpotThreshold"
+                @press-enter="saveTpotThreshold"
               />
-              <span v-else class="threshold-value" @click="editThreshold">
-                {{ theTask.tpot_threshold_ms || '-' }}ms
+              <span v-else class="threshold-value" @click="editTpotThreshold">
+                {{ effectiveTpotThreshold }}ms
+              </span>
+            </span>
+            <span class="rt-threshold">
+              <span class="info-label">{{ t('outputTokenThresholdLabel') }}</span>
+              <a-input-number
+                v-if="outputThresholdEditing"
+                v-model:value="outputThresholdInput"
+                size="small"
+                :step="50"
+                :min="0"
+                :precision="0"
+                style="width: 90px"
+                @blur="saveOutputThreshold"
+                @press-enter="saveOutputThreshold"
+              />
+              <span v-else class="threshold-value" @click="editOutputThreshold">
+                {{ effectiveOutputThreshold }} tok/s
               </span>
             </span>
           </div>
@@ -178,6 +229,10 @@
           :rows="annotatedRows"
           :threshold="theTask.tpot_threshold_ms"
           :request-rate="theTask.request_rate || 'inf'"
+          :output-threshold="effectiveOutputThreshold"
+          group-by="label"
+          :task-id="taskId"
+          exportable
         />
       </a-card>
 
@@ -188,17 +243,6 @@
       </a-card>
     </div>
 
-    <!-- 创建任务 Modal -->
-    <a-modal
-      v-model:open="createModalOpen"
-      :title="t('newTask')"
-      width="300"
-      :footer="null"
-      :mask-closable="false"
-      destroy-on-close
-    >
-      <TaskCreateForm @created="onCreated" @cancel="createModalOpen = false" />
-    </a-modal>
   </div>
 </template>
 
@@ -206,33 +250,48 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { message, Modal } from 'ant-design-vue'
 import {
+  DashboardOutlined,
   DownloadOutlined,
   ExperimentOutlined,
   LoadingOutlined,
   PlayCircleOutlined,
 } from '@ant-design/icons-vue'
+import { useRouter } from 'vue-router'
 import { useTestStore } from '@/store/test'
 import { useConfigStore } from '@/store/config'
 import { t } from '@/i18n'
 import MetricsTable from '@/components/MetricsTable.vue'
 import MetricsCharts from '@/components/MetricsCharts.vue'
-import TaskCreateForm from '@/components/performance/TaskCreateForm.vue'
 
 const test = useTestStore()
 const config = useConfigStore()
+const router = useRouter()
 const loading = ref(false)
 const features = computed(() => [
   { icon: '⚡', title: t('featMultiFramework'), desc: t('featMultiFrameworkDesc') },
   { icon: '🎯', title: t('featMultiCombination'), desc: t('featMultiCombinationDesc') },
   { icon: '📈', title: t('featRealtimeData'), desc: t('featRealtimeDataDesc') },
 ])
-const createModalOpen = ref(false)
 const termBox = ref(null)
 const userNearBottom = ref(true)
 
-// 阈值就地编辑
-const thresholdEditing = ref(false)
-const thresholdInput = ref(null)
+// 本地面板阈值（仅对表格标记生效，不写回任务，与任务阈值区分）
+// TPOT Threshold 默认 100 / Output Token Threshold 默认 0：全为 0 时不处理标记（无 Best）；任一非 0 即处理，非 0 的条件均需满足；值必须为整数
+const tpotThresholdEditing = ref(false)
+const tpotThresholdInput = ref(null)
+const tpotThreshold = ref(null) // 本地覆盖值；null 表示使用默认 100
+const effectiveTpotThreshold = computed(() => {
+  if (tpotThreshold.value != null) return tpotThreshold.value
+  return 100
+})
+
+const outputThresholdEditing = ref(false)
+const outputThresholdInput = ref(null)
+const outputThreshold = ref(null) // 本地覆盖值；null 表示使用默认 0
+const effectiveOutputThreshold = computed(() => {
+  if (outputThreshold.value != null) return outputThreshold.value
+  return 0
+})
 
 const theTask = computed(() => test.theTask)
 const taskId = computed(() => theTask.value?.task_id || null)
@@ -258,6 +317,19 @@ const canClose = computed(() => {
   return theTask.value.status !== 'running'
 })
 
+// 并发数量从小到大排列（展示用，非执行顺序）
+const sortedConcurrency = computed(() => {
+  return [...(theTask.value?.concurrency_list || [])].sort((a, b) => Number(a) - Number(b))
+})
+
+// 面板 Concurrency 行：inf → Inf；follow → 同 Requests(升序)；其他 → 请求率值
+const concurrencyDisplay = computed(() => {
+  const rr = theTask.value?.request_rate
+  if (!rr || rr === 'inf') return 'Inf'
+  if (rr === 'follow') return sortedConcurrency.value.join(', ') || '-'
+  return String(rr)
+})
+
 // 数据集文案
 const datasetText = computed(() => {
   const ds = theTask.value?.dataset || {}
@@ -267,30 +339,65 @@ const datasetText = computed(() => {
   return pairs ? `${type}(${pairs})` : type
 })
 
-// 每次新记录就对比阈值标注最佳(前端计算,与后端 _annotate_best 一致)
+// 表格数据：按 case(label) 分组，组内按请求数量（并发）从小到大排列
+// Best/BestPerf 高亮策略一致：每组内在满足阈值条件（阈值 ≤ 0 视为未配置、不参与该条件）的行中，标记并发最大的一行（有且仅有一个）；全部阈值为 0 时不处理、无标签
 const annotatedRows = computed(() => {
   const rows = (theTask.value?.rows || []).map((r) => ({ ...r }))
-  const threshold = theTask.value?.tpot_threshold_ms
-  if (!rows.length || !threshold) return rows
-  const byCase = {}
+  if (!rows.length) return rows
+  // 清除后端/旧逻辑残留的标记
   for (const r of rows) {
-    const tpot = r.metrics?.tpot_mean
-    if (tpot === undefined || tpot === null) continue
-    ;(byCase[r.label] ||= []).push(r)
+    r.best = false
+    r.bestPerf = false
   }
-  for (const label of Object.keys(byCase)) {
-    const valid = byCase[label]
-      .map((r) => [parseFloat(r.metrics.tpot_mean), r])
-      .filter(([v]) => !isNaN(v))
-    if (!valid.length) continue
-    const below = valid.filter(([v]) => v < threshold)
-    const best = below.length
-      ? below.reduce((a, b) => (a[0] >= b[0] ? a : b))
-      : valid.reduce((a, b) => (a[0] <= b[0] ? a : b))
-    best[1].best = true
-    best[1].best_tpot = best[0]
+
+  const condPass = (v, thr) => {
+    if (!(thr > 0)) return true
+    if (v === undefined || v === null) return false
+    const n = Number(v)
+    return !isNaN(n) && n <= thr
   }
-  return rows
+
+  // 在 groupRows 中，满足 tpotThr/outThr 条件的行里取并发最大的一行标记；两阈值全为 0 时不处理
+  const markBestRow = (groupRows, tpotThr, outThr, flag) => {
+    if (!(tpotThr > 0) && !(outThr > 0)) return
+    let bestRow = null
+    let bestConc = -Infinity
+    for (const r of groupRows) {
+      if (!condPass(r.metrics?.tpot_mean, tpotThr)) continue
+      if (!condPass(r.metrics?.output_mean, outThr)) continue
+      const c = Number(r.concurrency)
+      if (c > bestConc) {
+        bestConc = c
+        bestRow = r
+      }
+    }
+    if (bestRow) bestRow[flag] = true
+  }
+
+  // 按 case 分组；每组内按并发升序，并单独执行阈值高亮
+  const groupMap = new Map()
+  for (const r of rows) {
+    const key = r.label || r.case || '-'
+    if (!groupMap.has(key)) groupMap.set(key, [])
+    groupMap.get(key).push(r)
+  }
+  const grouped = []
+  for (const groupRows of groupMap.values()) {
+    groupRows.sort((a, b) => Number(a.concurrency) - Number(b.concurrency))
+    // 任务阈值 → BestPerf（仅阈值模式，同样策略）
+    if (theTask.value?.mode === 'threshold') {
+      markBestRow(
+        groupRows,
+        Number(theTask.value?.tpot_threshold_ms) || 0,
+        Number(theTask.value?.output_throughput_threshold) || 0,
+        'bestPerf'
+      )
+    }
+    // 本地面板阈值 → Best
+    markBestRow(groupRows, effectiveTpotThreshold.value, effectiveOutputThreshold.value, 'best')
+    grouped.push(...groupRows)
+  }
+  return grouped
 })
 
 // 运行时长
@@ -332,6 +439,30 @@ function caseConcRunning(label, conc) {
   const pos = test.currentPos[taskId.value]
   return !!pos && pos.case === label && pos.concurrency === conc
 }
+function caseConcColor(label, conc) {
+  if (caseConcDone(label, conc)) return 'green'
+  if (caseConcRunning(label, conc)) return 'processing'
+  return 'default'
+}
+
+// 阈值模式：case 已测试过的请求数列表（含当前正在测试的，当前测试标 running），按请求数升序；未开始执行返回空数组
+function caseTestedTags(label) {
+  const set = new Set()
+  for (const r of theTask.value?.rows || []) {
+    if (r.label === label && (r.metrics || r.error)) set.add(Number(r.concurrency))
+  }
+  let runningConc = null
+  if (theTask.value?.status === 'running') {
+    const pos = test.currentPos[taskId.value]
+    if (pos && pos.case === label) {
+      runningConc = Number(pos.concurrency)
+      set.add(runningConc)
+    }
+  }
+  const list = [...set].map((conc) => ({ conc, running: conc === runningConc }))
+  list.sort((a, b) => a.conc - b.conc)
+  return list
+}
 
 async function loadTasks() {
   loading.value = true
@@ -365,19 +496,28 @@ async function closeTask() {
   })
 }
 
-function editThreshold() {
-  thresholdInput.value = theTask.value?.tpot_threshold_ms || 100
-  thresholdEditing.value = true
+function editTpotThreshold() {
+  tpotThresholdInput.value = effectiveTpotThreshold.value
+  tpotThresholdEditing.value = true
 }
-async function saveThreshold() {
-  if (!thresholdEditing.value) return
-  thresholdEditing.value = false
-  const val = Number(thresholdInput.value)
-  if (!val || val <= 0 || val === theTask.value?.tpot_threshold_ms) return
-  try {
-    await test.updateThreshold(taskId.value, val)
-    message.success(t('saved'))
-  } catch (e) { message.error(e.message) }
+function saveTpotThreshold() {
+  if (!tpotThresholdEditing.value) return
+  tpotThresholdEditing.value = false
+  const val = Math.round(Number(tpotThresholdInput.value))
+  if (isNaN(val) || val < 0) return
+  tpotThreshold.value = val
+}
+
+function editOutputThreshold() {
+  outputThresholdInput.value = effectiveOutputThreshold.value
+  outputThresholdEditing.value = true
+}
+function saveOutputThreshold() {
+  if (!outputThresholdEditing.value) return
+  outputThresholdEditing.value = false
+  const val = Math.round(Number(outputThresholdInput.value))
+  if (isNaN(val) || val < 0) return
+  outputThreshold.value = val
 }
 
 function downloadLog() {
@@ -417,15 +557,16 @@ watch(() => activeLogs.value.length, async () => {
 watch(taskId, async (id, oldId) => {
   if (!id || id === oldId) return
   userNearBottom.value = true
+  tpotThreshold.value = null
+  outputThreshold.value = null
   await test.loadTask(id)
   await test.loadTaskLogs(id)
   await nextTick()
   scrollTermToBottom()
 })
 
-function onCreated(_taskId) {
-  createModalOpen.value = false
-  message.success(t('startTest'))
+function goCreate(mode) {
+  router.push({ path: '/performance/create', query: { mode } })
 }
 
 onMounted(async () => {
@@ -532,28 +673,16 @@ onMounted(async () => {
   overflow: hidden;
 }
 
-/* Perf 面板：标题左侧 "Perf | 模型名称" 采用标题字号颜色 */
+/* Perf 面板：标题左侧 "Perf" 采用标题字号颜色 */
 .panel-title-left {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
   min-width: 0;
 }
 .title-text {
   font-size: 14px;
   font-weight: 600;
   color: var(--ant-color-text, rgba(0, 0, 0, 0.88));
-}
-.panel-title-model {
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--ant-color-text, rgba(0, 0, 0, 0.88));
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  max-width: 180px;
-  display: inline-block;
-  vertical-align: middle;
 }
 .panel-title-right {
   display: inline-flex;
@@ -563,10 +692,6 @@ onMounted(async () => {
   min-width: 0;
   flex-wrap: wrap;
   justify-content: flex-end;
-}
-.title-sep {
-  color: var(--ant-color-text-secondary, #666);
-  font-weight: 600;
 }
 .title-spin {
   margin-right: 2px;
@@ -611,6 +736,19 @@ onMounted(async () => {
 }
 
 /* Cases 面板 */
+.cases-mode {
+  color: var(--ant-color-success, #52c41a);
+  font-size: 12px;
+  font-weight: 600;
+}
+.threshold-conds {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 4px 0 8px;
+  margin-bottom: 4px;
+  border-bottom: 1px dashed var(--ant-color-border, #f0f0f0);
+}
 .cases-body {
   flex: 1;
   min-height: 0;

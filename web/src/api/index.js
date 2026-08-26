@@ -21,6 +21,8 @@ export const api = {
   testConnection: (data) => http.post('/api/config/test-connection', data),
   getGpu: () => http.get('/api/config/gpu'),
   getParams: (framework) => http.get(`/api/config/params/${framework}`),
+  getParamsYaml: (framework) => http.get(`/api/config/params-yaml/${framework}`),
+  saveParamsYaml: (framework, content) => http.put(`/api/config/params-yaml/${framework}`, { content }),
 
   // 任务
   listTasks: () => http.get('/api/tasks'),
@@ -32,6 +34,7 @@ export const api = {
   deleteTask: (taskId) => http.delete(`/api/tasks/${taskId}`),
   updateTaskThreshold: (taskId, thresholdMs) => http.patch(`/api/tasks/${taskId}/threshold`, { tpot_threshold_ms: thresholdMs }),
   previewTask: (payload) => http.post('/api/tasks/preview', payload),
+  exportTaskExcel: (taskId, payload) => http.post(`/api/tasks/${taskId}/export`, payload, { responseType: 'blob' }),
 
   // Dashboard
   getDashboardStats: () => http.get('/api/dashboard/stats'),

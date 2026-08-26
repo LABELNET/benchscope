@@ -1,0 +1,18 @@
+version: vLLM v0.21.0
+backend: openai-chat
+endpoint: /v1/chat/completions
+trust-remote-code: true
+ignore-eos: true
+burstiness: 1.0
+seed: 0
+num-warmups: 0
+metric-percentiles: "99"
+temperature: 0.0
+top-p: 1.0
+top-k: -1
+min-p: 0.0
+frequency-penalty: 0.0
+presence-penalty: 0.0
+sharegpt-output-len: 128
+max-model-len: 32768
+gpu-memory-utilization: 0.90

@@ -69,4 +69,4 @@ benchscope 是测试工具，是一个类似于tensorflow-dashborad的工具，p
 **版本路线**
 
 v1.0.0（已发布，纯文本性能测试：双框架、三数据集、实时结果、日志与 xlsx 汇总、分析、管理台 UI）。
-后续见 [ROADMAP.md](ROADMAP.md)：v2.0 多模态 / v3.0 全模态 / v4.0 世界模型 / v5.0 精度测试 / v6.0 ModelScope 模型对比。
+版本规划与迭代记录见 [VERSION_README.md](VERSION_README.md)：v2.0 多模态 / v3.0 全模态 / v4.0 世界模型 / v5.0 精度测试 / v6.0 ModelScope 模型对比 / v7.0 内置 GPU 适配模型下载。
