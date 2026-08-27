@@ -221,6 +221,7 @@ export default {
   perfTestRecords: 'Perf Records',
   accTestRecords: 'Eval Records',
   accuracyPlanned: '精度测试功能规划中,待 v5.0',
+  delete: '删除',
   deleteRun: '删除',
 
   // Datas
@@ -265,8 +266,8 @@ export default {
   fileSize: '大小',
   ops: '操作',
   preview: '预览',
-  deleteRunTitle: '删除任务',
-  deleteRunConfirm: '将删除该任务及其日志数据，且不可恢复，确认删除？',
+  deleteRunTitle: '删除记录',
+  deleteRunConfirm: '将删除该记录及其日志数据，且不可恢复，确认删除？',
   backup: '备份',
   backupConfirm: '将打包下载任务全部日志（run 目录 + 终端日志）为压缩包，此压缩包可重新导入恢复任务，确认继续？',
   backupDone: '备份已生成并开始下载',

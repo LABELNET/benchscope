@@ -661,18 +661,36 @@ async function doShare() {
   await nextTick()
   const el = detailRef.value
   if (!el) throw new Error('no element')
-  // 等图表完成布局后再截图；按文档宽度渲染，保证长详情页完整输出
-  const canvas = await html2canvas(el, {
-    useCORS: true,
-    backgroundColor: '#ffffff',
-    scale: 1.5,
-    windowWidth: document.documentElement.offsetWidth,
-  })
-  const url = canvas.toDataURL('image/png')
-  const a = document.createElement('a')
-  a.href = url
-  a.download = `${current.value.run_id}.png`
-  a.click()
+  // 等图表完成布局后再截图；临时放开滚动容器的高度/裁剪约束，保证
+  // 长详情页（含下方数据表与图表分析区）全部内容输出到图片
+  const saved = {
+    overflow: el.style.overflow,
+    height: el.style.height,
+    flex: el.style.flex,
+  }
+  el.style.overflow = 'visible'
+  el.style.height = 'auto'
+  el.style.flex = 'none'
+  await nextTick()
+  try {
+    const canvas = await html2canvas(el, {
+      useCORS: true,
+      backgroundColor: '#ffffff',
+      scale: 1.5,
+      windowWidth: document.documentElement.offsetWidth,
+      height: el.scrollHeight,
+      width: el.scrollWidth,
+    })
+    const url = canvas.toDataURL('image/png')
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `${current.value.run_id}.png`
+    a.click()
+  } finally {
+    el.style.overflow = saved.overflow
+    el.style.height = saved.height
+    el.style.flex = saved.flex
+  }
   message.success(t('shareDone'))
 }
 

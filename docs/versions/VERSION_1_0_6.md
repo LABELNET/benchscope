@@ -207,6 +207,22 @@
 - [x] 验证 — i18n + 构建 + Playwright 截图
 - [x] 文档 — Datas.md 更新 + 本版本记录（2026-08-27）
 
+### 迭代 11（2026-08-27）：Datas/Perfs 详情优化（删除确认 / 分享全页 / 各模式列集一致）
+
+**功能概述**：
+- **删除确认提示**：`deleteRunTitle/deleteRunConfirm` 文案统一为「**删除记录 / Delete Record**」语义（zh/en 同步），不再使用「任务 / run」；同时补齐 i18n 缺失的 `delete` 键（zh: 删除 / en: Delete）修复详情页删除按钮显示原始 key `delete` 的问题
+- **分享 PNG 完整输出**：分享（`doShare`）渲染前临时放开右侧详情滚动容器的 `overflow:visible + flex:none + height:auto` 约束，并在 `html2canvas` 选项中显式传入 `height: scrollHeight / width: scrollWidth`；截图后 `finally` 恢复原样式。分享 PNG 现包含从任务元信息到行 4 全部统计图表（Output/Peak/Total 吞吐、TTFT/TPOT/ITL 3×3 曲线）的完整内容
+- **Perf Datas 各模式列集对齐 Performance**：`MetricsTable` 的 `PRESET_KEYS.mean/median/p99` 预设统一补齐 `label`（用例/Case）、`requests`（请求/Requests）、`concurrency`（并发）、`successful`（成功）标识列，与默认预设和 Performance 实时页默认列集保持一致；切换 Default/Mean/Median/P99 不再丢失用例/请求/并发/成功列
+
+**验证**：`check:i18n` 通过（zh/en 键集一致，新增 `delete` 键）；`npm run build` 通过；无 lint 错误；Playwright 实测删除确认 modal 标题/内容为「删除记录 / 将删除该记录及其日志数据，且不可恢复，确认删除？」；分享 PNG 1980×2994 完整呈现至图表底部；Mean/Median/P99 切换后表头均含 用例/Requests/Concurrency/Successful 列。
+
+**TODO 状态**：
+- [x] 前端 — 删除确认 prompt 改为 record 语义（deleteRunTitle/deleteRunConfirm + 新增 `delete` 键）
+- [x] 前端 — 分享全页：临时放开滚动约束 + html2canvas scrollHeight/Width
+- [x] 前端 — MetricsTable mean/median/p99 预设补齐 label/requests/concurrency/successful
+- [x] 验证 — i18n + 构建 + Playwright（删除 modal / 分享 PNG / 列集）
+- [x] 文档 — Datas.md 更新 + 本版本记录（2026-08-27）
+
 ## 3. TODO 清单
 
 - [x] **设置/数据集 — 内置数据集模块**：配置文件 `configs/datasets.yaml`，可点击下载，缓存到 `~/.benchscope/datasets`（2026-08-27 完成）
@@ -235,6 +251,7 @@
 - [x] **主导航/Datas — 详情二次优化**：Cases 请求列表修复（reqsText + rows 兜底）、Logs Files 表格改行式小字、行 3/行 4 按钮上移 header 右侧同行、Filter→Groups、行 5 高度 60px→18px（2026-08-27 完成）
 - [x] **主导航/Datas — 详情三次修复**：行 2 移除固定高度去底部空白、Log Files 行式完整显示（字体 9px）、Perf Datas 默认按钮联动（恢复默认数据列）（2026-08-27 完成）
 - [x] **主导航/Datas — 详情四次优化**：左栏导入提示（导入 record / Import Record）、Log Files 灰色面板 + 文字/图标缩小（8px/20px）（2026-08-27 完成）
+- [x] **主导航/Datas — 详情五次优化**：删除确认 prompt 改为 record 语义（i18n `deleteRunTitle/deleteRunConfirm` + 新增 `delete` 键）、分享全页（`doShare` 临时放开滚动 + html2canvas scrollHeight/Width）、Perf Datas 各模式列集对齐 Performance（mean/median/p99 补齐 label/requests/concurrency/successful）（2026-08-27 完成）
 
 ---
 

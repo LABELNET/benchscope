@@ -213,6 +213,7 @@ export default {
   perfTestRecords: 'Perf Records',
   accTestRecords: 'Eval Records',
   accuracyPlanned: 'Accuracy testing is planned for v5.0',
+  delete: 'Delete',
   deleteRun: 'Delete',
 
   // Datas
@@ -257,8 +258,8 @@ export default {
   fileSize: 'Size',
   ops: 'Ops',
   preview: 'Preview',
-  deleteRunTitle: 'Delete Run',
-  deleteRunConfirm: 'This will delete the task and all its log data, which cannot be restored. Continue?',
+  deleteRunTitle: 'Delete Record',
+  deleteRunConfirm: 'This will delete the record and all its log data, which cannot be restored. Continue?',
   backup: 'Backup',
   backupConfirm: 'All task logs (run dir + terminal log) will be packed into an archive for download, which can be re-imported to restore the task. Continue?',
   backupDone: 'Backup generated and download started',

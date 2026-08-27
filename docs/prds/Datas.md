@@ -37,9 +37,9 @@ Datas 为 1.0.6 新增的主导航页（位于 Sessions 之后），采用**副�
 
 #### 行 1 — 元信息卡片
 - **header 左侧只保留任务 ID**；**右侧操作按钮**（删除/备份/分享，`type="text"` 无边框）
-  - **删除**：确认 Modal（警告「将删除该记录相关文件」）→ `DELETE /api/logs/runs/{id}`（同时清理终端日志）→ 成功提示 + 刷新列表
+  - **删除**：确认 Modal（「删除记录 / Delete Record」语义，警告「将删除该记录及其日志数据，且不可恢复，确认删除？」）→ `DELETE /api/logs/runs/{id}`（同时清理终端日志）→ 成功提示 + 刷新列表；删除按钮文案由 i18n `delete` 键提供（zh: 删除 / en: Delete）
   - **备份**：确认 → 生成 zip 包下载（生成中按钮 spinner）→ `GET /api/logs/runs/{id}/backup`（zip 含 run 目录全部文件 + 终端日志，**可重新导入恢复任务**）
-  - **分享**：确认 → `html2canvas` 将**整个详情页渲染为 PNG**（生成中 spinner）→ 自动下载
+  - **分享**：确认 → `html2canvas` 将**整个详情页渲染为 PNG**（生成中 spinner）→ 自动下载；渲染前临时放开详情滚动容器约束（`overflow:visible + flex:none + height:auto`）并显式传入 `scrollHeight/scrollWidth`，**完整输出到页面底部（含行 3 数据表 + 行 4 全部统计图表）**，截图后恢复原样式
 - **内容区**：任务状态 tag（success/processing/error/warning）+ model / started_at / finished_at
 
 #### 行 2 — 三等分面板（Perf / Cases / Logs），**等高（grid 自动拉伸；高度随内容自适应，不预留固定高度、无底部空白）**
@@ -52,8 +52,8 @@ Datas 为 1.0.6 新增的主导航页（位于 Sessions 之后），采用**副�
 
 #### 行 3 — 数据面板 **Perf Datas**（按 case 分组 Tabs）
 - **header 右侧与标题同行 4 个联动按钮**：默认 / Mean / Median / P99（`RunDataPanel` 的 `mode` 由父级 v-model 控制）
-  - 默认：恢复**默认数据列**（与实时数据一致的默认列集：Requests / Concurrency / Output / Peak / Total + TTFT/TPOT 的 Mean/Median/P99 + Status）
-  - Mean/Median/P99：显示 Requests / Concurrency / Output / Peak / Total + 对应的 TTFT / TPOT / ITL + Status 列（复用 `MetricsTable` 的 `preset` 属性切换可见列；点击「默认」时重置为默认列集）
+  - 默认：恢复**默认数据列**（与实时数据一致的默认列集：Case / Requests / Concurrency / Successful / Output / Peak / Total + TTFT/TPOT 的 Mean/Median/P99 + Status）
+  - Mean/Median/P99：显示 **Case / Requests / Concurrency / Successful** / Output / Peak / Total + 对应的 TTFT / TPOT / ITL + Status 列（复用 `MetricsTable` 的 `preset` 属性切换可见列；点击「默认」时重置为默认列集）。**各统计口径预设统一保留 用例/请求/并发/成功 标识列**，与 Performance 实时页默认列集一致，切换模式不丢失
 - 数据按 case 组切 Tabs，每个 Tab 一组 rows（分组键 `label#g{case_id}`，case_id 优先、label 兜底，与 Performance 实时数据一致）
 - 表格阈值高亮逻辑与实时数据一致（Best/BestPerf 标注）
 - 底部「列选择」按钮（自定义显示列）
@@ -88,8 +88,8 @@ Datas 为 1.0.6 新增的主导航页（位于 Sessions 之后），采用**副�
 | 项 | 约束 |
 | --- | --- |
 | 分组键 | `label#g{case_id}`（case_id 优先，label 兜底），支持同条件重复组 |
-| 表格预设 | Mean/Median/P99 仅切换列显示，不改数据 |
-| 分享截图 | 依赖 `html2canvas@1.4.1`，仅截取详情区 |
+| 表格预设 | Mean/Median/P99 仅切换列显示，不改数据；各模式均保留 用例/请求/并发/成功 列 |
+| 分享截图 | 依赖 `html2canvas@1.4.1`，临时放开滚动约束完整输出至底部（含行 4 图表） |
 | 备份压缩包 | 含 run.json / 数据文件 / 终端日志，重名文件去重（保留 run 目录文件优先） |
 | 导入压缩包 | 校验任务 ID 一致性：已存在不重复导入；`perf_|eval_` 前缀日志归入 logs 根目录；zip-slip 防护（仅扁平文件名） |
 | 删除 | 不可恢复，前端二次确认；run 目录 + 终端日志一并清理 |

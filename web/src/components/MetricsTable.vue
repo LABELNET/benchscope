@@ -138,9 +138,10 @@ const visibleKeys = ref(ALL_COLUMNS.value.filter((c) => c.default).map((c) => c.
 // 列预设：默认=与实时数据一致；mean/median/p99=仅显示对应统计口径（Requests/Concurrency/Output/Peak/Total + 各自TTFT/TPOT/ITL + Status）
 const PRESET_KEYS = {
   default: null,
-  mean: ['requests', 'concurrency', 'output_mean', 'peakoutput_mean', 'total_mean', 'ttft_mean', 'tpot_mean', 'itl_mean', 'status'],
-  median: ['requests', 'concurrency', 'output_mean', 'peakoutput_mean', 'total_mean', 'ttft_median', 'tpot_median', 'itl_median', 'status'],
-  p99: ['requests', 'concurrency', 'output_mean', 'peakoutput_mean', 'total_mean', 'ttft_p99', 'tpot_p99', 'itl_p99', 'status'],
+  // 各统计口径统一保留 用例/请求/并发/成功 标识列，与 Performance 实时页默认列集保持一致
+  mean: ['label', 'requests', 'concurrency', 'successful', 'output_mean', 'peakoutput_mean', 'total_mean', 'ttft_mean', 'tpot_mean', 'itl_mean', 'status'],
+  median: ['label', 'requests', 'concurrency', 'successful', 'output_mean', 'peakoutput_mean', 'total_mean', 'ttft_median', 'tpot_median', 'itl_median', 'status'],
+  p99: ['label', 'requests', 'concurrency', 'successful', 'output_mean', 'peakoutput_mean', 'total_mean', 'ttft_p99', 'tpot_p99', 'itl_p99', 'status'],
 }
 watch(
   () => props.preset,
