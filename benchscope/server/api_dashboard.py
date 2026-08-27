@@ -15,14 +15,26 @@ log = logging.getLogger("benchscope.api_dashboard")
 router = APIRouter(prefix="/api/dashboard", tags=["dashboard"])
 
 
+def _run_roots() -> list[Path]:
+    """运行记录目录根：perfs（性能任务）/ evals（精度任务），兼容旧版 logs 目录中的 run 目录。"""
+    cfg = state.config
+    roots = [cfg.perfs_dir, cfg.evals_dir]
+    logs_dir = cfg.logs_dir
+    if logs_dir.is_dir() and any(
+        p.is_dir() and (p / "run.json").exists() for p in logs_dir.iterdir()
+    ):
+        roots.append(logs_dir)
+    return [r for r in roots if r and r.exists()]
+
+
 @router.get("/stats")
 def dashboard_stats():
     """返回 Dashboard 统计数据。"""
-    logs_dir = state.config.logs_dir
     runs = []
-    if logs_dir.exists():
-        for d in sorted(logs_dir.iterdir(), key=lambda p: p.name, reverse=True):
-            if not d.is_dir():
+    for root in _run_roots():
+        for d in sorted(root.iterdir(), key=lambda p: p.name, reverse=True):
+            if not d.is_dir() or d.name == "tasks":
+                # tasks: TaskManager 任务状态持久化目录（非 run 目录）
                 continue
             run_info = _load_run_json(d)
             if run_info:

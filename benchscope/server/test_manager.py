@@ -205,7 +205,7 @@ class TestManager:
         model = payload.get("model", "")
         gpu = payload.get("gpu", {})
         run_id = datetime.now().strftime("%m%d-%H%M%S")
-        run_dir = self.config.logs_dir / run_id
+        run_dir = self.config.perfs_dir / run_id
         run_dir.mkdir(parents=True, exist_ok=True)
         run = TestRun(
             run_id=run_id,

@@ -1,9 +1,9 @@
 <template>
   <a-layout-header class="topbar">
     <div class="brand" @click="$router.push('/dashboard')">
-      <img src="/bs-logo.png" class="brand-logo" alt="BS" />
+      <img src="/blue_logo.png" class="brand-logo" alt="BS" />
       <span class="brand-name">BenchScope</span>
-      <a-tag color="blue" style="margin-left: 8px">v1.0.5</a-tag>
+      <a-tag v-if="versionTag" color="blue" style="margin-left: 8px">{{ versionTag }}</a-tag>
     </div>
 
     <a-menu
@@ -21,7 +21,7 @@
 </template>
 
 <script setup>
-import { computed, h } from 'vue'
+import { computed, h, ref, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import {
   DashboardOutlined,
@@ -32,10 +32,21 @@ import {
   DatabaseOutlined,
 } from '@ant-design/icons-vue'
 import StatusBadge from '@/components/StatusBadge.vue'
+import { api } from '@/api'
 import { t } from '@/i18n'
 
 const route = useRoute()
 const router = useRouter()
+
+const versionTag = ref('')
+onMounted(async () => {
+  try {
+    const res = await api.getVersion()
+    versionTag.value = res.display || ''
+  } catch {
+    versionTag.value = ''
+  }
+})
 
 const activeKey = computed(() => {
   const path = route.path
@@ -85,9 +96,10 @@ function onMenuClick({ key }) {
   user-select: none;
 }
 .brand-logo {
-  width: 28px;
-  height: 28px;
-  border-radius: 6px;
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  object-fit: contain;
 }
 .brand-name {
   font-size: 17px;

@@ -1,11 +1,17 @@
-# benchscope
+<div align="center">
+  <img src="asserts/black_logo.png" width="120" height="120" alt="BenchScope logo" />
+</div>
 
-**English** | [简体中文](README.zh-CN.md)
+<h1 align="center" style="font-size: 48px; margin-top: 12px;">BenchScope</h1>
 
-> A visualization testing platform for LLM model **performance & accuracy**, supporting models deployed with vLLM / SGLang and any OpenAI-compatible inference service.
+<p align="center"><strong>English</strong> | <a href="README.zh-CN.md">简体中文</a></p>
+
+BenchScope is an open‑source LLM inference benchmarking platform built with AI‑powered vibe‑coding techniques.
+
+A visualization testing platform for LLM model **performance & accuracy**, supporting models deployed with vLLM / SGLang and any OpenAI-compatible inference service.
 
 <div align="center">
-  <img src="asserts/main-performance.png" width="72%" alt="benchscope main performance screenshot" />
+  <img src="asserts/main-performance.png" width="72%" alt="BenchScope main performance screenshot" />
 </div>
 
 ---

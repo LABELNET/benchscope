@@ -1,7 +1,7 @@
 # benchscope Settings 页面 — 功能与约束说明
 
-> **版本**：v1.0.5  
-> **最后更新**：2026-08-26  
+> **版本**：v1.0.6  
+> **最后更新**：2026-08-27  
 > **文档状态**：Settings 页面四个侧边栏（General / Envs / Models / Plugins）的功能与约束条件说明  
 > **关联文档**：[Performance.md](./Performance.md) · [Dashboard.md](./Dashboard.md)
 
@@ -13,13 +13,13 @@ Settings 页面左侧 4 个侧边栏：
 
 | 侧边栏 | 图标 | 内容 |
 | --- | --- | --- |
-| General | ⚙️ Setting | 2 个面板：Language、Cache Paths |
+| General | ⚙️ Setting | 2 个面板：Language、Cache Paths（9 目录配置） |
 | Envs | 🖥️ Desktop | 1 个运行环境面板（环境配置 + 状态 + 编辑/保存/测试连接） |
 | Datasets（1.0.6） | ☁️ CloudDownload | 内置数据集下载面板（见 2.5） |
 | Models | 🗄️ Database | 内置模型下载宫格 + 右侧详情面板 |
 | Plugins | 🔌 Api | 占位（v5.0 预留） |
 
-所有配置持久化到服务端 `~/.benchscope/config.json`（`ConfigManager`），默认配置见 `benchscope/constants.py::DEFAULT_CONFIG`。
+所有配置持久化到服务端 `~/.benchscope/settings.json`（`ConfigManager`，旧版 `config.json` 首启自动迁移），默认配置见 `benchscope/constants.py::DEFAULT_CONFIG`。
 
 ---
 
@@ -30,17 +30,27 @@ Settings 页面左侧 4 个侧边栏：
 - 语言选择：English / 中文（`a-select`，立即生效 + 持久化 `locale`）。
 - 切换后全局文案实时切换（`setLocale`）。
 
-### 1.2 Cache Paths 面板（缓存路径）
+### 1.2 Cache Paths 面板（缓存路径，1.0.6 重构为 9 目录体系）
+
+数据根目录 `data_dir` + 8 个功能子目录，**子目录未自定义时跟随 `data_dir`**（联动解析）：
 
 | 项 | 配置键 | 默认值 | 说明 |
 | --- | --- | --- | --- |
-| Logs Directory | `logs_dir` | `./logs` | 运行日志 / run.json / CSV / xlsx 目录 |
-| Datasets Directory | `datasets_dir` | `./datasets` | ShareGPT 缓存与上传数据集目录 |
-| Data Directory | `data_dir` | `~/.benchscope` | **服务端数据持久化目录**：任务（`data_dir/tasks`）、会话（`data_dir/sessions`）、内置数据集缓存（`data_dir/datasets`） |
-| Model Directory（1.0.6） | `models_dir` | `~/.benchscope/models` | **模型下载缓存目录**（默认统一在 `.benchscope` 下） |
+| Data | `data_dir` | `~/.benchscope` | **数据根目录**（服务端数据持久化根），修改后需重启服务并可迁移数据 |
+| Perf | `perfs_dir` | `~/.benchscope/perfs` | 性能测试任务目录（run_dir），有运行中任务时锁定 |
+| Eval | `evals_dir` | `~/.benchscope/evals` | 精度测试任务目录（run_dir），有运行中任务时锁定 |
+| Analysis | `analysis_dir` | `~/.benchscope/analysys` | 数据分析目录（联动 Datas / 缓存） |
+| Logs | `logs_dir` | `~/.benchscope/logs` | 日志目录：`runtime_年月日.log` + 任务终端输出（`perf\|eval_runID_月日时分秒.log`） |
+| Sessions | `sessions_dir` | `~/.benchscope/sessions` | 会话缓存目录 |
+| Models | `models_dir` | `~/.benchscope/models` | 模型下载缓存目录（联动 Settings/Models） |
+| Datasets | `datasets_dir` | `~/.benchscope/datasets` | 数据集下载缓存目录（联动 Settings/Datasets，内置数据集缓存到 `datasets_dir/{id}/`） |
+| Plugins | `plugins_dir` | `~/.benchscope/plugins` | 插件安装加载目录（联动 Settings/Plugins，v5.0） |
 
-- 输入框失焦（`@change`）即保存，**静默持久化**（无 toast）。
-- 后端 `ConfigManager` 对路径做 `expanduser` + `resolve`。
+**交互（行内编辑）**：
+- 点击目录值 → 变为输入框 + 保存按钮；`Enter` 保存、失焦取消；保存成功**静默持久化**（无 toast）。
+- 目录不存在显示红色「Missing」标签；后端 `ConfigManager` 对路径做 `expanduser` + `resolve`。
+- **Perf / Eval 目录在存在运行中任务时锁定**（`locked`）：面板标题显示「运行中锁定」橙色标签，点击值弹警告通知（后端 409 兜底校验）。
+- 修改 **Data 根目录** → 确认重启 → 确认是否迁移数据 → `POST /api/config/restart`（`migrate: true/false`）；迁移时 WebSocket 监听 `migration` 进度事件（进度 Modal + spinner）。
 
 ---
 
@@ -49,7 +59,7 @@ Settings 页面左侧 4 个侧边栏：
 - 数据源：`GET /api/config/datasets`（`benchscope/configs/datasets.yaml` 定义 + 缓存状态）
 - 内置数据集：ShareGPT（ModelScope）/ Alpaca / GSM8K / Dolly（HF）
 - 卡片内容：名称 + 缓存状态（已缓存/未缓存）、描述、**访问链接**（新窗口）、**下载命令**（可复制）、**下载按钮**
-- 下载：`POST /api/config/datasets/download`（`{id}`）→ 缓存到 `data_dir/datasets/{id}/`；modelscope 源按文件大小降序选数据文件（排除 `dataset_infos.json` 元数据）
+- 下载：`POST /api/config/datasets/download`（`{id}`）→ 缓存到 `datasets_dir/{id}/`（默认 `~/.benchscope/datasets`）；modelscope 源按文件大小降序选数据文件（排除 `dataset_infos.json` 元数据）
 - 约束：huggingface 源在部分网络环境不可达时下载失败（返回 502）；下载为同步阻塞（大文件耗时较长）
 
 ---
@@ -94,7 +104,7 @@ Settings 页面左侧 4 个侧边栏：
 
 | 项 | 约束 |
 | --- | --- |
-| 配置持久化 | 所有变更经 `PATCH/POST /api/config` 写入 `config.json`；路径类支持 `~` 展开 |
+| 配置持久化 | 目录变更经 `GET/POST /api/config/dirs` 写入 `settings.json`（旧版 `config.json` 首启自动迁移）；其余配置经 `PATCH/POST /api/config`；路径类支持 `~` 展开 |
 | i18n | 全量中英双语键（`check-i18n` 保证 en/zh 键集合一致、无重复键） |
 | 主题 | 使用 antd 变量（`var(--ant-color-*)`），亮/暗主题自适应 |
 | 面板样式 | 均为 `size="small"` 卡片，标签 12px，与 Dashboard 面板字体保持一致 |

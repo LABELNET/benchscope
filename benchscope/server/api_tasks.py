@@ -72,11 +72,11 @@ def get_task(task_id: str):
 
 @router.get("/{task_id}/logs")
 def get_task_logs(task_id: str, tail: int = MAX_LOG_LINES):
-    """返回任务整条测试日志（full.log）。默认只取末尾 MAX_LOG_LINES 行用于终端展示。"""
+    """返回任务整条终端输出日志（logs 目录下 perf|eval_runID_*.log，兼容旧版 run_dir/full.log）。默认只取末尾 MAX_LOG_LINES 行用于终端展示。"""
     task = state.tasks.get_task(task_id)
     if not task:
         raise HTTPException(status_code=404, detail=f"Task not found: {task_id}")
-    full_log = task.run_dir / "full.log"
+    full_log = task.log_path or task.run_dir / "full.log"
     if not full_log.exists():
         return {"task_id": task_id, "lines": [], "total_lines": 0, "truncated": 0}
     try:

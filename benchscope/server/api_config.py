@@ -24,10 +24,15 @@ def get_config():
 class ConfigPatch(BaseModel):
     api: dict | None = None
     gpu: dict | None = None
-    logs_dir: str | None = None
-    datasets_dir: str | None = None
     data_dir: str | None = None
+    perfs_dir: str | None = None
+    evals_dir: str | None = None
+    analysis_dir: str | None = None
+    logs_dir: str | None = None
+    sessions_dir: str | None = None
     models_dir: str | None = None
+    datasets_dir: str | None = None
+    plugins_dir: str | None = None
     tpot_threshold_ms: float | None = None
     request_rate: str | None = None
     bench_commands: dict | None = None
@@ -186,7 +191,7 @@ def list_builtin_datasets():
     """返回内置数据集定义 + 缓存状态（Settings → Datasets 面板）。"""
     from benchscope.builtin_datasets import dataset_status, load_builtin_datasets
 
-    cache_root = state.config.data_dir / "datasets"
+    cache_root = state.config.datasets_dir
     datasets = load_builtin_datasets()
     return {
         "datasets": [
@@ -202,15 +207,184 @@ class DatasetDownloadRequest(BaseModel):
 
 @router.post("/datasets/download")
 def download_dataset(req: DatasetDownloadRequest):
-    """下载内置数据集到 data_dir/datasets/{id}/。"""
+    """下载内置数据集到 datasets_dir/{id}/。"""
     from benchscope.builtin_datasets import download_builtin_dataset, load_builtin_datasets
 
     ds = next((d for d in load_builtin_datasets() if d.get("id") == req.id), None)
     if ds is None:
         raise HTTPException(status_code=404, detail=f"未知数据集: {req.id}")
     try:
-        result = download_builtin_dataset(ds, state.config.data_dir)
+        result = download_builtin_dataset(ds, state.config.datasets_dir)
     except Exception as e:
         log.exception("数据集 %s 下载失败", req.id)
         raise HTTPException(status_code=502, detail=f"下载失败: {e}")
     return {"ok": True, **result}
+
+
+# ---------------------------------------------------------------------------
+# 缓存目录管理（Settings → General → Cache Paths）
+# ---------------------------------------------------------------------------
+
+# 目录展示配置：key -> {label, desc, sub（data_dir 下的默认子目录名或 None）}
+CACHE_DIR_INFO = [
+    {"key": "data_dir", "label": "Data", "sub": None,
+     "desc": "数据根目录（服务端数据持久化 / 任务 / 会话等），修改后需重启服务并可选迁移数据"},
+    {"key": "perfs_dir", "label": "Perf", "sub": "perfs",
+     "desc": "性能测试任务目录，有运行中的任务时不可修改"},
+    {"key": "evals_dir", "label": "Eval", "sub": "evals",
+     "desc": "精度测试任务目录，有运行中的任务时不可修改"},
+    {"key": "analysis_dir", "label": "Analysis", "sub": "analysys",
+     "desc": "数据分析目录，联动主导航 / Datas 相关缓存"},
+    {"key": "logs_dir", "label": "Logs", "sub": "logs",
+     "desc": "日志目录：runtime_年月日.log 与任务终端输出（perf/eval_runID_月日时分秒.log）"},
+    {"key": "sessions_dir", "label": "Sessions", "sub": "sessions",
+     "desc": "会话缓存目录，每个会话保存的路径"},
+    {"key": "models_dir", "label": "Models", "sub": "models",
+     "desc": "模型下载目录，联动 Settings / Models 管理"},
+    {"key": "datasets_dir", "label": "Datasets", "sub": "datasets",
+     "desc": "数据集下载目录，联动 Settings / Datasets 管理"},
+    {"key": "plugins_dir", "label": "Plugins", "sub": "plugins",
+     "desc": "插件安装加载目录，联动 Settings / Plugins"},
+]
+
+
+@router.get("/dirs")
+def get_cache_dirs():
+    """返回缓存目录配置列表（值 / 默认值 / 是否存在 / 是否锁定）。"""
+    from benchscope.constants import DEFAULT_CONFIG
+
+    cfg = state.config
+    perf_running = state.tasks.running_count > 0
+    result = []
+    for info in CACHE_DIR_INFO:
+        key = info["key"]
+        value = cfg.get(key) or DEFAULT_CONFIG.get(key, "")
+        result.append({
+            "key": key,
+            "label": info["label"],
+            "desc": info["desc"],
+            "value": value,
+            "default": DEFAULT_CONFIG.get(key, ""),
+            "exists": cfg.resolve_dir(key).exists() if key else True,
+            "locked": (perf_running if key in ("perfs_dir", "evals_dir") else False),
+        })
+    return {"dirs": result, "perf_running": perf_running}
+
+
+class CacheDirPatch(BaseModel):
+    data_dir: str | None = None
+    perfs_dir: str | None = None
+    evals_dir: str | None = None
+    analysis_dir: str | None = None
+    logs_dir: str | None = None
+    sessions_dir: str | None = None
+    models_dir: str | None = None
+    datasets_dir: str | None = None
+    plugins_dir: str | None = None
+
+
+@router.post("/dirs")
+def update_cache_dirs(patch: CacheDirPatch):
+    """更新缓存目录配置。
+
+    - data_dir 变化：需要重启服务（前端弹窗引导），重启可迁移数据。
+    - perfs_dir / evals_dir：有运行中的任务时拒绝修改。
+    """
+    data = patch.model_dump(exclude_none=True)
+    if not data:
+        raise HTTPException(status_code=400, detail="没有需要更新的目录")
+
+    # 运行中任务检查：perfs / evals 目录不可修改
+    if state.tasks.running_count > 0:
+        locked_keys = [k for k in ("perfs_dir", "evals_dir") if k in data]
+        if locked_keys:
+            raise HTTPException(
+                status_code=409,
+                detail="存在运行中的任务，Perf / Eval 目录暂不可修改，请等待任务停止后再试",
+            )
+
+    cfg = state.config
+    old_data = str(cfg.data_dir)
+    old_snapshot = {k: cfg.get(k) for k in data.keys()}
+    cfg.update(data)
+    new_data = str(cfg.data_dir)
+    requires_restart = "data_dir" in data and new_data != old_data
+    if requires_restart:
+        # 记录迁移来源：本次修改前的 data_dir（重启迁移时使用）
+        state.migration_source = old_data
+    return {
+        "ok": True,
+        "requires_restart": requires_restart,
+        "changed": {k: {"old": old_snapshot.get(k), "new": cfg.get(k)} for k in data.keys()},
+    }
+
+
+class RestartRequest(BaseModel):
+    migrate: bool = False
+
+
+@router.post("/restart")
+def restart_service(req: RestartRequest):
+    """迁移数据（可选）并重启服务。
+
+    - migrate=True：将原 data_dir 内容移动到当前 data_dir（进度经 WS 广播）。
+    - 无论是否迁移，均延迟数秒后重启进程。
+    """
+    import os
+    import sys
+    import threading
+    import time
+
+    cfg = state.config
+    src = Path(os.path.expanduser(state.migration_source or cfg.data_dir)).resolve()
+    dst = cfg.data_dir.resolve()
+
+    def _do_restart():
+        try:
+            if req.migrate and src != dst:
+                _migrate_dir(src, dst)
+        except Exception:
+            log.exception("数据迁移失败，仍将重启服务")
+            state.hub.broadcast({"type": "migration", "phase": "error", "message": "数据迁移失败"})
+        state.hub.broadcast({"type": "migration", "phase": "restarting", "message": "正在重启服务..."})
+        time.sleep(1.0)
+        try:
+            os.execv(sys.executable, [sys.executable] + sys.argv)
+        except Exception:
+            log.exception("进程重启失败")
+            state.hub.broadcast({"type": "migration", "phase": "error", "message": "进程重启失败"})
+
+    threading.Thread(target=_do_restart, daemon=True).start()
+    return {"ok": True, "migrate": req.migrate, "message": "服务即将重启"}
+
+
+def _migrate_dir(src: Path, dst: Path) -> None:
+    """将 src 目录内容移动到 dst，并按条目广播迁移进度。"""
+    import shutil
+
+    dst.mkdir(parents=True, exist_ok=True)
+    items = [p for p in src.iterdir()] if src.is_dir() else []
+    total = len(items)
+    state.hub.broadcast({
+        "type": "migration", "phase": "migrating",
+        "total": total, "done": 0,
+        "message": f"正在迁移数据（共 {total} 项）...",
+    })
+    for i, item in enumerate(items, start=1):
+        target = dst / item.name
+        if target.exists():
+            if target.is_dir() and item.is_dir():
+                shutil.rmtree(target)
+            else:
+                target.unlink()
+        shutil.move(str(item), str(target))
+        if i % 5 == 0 or i == total:
+            state.hub.broadcast({
+                "type": "migration", "phase": "migrating",
+                "total": total, "done": i,
+                "message": f"已迁移 {i}/{total}",
+            })
+    state.hub.broadcast({
+        "type": "migration", "phase": "migrating",
+        "total": total, "done": total, "message": "数据迁移完成",
+    })

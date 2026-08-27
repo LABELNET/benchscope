@@ -60,7 +60,7 @@
             <div class="msg-avatar">
               <div v-if="msg.role === 'user'" class="avatar user-avatar">U</div>
               <div v-else class="avatar ai-avatar">
-                <img src="/bs-logo.png" alt="AI" class="avatar-img" />
+                <img src="/blue_logo.png" alt="AI" class="avatar-img" />
               </div>
             </div>
             <div class="msg-content-wrap">
@@ -82,7 +82,7 @@
           <div v-if="streaming" class="msg-row assistant">
             <div class="msg-avatar">
               <div class="avatar ai-avatar">
-                <img src="/bs-logo.png" alt="AI" class="avatar-img" />
+                <img src="/blue_logo.png" alt="AI" class="avatar-img" />
               </div>
             </div>
             <div class="msg-content-wrap">
@@ -168,6 +168,7 @@ import { useConfigStore } from '@/store/config'
 import { t } from '@/i18n'
 
 const config = useConfigStore()
+
 const sessions = ref([])
 const activeId = ref(null)
 const activeSession = ref(null)
@@ -661,8 +662,8 @@ onMounted(() => {
 }
 
 .avatar {
-  width: 36px;
-  height: 36px;
+  width: 42px;
+  height: 42px;
   border-radius: 50%;
   display: flex;
   align-items: center;

@@ -12,9 +12,10 @@ class AppState:
     def __init__(self):
         self.config = ConfigManager()
         self.hub = WebSocketHub()
+        self.migration_source = str(self.config.data_dir)  # data_dir 迁移来源（默认当前数据根目录）
         self.monitor = StatusMonitor(self.config, self.hub)
-        self.tasks = TaskManager(self.config, self.hub, tasks_dir=self.config.data_dir / "tasks")
-        self.sessions = SessionManager(self.config, sessions_dir=self.config.data_dir / "sessions")
+        self.tasks = TaskManager(self.config, self.hub, tasks_dir=self.config.perfs_dir / "tasks")
+        self.sessions = SessionManager(self.config, sessions_dir=self.config.sessions_dir)
 
 
 state = AppState()

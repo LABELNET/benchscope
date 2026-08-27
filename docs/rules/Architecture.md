@@ -34,7 +34,7 @@
 | 模块 | 职责 |
 | --- | --- |
 | `benchscope/cli.py` | 命令行入口（`benchscope` / `python -m benchscope.cli`） |
-| `benchscope/config.py` + `constants.py` | 配置持久化（`~/.benchscope/config.json`）与默认值 |
+| `benchscope/config.py` + `constants.py` | 配置持久化（`~/.benchscope/settings.json`，旧版 `config.json` 兼容迁移）与默认值（9 目录体系） |
 | `benchscope/task_manager.py` | 任务生命周期（创建/执行/停止/持久化），双模式执行策略（并发/阈值 + 二分探测），结果行携带 `case_id` |
 | `benchscope/session_manager.py` | 会话存储 + SSE 流式对话 + 思考标签解析（`parse_think_tags`） |
 | `benchscope/parser.py` | bench 输出解析（mean + P99 双套指标，vLLM/SGLang 格式兼容） |
@@ -61,7 +61,7 @@
 
 ## 4. 关键设计约束
 
-- **单进程**：前端构建产物由后端静态托管，无独立前端服务（dev 脚本亦然）。
+- **单进程**：前端构建产物由后端静态托管，无独立前端服务（dev 脚本亦然）。静态资源 `/assets` 挂载目录；`bs-logo.png` 与 `blue_logo.png`（网站 LOGO）单独注册路由，避免被 SPA fallback 拦截。
 - **子进程执行 bench**：`bash -lic` + 最小环境变量，自动 source 平台脚本（maca 等），支持用户自定义 `bench_shell_init`。
 - **无服务端插件**：仅需推理服务暴露 OpenAI 兼容 API。
-- **持久化**：配置 `~/.benchscope/config.json`、任务 `data_dir/tasks`、会话 `data_dir/sessions`、运行记录 `logs_dir/<MMDD-HHMMSS>/`（run.json / CSV / xlsx / full.log）。
+- **持久化**：配置 `~/.benchscope/settings.json`（旧版 `config.json` 首启自动迁移）。**9 目录体系**：`data_dir` 根（默认 `~/.benchscope`）+ 8 功能子目录（perfs / evals / analysis / logs / sessions / models / datasets / plugins），子目录未自定义时跟随 `data_dir`；任务 run_dir 按 `kind` 落 `perfs_dir` / `evals_dir`；终端输出日志 `logs_dir/perf|eval_runID_*.log`；会话 `sessions_dir`；内置数据集缓存 `datasets_dir/{id}/`。

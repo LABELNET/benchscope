@@ -13,6 +13,9 @@ http.interceptors.response.use(
 export default http
 
 export const api = {
+  // 系统
+  getVersion: () => http.get('/api/version'),
+
   // 配置
   getConfig: () => http.get('/api/config'),
   updateConfig: (patch) => http.post('/api/config', patch),
@@ -25,6 +28,11 @@ export const api = {
   saveParamsYaml: (framework, content) => http.put(`/api/config/params-yaml/${framework}`, { content }),
   getDatasets: () => http.get('/api/config/datasets'),
   downloadDataset: (id) => http.post('/api/config/datasets/download', { id }),
+
+  // 缓存目录管理
+  getDirs: () => http.get('/api/config/dirs'),
+  updateDirs: (patch) => http.post('/api/config/dirs', patch),
+  restartService: (migrate) => http.post('/api/config/restart', { migrate }),
 
   // 任务
   listTasks: () => http.get('/api/tasks'),

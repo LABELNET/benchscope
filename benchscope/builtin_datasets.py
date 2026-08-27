@@ -1,4 +1,4 @@
-"""内置数据集模块：读取 configs/datasets.yaml，支持下载并缓存到 data_dir/datasets。"""
+"""内置数据集模块：读取 configs/datasets.yaml，支持下载并缓存到 datasets_dir。"""
 from __future__ import annotations
 
 import logging
@@ -29,9 +29,9 @@ def load_builtin_datasets() -> list[dict]:
         return []
 
 
-def _cache_root(data_dir: Path) -> Path:
-    """内置数据集缓存根目录：data_dir/datasets。"""
-    return data_dir / "datasets"
+def _cache_root(datasets_dir: Path) -> Path:
+    """内置数据集缓存根目录：datasets_dir（Settings/Datasets 管理的数据集下载目录）。"""
+    return datasets_dir
 
 
 def _ds_cache_dir(cache_root: Path, ds_id: str) -> Path:

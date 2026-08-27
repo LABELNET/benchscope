@@ -10,12 +10,20 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
+from benchscope import __version__
 from benchscope.server import api_config, api_logs, api_tasks, api_dashboard, api_sessions
 from benchscope.server.state import state
 
 log = logging.getLogger("benchscope.app")
 
 WEBUI_DIR = Path(__file__).resolve().parent.parent / "webui"
+
+
+def _version_display() -> str:
+    """版本显示：开发中 v1.0.6-dev，正式发布 v1.0.6。"""
+    base = __version__.split(".dev")[0]
+    dev = ".dev" in __version__
+    return f"v{base}-dev" if dev else f"v{base}"
 
 
 @asynccontextmanager
@@ -30,7 +38,7 @@ def create_app() -> FastAPI:
     app = FastAPI(
         title="benchscope",
         description="LLM inference performance testing tool. Supports vLLM, SGLang, and any OpenAI-compatible API.",
-        version="1.0.5",
+        version=__version__,
         lifespan=lifespan,
     )
 
@@ -47,6 +55,10 @@ def create_app() -> FastAPI:
     app.include_router(api_logs.router)
     app.include_router(api_dashboard.router)
     app.include_router(api_sessions.router)
+
+    @app.get("/api/version", include_in_schema=False)
+    def version():
+        return {"version": __version__, "display": _version_display()}
 
     # ---------------- WebSocket ----------------
     @app.websocket("/ws")
@@ -81,6 +93,13 @@ def create_app() -> FastAPI:
     @app.get("/bs-logo.png", include_in_schema=False)
     def logo():
         logo_path = WEBUI_DIR / "bs-logo.png"
+        if logo_path.exists():
+            return FileResponse(logo_path, media_type="image/png")
+        raise HTTPException(status_code=404, detail="Logo not found")
+
+    @app.get("/blue_logo.png", include_in_schema=False)
+    def blue_logo():
+        logo_path = WEBUI_DIR / "blue_logo.png"
         if logo_path.exists():
             return FileResponse(logo_path, media_type="image/png")
         raise HTTPException(status_code=404, detail="Logo not found")

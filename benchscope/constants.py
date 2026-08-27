@@ -38,10 +38,16 @@ DEFAULT_CONFIG = {
         "extra_headers": {},
     },
     "gpu": {"auto": True, "name": "", "count": 8},
-    "logs_dir": "./logs",
-    "datasets_dir": "./datasets",
-    "data_dir": "~/.benchscope",  # 服务端数据持久化目录（任务 / 会话等）
-    "models_dir": "~/.benchscope/models",  # 模型下载缓存目录
+    # 缓存目录体系（数据根目录为 data_dir，其余为各功能目录）
+    "data_dir": "~/.benchscope",  # 数据根目录（服务端数据持久化 / 任务 / 会话等）
+    "perfs_dir": "~/.benchscope/perfs",  # 性能测试任务目录
+    "evals_dir": "~/.benchscope/evals",  # 精度测试任务目录
+    "analysis_dir": "~/.benchscope/analysys",  # 数据分析目录（联动 Datas）
+    "logs_dir": "~/.benchscope/logs",  # 日志目录（runtime 日志 + 任务终端输出）
+    "sessions_dir": "~/.benchscope/sessions",  # 会话缓存目录
+    "models_dir": "~/.benchscope/models",  # 模型下载缓存目录（联动 Settings/Models）
+    "datasets_dir": "~/.benchscope/datasets",  # 数据集下载目录（联动 Settings/Datasets）
+    "plugins_dir": "~/.benchscope/plugins",  # 插件安装加载目录（联动 Settings/Plugins）
     "tpot_threshold_ms": 100,
     "request_rate": "inf",  # inf 或数字
     "bench_commands": {

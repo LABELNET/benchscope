@@ -29,25 +29,44 @@
         </a-card>
 
         <a-card size="small" :bordered="true" class="panel-card">
-          <template #title>{{ t('cachePaths') }}</template>
-          <div class="panel-row">
-            <span class="panel-label">{{ t('logsDir') }}</span>
-            <a-input v-model:value="form.logs_dir" placeholder="./logs" style="width: 360px" @change="saveField('logs_dir')" />
-          </div>
-          <div class="panel-row">
-            <span class="panel-label">{{ t('datasetsDir') }}</span>
-            <a-input v-model:value="form.datasets_dir" placeholder="./datasets" style="width: 360px" @change="saveField('datasets_dir')" />
-          </div>
-          <div class="panel-row">
-            <div style="display: flex; flex-direction: column; gap: 2px">
-              <span class="panel-label">{{ t('dataDir') }}</span>
-              <span class="field-desc">{{ t('dataDirDesc') }}</span>
+          <template #title>
+            <span>{{ t('cachePaths') }}</span>
+            <a-tag v-if="perfRunning" color="orange" class="running-tag">{{ t('runningLocked') }}</a-tag>
+          </template>
+          <div v-for="d in dirs" :key="d.key" class="panel-row dir-row">
+            <div class="dir-info">
+              <span class="dir-label">{{ d.label }}</span>
+              <span class="field-desc">{{ d.desc }}</span>
             </div>
-            <a-input v-model:value="form.data_dir" placeholder="~/.benchscope" style="width: 360px" @change="saveField('data_dir')" />
-          </div>
-          <div class="panel-row">
-            <span class="panel-label">{{ t('modelsDir') }}</span>
-            <a-input v-model:value="form.models_dir" placeholder="~/.benchscope/models" style="width: 360px" @change="saveField('models_dir')" />
+            <div class="dir-right">
+              <template v-if="editingKey === d.key">
+                <a-input
+                  v-model:value="editValue"
+                  size="small"
+                  class="dir-input"
+                  :disabled="d.locked"
+                  @pressEnter="saveDir(d)"
+                  @blur="cancelEdit()"
+                />
+                <a-button
+                  type="primary"
+                  size="small"
+                  :loading="savingDirKey === d.key"
+                  :disabled="d.locked"
+                  @mousedown.prevent
+                  @click="saveDir(d)"
+                >{{ t('save') }}</a-button>
+              </template>
+              <span
+                v-else
+                class="dir-value"
+                :class="{ editable: !d.locked }"
+                @click="d.locked ? notifyLocked() : startEdit(d)"
+              >
+                {{ d.value }}
+                <a-tag v-if="!d.exists" color="red" size="small">{{ t('dirMissing') }}</a-tag>
+              </span>
+            </div>
           </div>
         </a-card>
       </div>
@@ -147,6 +166,16 @@
       </div>
     </div>
 
+    <!-- Data 目录迁移进度弹窗 -->
+    <a-modal v-model:open="migrateOpen" :footer="null" :closable="false" :keyboard="false" :mask-closable="false" :width="420">
+      <div class="migrate-box">
+        <a-spin :spinning="migratePhase !== 'restarting'" />
+        <div class="migrate-title">{{ migratePhase === 'restarting' ? t('restarting') : t('migrating') }}</div>
+        <a-progress :percent="migratePercent" :status="migratePhase === 'restarting' ? 'active' : 'normal'" />
+        <div class="migrate-msg">{{ migrateMessage }}</div>
+      </div>
+    </a-modal>
+
     <!-- 模型详情右侧面板 -->
     <a-drawer
       v-model:open="drawerOpen"
@@ -186,13 +215,13 @@
 </template>
 
 <script setup>
-import { computed, onMounted, reactive, ref } from 'vue'
-import { message } from 'ant-design-vue'
+import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
+import { message, notification, Modal } from 'ant-design-vue'
 import {
   SettingOutlined, DesktopOutlined, DatabaseOutlined, ApiOutlined,
   CloudDownloadOutlined,
 } from '@ant-design/icons-vue'
-import { api } from '@/api'
+import { api, wsUrl } from '@/api'
 import { useConfigStore } from '@/store/config'
 import { t, setLocale, i18nState } from '@/i18n'
 import { modelCatalog } from '@/data/modelCatalog'
@@ -207,6 +236,25 @@ const selectedModel = ref(null)
 const datasets = ref([])
 const datasetsLoading = ref(false)
 const downloadingId = ref('')
+
+// ---- Cache Paths 目录管理 ----
+const dirs = ref([])
+const perfRunning = ref(false)
+const editingKey = ref('')
+const editValue = ref('')
+const savingDirKey = ref('')
+// Data 目录迁移/重启
+const migrateOpen = ref(false)
+const migratePhase = ref('connecting')
+const migrateProgress = ref({ done: 0, total: 0 })
+const migrateMessage = ref('')
+let migrateSocket = null
+
+const migratePercent = computed(() => {
+  const { done, total } = migrateProgress.value
+  if (!total) return migratePhase.value === 'migrating' ? 0 : 100
+  return Math.min(100, Math.round((done / total) * 100))
+})
 
 const form = reactive({
   locale: 'en',
@@ -253,8 +301,130 @@ onMounted(async () => {
         extra_headers: c.api?.extra_headers || {},
       },
     })
+    loadDirs()
     loadDatasets()
   } catch { /* ignore */ }
+})
+
+async function loadDirs() {
+  try {
+    const resp = await api.getDirs()
+    dirs.value = resp.dirs || []
+    perfRunning.value = !!resp.perf_running
+  } catch {
+    dirs.value = []
+  }
+}
+
+function startEdit(d) {
+  editingKey.value = d.key
+  editValue.value = d.value
+}
+
+function cancelEdit() {
+  editingKey.value = ''
+  editValue.value = ''
+}
+
+function notifyLocked() {
+  notification.warning({
+    message: t('lockedTitle'),
+    description: t('lockedDesc'),
+    placement: 'topRight',
+    duration: 4,
+  })
+}
+
+async function saveDir(d) {
+  const val = (editValue.value || '').trim()
+  if (!val) {
+    message.warning(t('dirEmpty'))
+    return
+  }
+  if (val === d.value) {
+    cancelEdit()
+    return
+  }
+  savingDirKey.value = d.key
+  try {
+    const resp = await api.updateDirs({ [d.key]: val })
+    cancelEdit()
+    message.success(t('saved'))
+    await loadDirs()
+    // Data 根目录修改后需重启服务生效
+    if (d.key === 'data_dir' && resp.requires_restart) {
+      Modal.confirm({
+        title: t('restartTitle'),
+        content: t('restartContent'),
+        okText: t('confirm'),
+        cancelText: t('cancel'),
+        onOk: () => askMigrate(),
+      })
+    }
+  } catch (e) {
+    message.error(e.message || t('saveFail'))
+    loadDirs() // 若因任务运行中拒绝，刷新锁定状态
+  } finally {
+    savingDirKey.value = ''
+  }
+}
+
+function askMigrate() {
+  Modal.confirm({
+    title: t('migrateTitle'),
+    content: t('migrateContent'),
+    okText: t('migrateYes'),
+    cancelText: t('migrateNo'),
+    onOk: () => restartWithMigrate(true),
+    onCancel: () => restartWithMigrate(false),
+  })
+}
+
+function restartWithMigrate(migrate) {
+  if (migrate) {
+    migrateOpen.value = true
+    migratePhase.value = 'connecting'
+    migrateProgress.value = { done: 0, total: 0 }
+    migrateMessage.value = t('migrating')
+    openMigrateSocket()
+  }
+  api.restartService(migrate).catch((e) => {
+    message.error(e.message || t('restartFail'))
+    if (migrate) {
+      migrateOpen.value = false
+      closeMigrateSocket()
+    }
+  })
+}
+
+function openMigrateSocket() {
+  try {
+    migrateSocket = new WebSocket(wsUrl())
+  } catch { return }
+  migrateSocket.onmessage = (ev) => {
+    try {
+      const msg = JSON.parse(ev.data)
+      if (msg.type !== 'migration') return
+      migratePhase.value = msg.phase
+      if (msg.phase === 'migrating') {
+        migrateProgress.value = { done: msg.done || 0, total: msg.total || 0 }
+        migrateMessage.value = msg.message || t('migrating')
+      } else if (msg.phase === 'restarting') {
+        migrateMessage.value = t('restarting')
+      }
+    } catch { /* ignore */ }
+  }
+}
+
+function closeMigrateSocket() {
+  if (migrateSocket) {
+    try { migrateSocket.close() } catch { /* ignore */ }
+    migrateSocket = null
+  }
+}
+
+onBeforeUnmount(() => {
+  closeMigrateSocket()
 })
 
 async function loadDatasets() {
@@ -439,6 +609,85 @@ function deployModel() {
 .field-desc {
   font-size: 12px;
   color: var(--ant-color-text-tertiary, #999);
+}
+
+/* ===== Cache Paths 目录管理 ===== */
+.running-tag {
+  margin-left: 8px;
+}
+
+.dir-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.dir-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.dir-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ant-color-text, #333);
+}
+
+.dir-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.dir-input {
+  width: 340px;
+}
+
+.dir-value {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--ant-color-primary, #1677ff);
+  font-weight: 500;
+  cursor: default;
+  user-select: text;
+}
+
+.dir-value.editable {
+  cursor: pointer;
+  text-decoration: underline;
+  text-decoration-color: rgba(22, 119, 255, 0.35);
+  text-underline-offset: 3px;
+}
+
+.dir-value.editable:hover {
+  color: var(--ant-color-primary-hover, #4096ff);
+}
+
+/* ===== 迁移进度弹窗 ===== */
+.migrate-box {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  padding: 12px 8px;
+}
+
+.migrate-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--ant-color-text, #333);
+}
+
+.migrate-msg {
+  font-size: 12px;
+  color: var(--ant-color-text-secondary, #666);
+  word-break: break-all;
 }
 
 .section-desc {

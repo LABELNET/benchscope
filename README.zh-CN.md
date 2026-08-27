@@ -1,11 +1,17 @@
-# benchscope
+<div align="center">
+  <img src="asserts/black_logo.png" width="120" height="120" alt="BenchScope logo" />
+</div>
 
-[English](README.md) | **简体中文**
+<h1 align="center" style="font-size: 48px; margin-top: 12px;">BenchScope</h1>
 
-> LLM 模型**性能与精度可视化测试平台**，支持 vLLM、SGLang 部署的模型及任意 OpenAI 兼容推理服务。
+<p align="center"><a href="README.md">English</a> | <strong>简体中文</strong></p>
+
+BenchScope 是一款开源大模型推理测试平台，基于 vibe‑coding 模式开发。
+
+A visualization testing platform for LLM model **performance & accuracy**, supporting models deployed with vLLM / SGLang and any OpenAI-compatible inference service.
 
 <div align="center">
-  <img src="asserts/main-performance.png" width="72%" alt="benchscope 性能测试示意图" />
+  <img src="asserts/main-performance.png" width="72%" alt="BenchScope 性能测试示意图" />
 </div>
 
 ---

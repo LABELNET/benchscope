@@ -6,6 +6,25 @@ import logging
 import sys
 import webbrowser
 import threading
+from datetime import datetime
+
+
+def _setup_runtime_logging() -> None:
+    """将服务运行日志落盘到 logs 目录：runtime_年月日.log。"""
+    try:
+        from benchscope.server.state import state
+
+        logs_dir = state.config.logs_dir
+        logs_dir.mkdir(parents=True, exist_ok=True)
+        rt_file = logs_dir / f"runtime_{datetime.now().strftime('%Y%m%d')}.log"
+        fh = logging.FileHandler(rt_file, encoding="utf-8")
+        fh.setFormatter(
+            logging.Formatter("%(asctime)s [%(levelname)s] %(name)s: %(message)s")
+        )
+        logging.getLogger().addHandler(fh)
+        logging.getLogger("benchscope").info("runtime 日志已落盘: %s", rt_file)
+    except Exception:
+        logging.getLogger("benchscope").exception("runtime 日志配置失败")
 
 
 def main(argv=None) -> int:
@@ -29,6 +48,7 @@ def main(argv=None) -> int:
     from benchscope.server.app import create_app
 
     app = create_app()
+    _setup_runtime_logging()
     url = f"http://127.0.0.1:{args.port}"
 
     if not args.no_browser:

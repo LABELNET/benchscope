@@ -75,12 +75,16 @@ class Task:
     finished_at: str = ""
     precision: str = ""
     created_at: str = ""
+    kind: str = "perf"  # perf（性能测试）| eval（精度测试）
+    log_path: Optional[Path] = None  # 终端输出日志（logs_dir 下 perf/eval_runID_*.log）
     _persist_path: Optional[Path] = None
 
     def snapshot(self, include_rows: bool = True) -> dict:
         data = {
             "task_id": self.task_id,
             "run_dir": str(self.run_dir),
+            "kind": self.kind,
+            "log_path": str(self.log_path) if self.log_path else None,
             "framework": self.framework,
             "framework_name": FRAMEWORK_NAMES.get(self.framework, self.framework),
             "model": self.model,
@@ -116,8 +120,8 @@ class Task:
     def persist_run_json(self):
         """将 snapshot() 写入 run_dir/run.json，供 Dashboard/Logs API 读取运行元数据。
 
-        与 persist() 并行：persist() 写 ~/.benchscope/tasks/<id>.json，
-        本方法写 logs/<run_id>/run.json。失败时 log.exception 但不抛，避免影响任务主流程。
+        与 persist() 并行：persist() 写 tasks/<id>.json，
+        本方法写 perfs|evals/<run_id>/run.json（按任务类型分目录）。失败时 log.exception 但不抛。
         """
         try:
             self.run_dir.mkdir(parents=True, exist_ok=True)
@@ -152,9 +156,13 @@ class TaskManager:
                         data["finished_at"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                     p.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
                 task_id = data.get("task_id", p.stem)
+                kind = data.get("kind", "perf")
+                default_run_dir = (
+                    self.config.perfs_dir if kind == "perf" else self.config.evals_dir
+                ) / task_id.replace("task-", "")
                 task = Task(
                     task_id=task_id,
-                    run_dir=Path(data.get("run_dir", self.config.logs_dir / task_id)),
+                    run_dir=Path(data.get("run_dir", str(default_run_dir))),
                     payload=data,
                     framework=data.get("framework", "vllm"),
                     model=data.get("model", ""),
@@ -168,6 +176,8 @@ class TaskManager:
                     finished_at=data.get("finished_at", ""),
                     precision=data.get("precision", ""),
                     created_at=data.get("created_at", ""),
+                    kind=kind,
+                    log_path=Path(data["log_path"]) if data.get("log_path") else None,
                 )
                 task._persist_path = p
                 self._tasks[task_id] = task
@@ -200,9 +210,11 @@ class TaskManager:
 
             framework = payload.get("framework", "vllm")
             model = payload.get("model", "")
+            kind = payload.get("kind", "perf")
             now = datetime.now()
             task_id = f"task-{now.strftime('%m%d-%H%M%S')}"
-            run_dir = self.config.logs_dir / task_id.replace("task-", "")
+            run_root = self.config.perfs_dir if kind == "perf" else self.config.evals_dir
+            run_dir = run_root / task_id.replace("task-", "")
             run_dir.mkdir(parents=True, exist_ok=True)
 
             task = Task(
@@ -214,6 +226,7 @@ class TaskManager:
                 gpu=payload.get("gpu", {}),
                 precision=payload.get("precision", ""),
                 created_at=now.strftime("%Y-%m-%d %H:%M:%S"),
+                kind=kind,
             )
             task.cases = build_cases(payload.get("dataset", {}), model)
             task._persist_path = self.tasks_dir / f"{task_id}.json"
@@ -281,7 +294,12 @@ class TaskManager:
         }
         mean_csv = task.run_dir / f"{model_name}_X{gpu_count}.log"
         p99_csv = task.run_dir / f"{model_name}_X{gpu_count}_p99.log"
-        full_log_path = task.run_dir / "full.log"
+        # 终端输出日志落盘到 logs 目录：perf|eval_runID_月日时分秒.log
+        run_id = task.task_id.replace("task-", "")
+        ts = datetime.now().strftime("%m%d%H%M%S")
+        full_log_path = self.config.logs_dir / f"{task.kind}_{run_id}_{ts}.log"
+        full_log_path.parent.mkdir(parents=True, exist_ok=True)
+        task.log_path = full_log_path
         full_log_fp = open(full_log_path, "a", encoding="utf-8")
 
         try:

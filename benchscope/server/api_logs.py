@@ -22,19 +22,35 @@ TEXT_SUFFIXES = {".log", ".csv", ".txt", ".json", ".md", ".sh", ".py"}
 
 # ----------------------------------------------------------------------
 # 运行列表
+def _run_roots() -> list[Path]:
+    """运行记录目录根：perfs（性能任务）/ evals（精度任务），兼容旧版 logs 目录中的 run 目录。"""
+    cfg = state.config
+    roots = [cfg.perfs_dir, cfg.evals_dir]
+    logs_dir = cfg.logs_dir
+    if logs_dir.is_dir():
+        # 旧版架构 run 目录直接挂在 logs 下（含 run.json 的子目录）
+        if any(p.is_dir() and (p / "run.json").exists() for p in logs_dir.iterdir()):
+            roots.append(logs_dir)
+    return [r for r in roots if r and r.exists()]
+
+
 @router.get("/runs")
 def list_runs():
-    logs_dir = state.config.logs_dir
-    runs = []
-    if logs_dir.exists():
-        for d in sorted(logs_dir.iterdir(), key=lambda p: p.name, reverse=True):
-            if not d.is_dir():
+    cfg = state.config
+    seen: dict[str, dict] = {}
+    for root in _run_roots():
+        for d in sorted(root.iterdir(), key=lambda p: p.name, reverse=True):
+            if not d.is_dir() or d.name == "tasks":
+                # tasks: TaskManager 任务状态持久化目录（非 run 目录）
                 continue
-            files = sorted(
-                (p.name, p.stat().st_size) for p in d.iterdir() if p.is_file()
-            )
             run_info = _load_run_json(d)
-            runs.append({
+            files = [(p.name, p.stat().st_size) for p in d.iterdir() if p.is_file()]
+            # 附加终端输出日志（logs 目录下 perf|eval_runID_*.log）
+            kind = (run_info or {}).get("kind", "perf")
+            for lp in cfg.logs_dir.glob(f"{kind}_{d.name}_*.log"):
+                files.append((lp.name, lp.stat().st_size))
+            files = sorted(set(files))
+            entry = {
                 "run_id": d.name,
                 "dir": str(d),
                 "files": [{"name": n, "size": s} for n, s in files],
@@ -45,7 +61,10 @@ def list_runs():
                     "started_at": (run_info or {}).get("started_at"),
                     "finished_at": (run_info or {}).get("finished_at"),
                 } if run_info else {},
-            })
+            }
+            # 多根目录去重：perfs/evals 优先于 logs 兼容目录
+            seen.setdefault(d.name, entry)
+    runs = [v for _, v in sorted(seen.items(), key=lambda kv: kv[0], reverse=True)]
     return {"runs": runs}
 
 
@@ -63,7 +82,12 @@ def _load_run_json(d: Path) -> dict | None:
 def get_run(run_id: str):
     d = _resolve_run_dir(run_id)
     run_info = _load_run_json(d) or {}
-    files = sorted((p.name, p.stat().st_size) for p in d.iterdir() if p.is_file())
+    files = [(p.name, p.stat().st_size) for p in d.iterdir() if p.is_file()]
+    # 附加终端输出日志（logs 目录下 perf|eval_runID_*.log）
+    kind = run_info.get("kind", "perf")
+    for lp in state.config.logs_dir.glob(f"{kind}_{run_id}_*.log"):
+        files.append((lp.name, lp.stat().st_size))
+    files = sorted(set(files))
     return {"run_id": run_id, "dir": str(d), "files": files, "run": run_info}
 
 
@@ -355,20 +379,23 @@ def _resolve_run_dir(run_id: str) -> Path:
     # 路径穿越校验：run_id 必须是单层目录名，禁止包含分隔符或父级引用
     if not run_id or "/" in run_id or "\\" in run_id or ".." in run_id:
         raise HTTPException(status_code=400, detail="非法的 run_id")
-    logs_dir = state.config.logs_dir
-    d = (logs_dir / run_id).resolve()
-    if not str(d).startswith(str(logs_dir.resolve())):
-        raise HTTPException(status_code=400, detail="非法的 run_id")
-    if not d.is_dir():
-        raise HTTPException(status_code=404, detail=f"运行记录不存在: {run_id}")
-    return d
+    for root in _run_roots():
+        d = (root / run_id).resolve()
+        if str(d).startswith(str(root.resolve())) and d.is_dir():
+            return d
+    raise HTTPException(status_code=404, detail=f"运行记录不存在: {run_id}")
 
 
 def _resolve_file(d: Path, name: str) -> Path:
     p = (d / name).resolve()
-    if not p.is_file() or not str(p).startswith(str(d.resolve())):
-        raise HTTPException(status_code=404, detail="文件不存在")
-    return p
+    if p.is_file() and str(p).startswith(str(d.resolve())):
+        return p
+    # 终端输出日志存放在 logs 目录根下（perf|eval_runID_*.log）
+    logs_dir = state.config.logs_dir
+    cand = (logs_dir / name).resolve()
+    if cand.is_file() and str(cand).startswith(str(logs_dir.resolve())):
+        return cand
+    raise HTTPException(status_code=404, detail="文件不存在")
 
 
 def _unique_path(p: Path) -> Path:
