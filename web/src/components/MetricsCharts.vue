@@ -17,7 +17,11 @@ import { t } from '@/i18n'
 
 const props = defineProps({
   rows: { type: Array, default: () => [] },
+  // 联动开关：开启时鼠标进入任一图，所有统计图浮动信息（tooltip）联动显示
+  linked: { type: Boolean, default: true },
 })
+
+const GROUP = 'perf-charts'
 
 // 12 张图：4 列 × 3 行。每列对应一个指标组。
 //   列 1 吞吐 (tok/s)  - Output / Peak / Total
@@ -62,7 +66,7 @@ function setRef(key, el) {
   chartEls[key] = el
   if (!charts[key]) {
     charts[key] = echarts.init(el)
-    charts[key].group = 'perf-charts'
+    charts[key].group = GROUP
     const ob = new ResizeObserver(() => charts[key] && charts[key].resize())
     ob.observe(el)
     observers.push(ob)
@@ -99,8 +103,22 @@ function buildOption(def) {
       textStyle: { color: 'rgba(0,0,0,0.88)', fontSize: 11 },
       valueFormatter: (v) => (v === null || v === undefined ? '-' : Number(v).toFixed(2)),
     },
-    legend: labels.length > 1 ? { data: labels, type: 'scroll', top: 0, textStyle: { fontSize: 10 } } : undefined,
-    grid: { left: 46, right: 12, top: labels.length > 1 ? 28 : 12, bottom: 22 },
+    // 图例：位于 Y 轴右侧、曲线图内部，竖排对齐；颜色标记与文字缩小、透明度 60%
+    legend: labels.length > 1 ? {
+      data: labels,
+      type: 'scroll',
+      orient: 'vertical',
+      left: 48,          // 紧贴 Y 轴刻度右侧（图内）
+      top: 12,
+      align: 'left',
+      icon: 'circle',
+      itemWidth: 8,
+      itemHeight: 8,
+      itemGap: 5,
+      itemStyle: { opacity: 0.6 },
+      textStyle: { fontSize: 9, opacity: 0.6 },
+    } : undefined,
+    grid: { left: 46, right: 12, top: 12, bottom: 22 },
     xAxis: {
       type: 'category',
       data: xData,
@@ -149,12 +167,20 @@ function update() {
 watch(() => props.rows, update, { deep: true })
 watch(cellDefs, update, { deep: true })
 
+// 联动开关：开启 connect 同组图表（hover 联动 tooltip），关闭 disconnect
+watch(
+  () => props.linked,
+  (v) => {
+    if (v) echarts.connect(GROUP)
+    else echarts.disconnect(GROUP)
+  },
+)
+
 onMounted(() => {
   // 等 DOM 渲染（v-for 动态 setRef）后再 update
   setTimeout(() => {
     update()
-    // 联动：同组的所有图表 hover 时同步显示 tooltip / axisPointer
-    echarts.connect('perf-charts')
+    if (props.linked) echarts.connect(GROUP)
   }, 0)
 })
 

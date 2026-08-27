@@ -10,6 +10,7 @@
           :output-threshold="outputThreshold"
           :preset="mode"
           :max-rows="100"
+          :default-hidden="['label', 'concurrency', 'successful', 'status']"
         />
       </a-tab-pane>
     </a-tabs>
@@ -68,5 +69,15 @@ function groupRows(key) {
 }
 .data-tabs :deep(.ant-tabs-nav) {
   margin-bottom: 4px;
+}
+/* 分组 Tab 过多时：横向可滚动（不换行/不溢出） */
+.data-tabs :deep(.ant-tabs-nav-wrap) {
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: thin;
+}
+.data-tabs :deep(.ant-tabs-nav-list) {
+  flex-wrap: nowrap;
+  white-space: nowrap;
 }
 </style>

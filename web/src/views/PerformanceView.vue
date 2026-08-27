@@ -47,10 +47,10 @@
 
     <!-- 有任务：三行布局 -->
     <div v-if="theTask" class="perf-detail">
-      <!-- 第一行：Perf + Cases + Console (各占 1/3，等高) -->
+      <!-- 第一行：Perf + Cases + Console (各占 1/3，最大高度 = Perf 高度，超出滚动) -->
       <div class="row-1">
         <!-- Perf 面板 -->
-        <a-card size="small" class="perf-panel" :body-style="{ padding: '10px 14px', display: 'flex', flexDirection: 'column', flex: '1', minHeight: '0' }">
+        <a-card size="small" class="perf-panel" ref="perfPanelRef" :body-style="{ padding: '10px 14px', display: 'flex', flexDirection: 'column', flex: '1', minHeight: '0' }">
           <template #title>
             <div class="panel-title-left">
               <span class="title-text">Perf</span>
@@ -117,13 +117,13 @@
         </a-card>
 
         <!-- Cases 面板：显示并发 case 列表 (1K1K 等) -->
-        <a-card size="small" class="cases-panel" :body-style="{ padding: '10px 14px', display: 'flex', flexDirection: 'column', flex: '1', minHeight: '0' }">
+        <a-card size="small" class="cases-panel" :style="sideCardStyle" :body-style="{ padding: '10px 14px', display: 'flex', flexDirection: 'column', flex: '1', minHeight: '0' }">
           <template #title>{{ t('casesPanelTitle') }}</template>
           <template #extra>
             <span class="cases-mode">{{ theTask.mode === 'threshold' ? t('thresholdMode') : t('concurrencyMode') }}</span>
           </template>
           <div class="cases-body">
-            <!-- 阈值模式：显示任务阈值条件（TTOT mean(ms) ≤ x ms；Output token throughput ≤ y tok/s；仅文字，不可编辑，并发模式不显示） -->
+            <!-- 阈值模式：显示任务阈值条件（TTOT mean(ms) ≤ x ms；Output token throughput ≤ y tok/s；仅文字，不可编辑，并发模式不显示）——固定不滚动 -->
             <div v-if="theTask.mode === 'threshold'" class="threshold-conds">
               <div class="info-row">
                 <span class="info-label">{{ t('tpotCondLabel') }} ≤</span>
@@ -134,10 +134,16 @@
                 <span class="info-value">{{ theTask.output_throughput_threshold }} tok/s</span>
               </div>
             </div>
+            <!-- 分组列表：独立滚动区域 -->
+            <div class="case-list" ref="caseListRef">
             <div v-for="(c, i) in theTask.cases || []" :key="c.case_id || c.label || i" class="case-row">
-              <span class="case-label">{{ c.label }}</span>
-              <a-tag v-if="c.case_id" size="small" class="case-gid">g{{ c.case_id }}</a-tag>
-              <span class="case-meta" v-if="c.input_len">{{ c.input_len }}/{{ c.output_len }}</span>
+              <!-- 第一行：分组信息 -->
+              <div class="case-head">
+                <span class="case-label">{{ c.label }}</span>
+                <a-tag v-if="c.case_id" size="small" class="case-gid">g{{ c.case_id }}</a-tag>
+                <span class="case-meta" v-if="c.input_len">{{ c.input_len }}/{{ c.output_len }}</span>
+              </div>
+              <!-- 第二行：请求数（单独一行，一行不够自动换行多行） -->
               <span class="case-tags">
                 <!-- 阈值模式：已执行/执行中的 case 显示完整请求数列表（当前测试的标蓝、已完成标绿），未执行显示 Pending -->
                 <template v-if="theTask.mode === 'threshold'">
@@ -163,13 +169,14 @@
               </span>
             </div>
             <div v-if="!theTask.cases?.length" class="empty-hint">{{ t('noData') }}</div>
+            </div>
           </div>
           <!-- footer：空（保持三面板等高） -->
           <div class="panel-footer empty-footer"></div>
         </a-card>
 
         <!-- Console 面板 (白底黑字) -->
-        <a-card size="small" class="console-panel" :body-style="{ flex: '1', minHeight: '0', padding: '0', display: 'flex', flexDirection: 'column' }">
+        <a-card size="small" class="console-panel" :style="sideCardStyle" :body-style="{ flex: '1', minHeight: '0', padding: '0', display: 'flex', flexDirection: 'column' }">
           <template #title>{{ t('terminal') }}</template>
           <template #extra>
             <a-button size="small" type="link" @click="downloadLog">
@@ -240,8 +247,17 @@
       <!-- 第三行：统计图面板 -->
       <a-card size="small" class="full-row-card">
         <template #title>{{ t('statistics') }}</template>
-        <MetricsCharts :rows="theTask.rows || []" />
+        <template #extra>
+          <a-space size="small" class="linkage-toggle">
+            <span class="linkage-label">{{ t('linkage') }}</span>
+            <a-switch v-model:checked="statLinkage" size="small" />
+          </a-space>
+        </template>
+        <MetricsCharts :rows="theTask.rows || []" :linked="statLinkage" />
       </a-card>
+
+      <!-- 底部 18px 空白 -->
+      <div class="row-5-spacer"></div>
     </div>
 
   </div>
@@ -275,6 +291,8 @@ const features = computed(() => [
 ])
 const termBox = ref(null)
 const userNearBottom = ref(true)
+// Statistics 统计图联动开关（默认开启：hover 联动浮动信息）
+const statLinkage = ref(true)
 
 // 本地面板阈值（仅对表格标记生效，不写回任务，与任务阈值区分）
 // TPOT Threshold 默认 100 / Output Token Threshold 默认 0：全为 0 时不处理标记（无 Best）；任一非 0 即处理，非 0 的条件均需满足；值必须为整数
@@ -299,6 +317,51 @@ const taskId = computed(() => theTask.value?.task_id || null)
 const activeLogs = computed(() => (taskId.value ? test.logLines[taskId.value] || [] : []))
 const serviceReady = computed(() => config.status?.inference === 'ready')
 const serviceUrl = computed(() => config.apiBase || '')
+
+// 第一行三面板（Perf/Cases/Console）：最大高度 = Perf 面板高度，超出滚动；三面板对齐
+const perfPanelRef = ref(null)
+const perfRowHeight = ref(0)
+const sideCardStyle = computed(() => (perfRowHeight.value ? { height: `${perfRowHeight.value}px` } : {}))
+function measurePerfRow() {
+  // ref 在组件上拿到的是实例，需用 $el 取真实 DOM
+  const el = perfPanelRef.value?.$el || perfPanelRef.value
+  // 用 scrollHeight 取自然内容高度：offsetHeight 在 align-items:stretch 下是拉伸后的高度（超 Perf 自然高）
+  if (el && el.scrollHeight) {
+    perfRowHeight.value = el.scrollHeight
+  }
+}
+watch(
+  () => [theTask.value?.task_id, theTask.value?.status, theTask.value?.rows?.length],
+  async () => {
+    await nextTick()
+    measurePerfRow()
+  },
+  { immediate: true },
+)
+let perfRowObserver = null
+onMounted(() => {
+  const el = perfPanelRef.value?.$el || perfPanelRef.value
+  if (el && typeof ResizeObserver !== 'undefined') {
+    perfRowObserver = new ResizeObserver(() => measurePerfRow())
+    perfRowObserver.observe(el)
+  }
+})
+onBeforeUnmount(() => {
+  if (perfRowObserver) perfRowObserver.disconnect()
+})
+
+// Groups 列表：任务运行中自动向下滚动（跟随最新执行位置）
+const caseListRef = ref(null)
+watch(
+  () => [theTask.value?.status, theTask.value?.rows?.length, test.currentPos[taskId.value]?.concurrency],
+  async () => {
+    if (theTask.value?.status !== 'running') return
+    await nextTick()
+    if (caseListRef.value) {
+      caseListRef.value.scrollTop = caseListRef.value.scrollHeight
+    }
+  },
+)
 
 // 进度计数：
 //   并发模式：case 数 × 并发档位数（并发点是预知的）
@@ -687,6 +750,11 @@ onMounted(async () => {
   gap: 12px;
   min-height: 0;
 }
+/* 底部 18px 空白 */
+.row-5-spacer {
+  height: 18px;
+  flex-shrink: 0;
+}
 
 /* 第一行：Perf + Cases + Console，各占 1/3 等高
    Perf 面板内容决定高度，Cases/Console 内容超出时滑动 */
@@ -756,9 +824,14 @@ onMounted(async () => {
 .info-value {
   color: var(--ant-color-text, #000);
   text-align: right;
-  word-break: break-all;
   font-size: 12px;
   font-weight: 400;
+  /* 宽度不够时伪隐藏（省略号） */
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+  max-width: 65%;
 }
 .mono-url {
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
@@ -779,21 +852,41 @@ onMounted(async () => {
   margin-bottom: 4px;
   border-bottom: 1px dashed var(--ant-color-border, #f0f0f0);
 }
+/* Cases 面板：阈值条件固定不滚动，仅分组列表（case-list）内部滚动 */
+.cases-panel :deep(.ant-card-body) {
+  overflow: hidden;
+}
 .cases-body {
   flex: 1;
   min-height: 0;
-  overflow: auto;
   display: flex;
   flex-direction: column;
   gap: 4px;
 }
+.case-list {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  /* 高度直接固定（无动画/平滑滚动） */
+  scroll-behavior: auto;
+}
 .case-row {
   display: flex;
-  align-items: center;
-  gap: 8px;
+  flex-direction: column;
+  gap: 4px;
   font-size: 12px;
-  padding: 3px 0;
+  padding: 4px 0;
   border-bottom: 1px solid var(--ant-color-border, #f0f0f0);
+}
+.case-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
 }
 .case-label {
   font-weight: 600;
@@ -812,11 +905,20 @@ onMounted(async () => {
   font-size: 12px;
 }
 .case-tags {
-  margin-left: auto;
+  /* 请求数单独一行：满宽（width:100%），受面板宽度约束换行多行，每行至少 8 个 */
+  width: 100%;
   display: inline-flex;
   gap: 2px;
   flex-wrap: wrap;
-  justify-content: flex-end;
+  justify-content: flex-start;
+}
+.case-tags :deep(.ant-tag) {
+  min-width: 26px;
+  text-align: center;
+  /* 请求数字体缩小 */
+  font-size: 10px;
+  line-height: 16px;
+  padding: 0 5px;
 }
 .empty-hint {
   text-align: center;
@@ -878,6 +980,15 @@ onMounted(async () => {
   align-items: center;
   gap: 12px;
   font-size: 12px;
+}
+.linkage-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.linkage-label {
+  font-size: 12px;
+  color: var(--ant-color-text-secondary, #666);
 }
 .rt-threshold {
   display: inline-flex;

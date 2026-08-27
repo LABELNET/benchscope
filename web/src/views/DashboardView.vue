@@ -127,13 +127,13 @@
             <span class="cell-text">{{ record.meta?.started_at || '-' }}</span>
           </template>
           <template v-if="column.key === 'actions'">
-            <span class="cell-action" @click="openDetail(record.run_id)">{{ t('detail') }}</span>
-            <a-popconfirm :title="t('deleteRunConfirm')" @confirm="deleteRun(record)">
-              <span class="cell-action act-danger">{{ t('deleteRun') }}</span>
-            </a-popconfirm>
+            <!-- Detail 跳转 Datas/Perfs 并选中对应任务 -->
+            <span class="cell-action" @click="goRunDetail(record.run_id)">{{ t('detail') }}</span>
           </template>
         </template>
       </a-table>
+      <!-- 面板 footer：右侧灰色小字 -->
+      <div class="records-footer">{{ t('latest8Hint') }}</div>
     </a-card>
 
     <!-- Eval Records（v5.0 预留） -->
@@ -162,18 +162,9 @@
           <a-empty :description="t('accuracyPlanned')" />
         </template>
       </a-table>
+      <!-- 面板 footer：右侧灰色小字 -->
+      <div class="records-footer">{{ t('latest8Hint') }}</div>
     </a-card>
-
-    <!-- 详情弹窗 -->
-    <a-modal
-      v-model:open="detailOpen"
-      :title="`${t('detail')}: ${detailRunId}`"
-      width="1100px"
-      :footer="null"
-      :destroy-on-close="true"
-    >
-      <RunDetailPanel v-if="detailRunId" :run-id="detailRunId" />
-    </a-modal>
   </div>
 </template>
 
@@ -181,11 +172,9 @@
 import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { ReloadOutlined } from '@ant-design/icons-vue'
-import { message } from 'ant-design-vue'
 import { api } from '@/api'
 import { useConfigStore } from '@/store/config'
 import { t } from '@/i18n'
-import RunDetailPanel from '@/components/RunDetailPanel.vue'
 
 const config = useConfigStore()
 const router = useRouter()
@@ -196,8 +185,6 @@ const accLoading = ref(false)
 const runs = ref([])
 const accRuns = ref([]) // 精度记录 v5.0 预留
 const envInfo = ref({})
-const detailOpen = ref(false)
-const detailRunId = ref('')
 
 const stats = ref({ total_runs: 0, total_acc_runs: 0, running_tasks: 0 })
 
@@ -212,7 +199,7 @@ const columns = [
   { title: 'Framework', key: 'framework', width: 100 },
   { title: 'Status', key: 'status', width: 100 },
   { title: 'Time', key: 'time', width: 180 },
-  { title: '', key: 'actions', width: 160 },
+  { title: '', key: 'actions', width: 90 },
 ]
 
 const accColumns = [
@@ -221,7 +208,7 @@ const accColumns = [
   { title: 'Framework', key: 'framework', width: 100 },
   { title: 'Status', key: 'status', width: 100 },
   { title: 'Time', key: 'time', width: 180 },
-  { title: '', key: 'actions', width: 160 },
+  { title: '', key: 'actions', width: 90 },
 ]
 
 function statusText(s) {
@@ -266,23 +253,12 @@ async function loadEnv() {
 
 function onMore() {
   // 联动 Datas 页面：Perf/Eval Records 的「更多」跳转到记录管理页
-  router.push('/datas')
+  router.push('/datas/perfs')
 }
 
-function openDetail(runId) {
-  detailRunId.value = runId
-  detailOpen.value = true
-}
-
-async function deleteRun(record) {
-  try {
-    await api.deleteRun(record.run_id)
-    message.success(t('deleteRun'))
-    runs.value = runs.value.filter((r) => r.run_id !== record.run_id)
-    await loadStats()
-  } catch (e) {
-    message.error(e.message)
-  }
+function goRunDetail(runId) {
+  // Detail 点击跳转到 Datas/Perfs 页面并自动选中对应任务
+  router.push({ path: '/datas/perfs', query: { run_id: runId } })
 }
 
 onMounted(async () => {
@@ -441,5 +417,13 @@ onMounted(async () => {
 }
 .cell-action.act-danger {
   color: #ff4d4f;
+}
+
+/* 记录面板 footer：右侧灰色小字 */
+.records-footer {
+  margin-top: 8px;
+  text-align: right;
+  font-size: 12px;
+  color: var(--ant-color-text-tertiary, #999);
 }
 </style>

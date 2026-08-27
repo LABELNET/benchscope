@@ -15,7 +15,8 @@
     />
 
     <div class="topbar-right">
-      <StatusBadge :label="t('service')" :ready="serviceReady" :extra="serviceExtra" />
+      <!-- Service 状态：仅状态颜色（图标），无文字 -->
+      <StatusBadge :label="t('service')" :ready="serviceReady" :extra="serviceExtra" no-label />
     </div>
   </a-layout-header>
 </template>
@@ -96,9 +97,9 @@ function onMenuClick({ key }) {
   user-select: none;
 }
 .brand-logo {
-  width: 40px;
-  height: 40px;
-  border-radius: 10px;
+  width: 48px;
+  height: 48px;
+  border-radius: 12px;
   object-fit: contain;
 }
 .brand-name {

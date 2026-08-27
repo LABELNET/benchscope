@@ -2,7 +2,7 @@
   <a-tooltip :title="extra || label">
     <span class="status-badge" :class="ready ? 'ok' : 'bad'">
       <component :is="ready ? CheckCircleFilled : CloseCircleFilled" class="status-icon" />
-      <span class="status-label">{{ label }}</span>
+      <span v-if="!noLabel" class="status-label">{{ label }}</span>
     </span>
   </a-tooltip>
 </template>
@@ -14,6 +14,8 @@ defineProps({
   label: { type: String, required: true },
   ready: { type: Boolean, default: false },
   extra: { type: String, default: '' },
+  // 仅显示状态颜色（图标），不显示文字
+  noLabel: { type: Boolean, default: false },
 })
 </script>
 

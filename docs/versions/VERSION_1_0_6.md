@@ -223,6 +223,80 @@
 - [x] 验证 — i18n + 构建 + Playwright（删除 modal / 分享 PNG / 列集）
 - [x] 文档 — Datas.md 更新 + 本版本记录（2026-08-27）
 
+### 迭代 12（2026-08-27）：Statistics 图例与 Datas/Perfs UI 精修
+
+**功能概述**：
+- **Statistics 图例位于 Y 轴右侧、曲线图内竖排**（Performance 页 + Datas/Perfs 分析面板，`MetricsCharts.vue` / `RunChartsPanel.vue`）：
+  - `orient: vertical` **竖排**，`left: 48, top: 12`（紧贴 Y 轴刻度右侧、曲线图内）；`type: scroll`、`align: left`
+  - 颜色标记与文字缩小：`itemWidth/Height: 8`、`itemGap: 5`、`textStyle.fontSize: 9`
+  - **透明度 60%**：`itemStyle.opacity: 0.6` + `textStyle.opacity: 0.6`
+- **Datas/Perfs 页面 UI 精修**：
+  - **Cases Info**：请求数过长时换行完整显示（`white-space: normal` + `word-break: break-all`，不再单行省略）
+  - **Logs Info**：Run Dir 伪隐藏开头路径（`direction: rtl` 使省略号在左侧），最少保留末尾文件名
+  - **Perf Datas 列默认**：`MetricsTable` 新增 `defaultHidden` prop，默认隐藏 **Case / Concurrency / Successful**（放入列控制可重新开启）；Case 列隐藏时 **Requests 自动固定左侧**（`visibleColumns` 无 fixed-left 列时自动固定首个可见任务列）；RunDataPanel 传 `:default-hidden="['label','concurrency','successful']"`
+  - 预设（default/mean/median/p99）同样受 `defaultHidden` 过滤
+
+**TODO 状态**：无新增待办（纯 UI 调整，已同步 prds 与 rules 文档）
+
+### 迭代 13（2026-08-27）：Datas/Perfs 详情面板与分享优化
+
+**补充（Performance 第一行对齐）**：Performance 页 Perf/Cases/Console 三面板——各占 1/3 固定宽度（flex `1 1 0` + min-width 0）、**最大高度 = Perf 面板高度**（JS 测量 + ResizeObserver → Cases/Console 卡片 `max-height`）、内容超出滚动（`.cases-body` / `.terminal-box` overflow-y auto）、宽度不够 `.info-value` 伪隐藏（省略号 + max-width 65%）；**Cases 内容改为分组信息/请求数两行**（`.case-head` + `.case-tags` 单独一行满宽换行，每行至少 8 个）
+
+**功能概述**：
+- **行 2 三面板**（Perf / Cases / Logs）：各占 1/3 固定宽度（grid `repeat(3, minmax(0,1fr))` + 卡片 `min-width:0`，防内容撑宽）；**高度以 Perf Info 为准**（JS 测量 Perf Info 卡片高度 → grid `gridAutoRows` 固定）；内容高度不够时**面板内部滚动**（`.ant-card-body` overflow-y auto）；行内容宽度不足时**伪隐藏**（`.info-value` 省略号 + `max-width: 65%`）
+- **Log Files 高度填充**：`.log-files` 由 `max-height:140px` 改为 `flex:1; min-height:0; max-height:none`，随面板（以 Perf Info 为准）高度填充，内容超出滚动
+- **行 1 Task Status**：由 `a-tag` 边框改为**高亮文字无边框**（复用 record-status + st-* 色类）
+- **分享截图按当前界面状态**：截图前容器加 `sharing` 类（scoped 下 `:deep` 命中），CSS 强制 `.ant-table-body/.ant-table-content` 高度 auto + overflow visible，html2canvas 完整输出表格数据（含 Perf Datas）
+- **Datas 阈值模式标记 BestPerf、不标记 Best**：`annotatedRows` 按 case 分组、组内并发升序；阈值模式用任务阈值每组唯一标记 `bestPerf`；`best` 不标记（Best 只在 Performance 界面）
+- **Performance Cases 请求数多行显示**：改为**分组信息/请求数两行结构**（`.case-head` + `.case-tags` 单独一行 `width:100%` + flex-wrap），每行至少 8 个请求数（tag `min-width:26px`），一行不够自动换行多行
+- **Performance Cases 滚动与字体**：Cases 面板高度不足时在 `.cases-body` 内滚动（卡片 body `overflow:hidden` + `overflow-y:auto`）；请求数字体缩小（10px、line-height 16px）
+- **Performance 第一行 max-height 修复**：`ref` 在组件上需用 `$el` 取真实 DOM（此前 offsetHeight 恒为 0 导致 max-height 未生效）；ResizeObserver 观察 `$el`；Cases 面板高度不足时 Groups 列表在 `.cases-body` 内部滚动
+- **Cases 阈值不参与滚动 + 高度修正**：阈值条件固定不滚动，仅分组列表 `.case-list` 独立滚动；测量改用 `scrollHeight`（自然内容高度，`offsetHeight` 在 stretch 下为拉伸高度导致超出 Perf 自然高）
+- **Cases 高度直接设置 + 运行自动滚动**：Cases/Console 卡片 `height` 直接 = Perf 高度（非 max-height，无动画）；`.case-list` `scroll-behavior:auto`；任务 running 时 Groups 列表自动滚到底部（`scrollTop = scrollHeight`）
+
+**TODO 状态**：无新增待办（已同步 prds/Datas.md）
+
+### 迭代 14（2026-08-27）：Statistics 统计图联动开关
+
+**功能概述**：
+- **Performance Statistics + Datas/Perfs Statistics 面板 header 右侧新增「联动」开关**（默认开启）
+  - 开启：鼠标光标进入任一统计图 → **同组所有统计图浮动信息（tooltip）联动显示**（`echarts.connect(GROUP)`）
+  - 关闭：`echarts.disconnect(GROUP)`，不联动
+- 实现：`MetricsCharts.vue`（`perf-charts` 组）/ `RunChartsPanel.vue`（`run-charts` 组）新增 `linked` prop + watch connect/disconnect；onMounted 按 `linked` 决定是否 connect（RunChartsPanel 此前设了组但从未 connect，本次补上）
+- 面板：PerformanceView Statistics `#extra`、DatasPerfsView row-4 actions 各加 `a-switch`（`statLinkage` / `chartLinkage`）
+- i18n：新增 `linkage` 键（联动 / Linkage）
+
+**TODO 状态**：无新增待办
+- **Performance 任务执行页底部 18px 空白**（`.row-5-spacer`，与 Datas/Perfs 行 5 一致）
+- **Datas/Perfs 三处调整**：Cases Info 阈值固定 + 分组列表内部滚动（`.case-groups` flex:1 + overflow-y:auto）；Perf Datas 默认隐藏 Status 列（`defaultHidden` 含 status，右无固定列，阈值模式仅行颜色标记）；Statistics 联动开关**默认关闭**
+- **Datas 行 2 高度测量修复**：`perfCardRef` 为组件 ref，需 `$el` 取真实 DOM + `scrollHeight` 取自然高度（此前 `offsetHeight` 为 undefined → `gridAutoRows` 未生效 → Cases 分组列表超出 Perf Info 高度）；`ResizeObserver` 观察 `$el` 重测
+- **Datas 行 2 测量重构（可靠方案）**：行 2 每格外包普通 `div.row-2-col` 容器，测量容器 `scrollHeight`（普通 div ref 直接为 DOM，彻底摆脱组件 `$el` 不确定性）；Perf Datas 分组 Tab 过多时横向滚动（`.ant-tabs-nav-wrap` overflow-x:auto）
+- **Datas 行 2 改为与 Performance 第一行同构**：flex 布局（`flex:1 1 0` + `align-items:stretch`）；测量 Perf 卡片 `$el.scrollHeight` → `sideCardStyle` 应用 Cases/Logs 卡片 `height`（不再用 grid + gridAutoRows）
+- **Datas 行 2 测量防拉伸 + 灰面板**：测量前临时 `align-self:flex-start` 取 Perf 自然高度（否则被拉伸高度固化，切换任务高度不变）；`.case-groups` 改灰色面板（滚动条在面板内），`.case-req` 字体 10px；`ant-card-body` 补 `display:flex` 列（此前漏了导致滚动链断裂）
+
+### 迭代 15（2026-08-27）：Dashboard 改版（Logo 放大 / Service 状态去文字 / 记录表格去删除 + 详情跳转 + footer 提示）
+
+**功能概述**：
+- **主导航 TopBar**：
+  - 品牌 Logo 放大：`blue_logo.png` 40×40 → **48×48**，圆角 12px
+  - **Service 状态仅保留状态颜色图标，不再显示文字**：`StatusBadge` 新增 `noLabel` prop（`no-label` 用法），隐藏 `.status-label`，仅显示在线绿 / 离线红图标，hover tooltip 仍显示完整状态详情
+- **Dashboard Perf Records / Eval Records 表格**：
+  - **移除删除操作**（删除 popconfirm + `deleteRun` + `api.deleteRun` 调用全部删除，删除收敛到 Datas/Perfs 详情页）；操作列仅剩「详情」
+  - **「详情」点击改为跳转 Datas/Perfs 并自动选中对应任务**：`router.push({path:'/datas/perfs', query:{run_id}})`；DatasPerfsView 读取 `route.query.run_id`，加载记录列表后匹配并 `selectRun` 自动选中（`onMounted` 与 `watch` 监听 query 变化）
+  - **「更多」点击跳转 Datas/Perfs**：`router.push('/datas/perfs')`（原 `/datas` 重定向，改为显式子页）
+  - **面板 footer**：Perf Records 与 Eval Records 表格下方新增 footer，**右侧灰色小字**显示 `*仅显示最新 8 条记录`（i18n 新增 `latest8Hint`：zh `*仅显示最新 8 条记录` / en `*Only the latest 8 records are shown`）
+  - 清理：移除 DashboardView 中不再使用的 `RunDetailPanel` 导入、`detailOpen/detailRunId` 状态、详情 `<a-modal>`、`message` 导入；操作列宽 160→90
+
+**验证**：`check:i18n` 通过（zh/en 键集一致，新增 `latest8Hint`）；`npm run build` 通过；`goRunDetail` / `.query.run_id` / `latest8Hint` 均在产物 bundle 中确认。
+
+**TODO 状态**：
+- [x] 前端 — TopBar Logo 48×48 + Service 状态无文字（StatusBadge noLabel）
+- [x] 前端 — Dashboard 表格去删除、详情跳转 Datas/Perfs 自动选中、更多跳转 /datas/perfs
+- [x] 前端 — Perf/Eval Records footer 右侧灰色小字（latest8Hint）
+- [x] 前端 — DatasPerfsView 路由 query.run_id 自动选中任务（onMounted + watch）
+- [x] 验证 — i18n + 构建 + bundle 内容确认
+- [x] 文档 — Dashboard.md / Datas.md / Design.md 更新 + 本版本记录（2026-08-27）
+
 ## 3. TODO 清单
 
 - [x] **设置/数据集 — 内置数据集模块**：配置文件 `configs/datasets.yaml`，可点击下载，缓存到 `~/.benchscope/datasets`（2026-08-27 完成）

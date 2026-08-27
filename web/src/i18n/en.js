@@ -29,6 +29,7 @@ export default {
   searchModel: 'Search model...',
   detail: 'Detail',
   download: 'Download',
+  latest8Hint: '*Only the latest 8 records are shown',
 
   newTask: 'New Test Task',
   taskList: 'Task List',
@@ -224,6 +225,7 @@ export default {
   compareAnalysis: 'Compare Analysis',
   compareSelect: 'Select records to compare',
   evalsHint: 'Accuracy/Eval test records (v5.0), showing error metrics',
+  linkage: 'Linkage',
   mean: 'Mean',
   median: 'Median',
   terminalLog: 'Terminal Log',

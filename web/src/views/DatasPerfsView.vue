@@ -72,7 +72,7 @@
           <div class="row1-desc">
             <span class="desc-item">
               <span class="desc-label">{{ t('taskStatus') }}</span>
-              <a-tag :color="statusColor(current.run?.status)" class="status-tag">{{ statusText(current.run?.status) }}</a-tag>
+              <span class="record-status" :class="statusClass(current.run?.status)">{{ statusText(current.run?.status) }}</span>
             </span>
             <span class="desc-item">
               <span class="desc-label">{{ t('model') }}</span>
@@ -89,10 +89,10 @@
           </div>
         </a-card>
 
-        <!-- 第2行：3 个面板各 1/3：Perf / Cases / Logs -->
+        <!-- 第2行：3 个面板各 1/3，高度 = Perf Info 高度（参考 Performance 第一行实现），内容超出滚动 -->
         <div class="row-2">
           <!-- Perf 信息 -->
-          <a-card size="small" class="half-card">
+          <a-card size="small" class="half-card" ref="perfPanelRef">
             <template #title>{{ t('perfInfo') }}</template>
             <div class="info-body">
               <div class="info-row">
@@ -128,7 +128,7 @@
           </a-card>
 
           <!-- Cases 信息：并发模式显示 case groups 列表；阈值模式显示阈值信息 + case groups 列表 -->
-          <a-card size="small" class="half-card">
+          <a-card size="small" class="half-card" :style="sideCardStyle">
             <template #title>{{ t('casesInfo') }}</template>
             <div class="info-body">
               <template v-if="current.run?.mode === 'threshold'">
@@ -155,7 +155,7 @@
           </a-card>
 
           <!-- Logs 信息：run_dir 文本+复制；summary 点击下载；日志文件表格 -->
-          <a-card size="small" class="half-card">
+          <a-card size="small" class="half-card" :style="sideCardStyle">
             <template #title>{{ t('logsInfo') }}</template>
             <div class="info-body logs-body">
               <div class="run-dir-row">
@@ -234,6 +234,10 @@
             <div class="row4-header">
               <span class="row4-title">{{ t('statistics') }}</span>
               <div class="row4-actions">
+                <span class="linkage-toggle">
+                  <span class="linkage-label">{{ t('linkage') }}</span>
+                  <a-switch v-model:checked="chartLinkage" size="small" />
+                </span>
                 <a-button
                   size="small"
                   type="text"
@@ -273,7 +277,7 @@
               </div>
             </div>
           </template>
-          <RunChartsPanel v-model:visible="chartVisible" :rows="current.run?.rows || []" />
+          <RunChartsPanel v-model:visible="chartVisible" :rows="current.run?.rows || []" :linked="chartLinkage" />
         </a-card>
 
         <!-- 第5行：距底部 18px 留白 -->
@@ -340,7 +344,8 @@
 </template>
 
 <script setup>
-import { computed, nextTick, onMounted, ref } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { useRoute } from 'vue-router'
 import { message } from 'ant-design-vue'
 import html2canvas from 'html2canvas'
 import {
@@ -359,6 +364,8 @@ import { t } from '@/i18n'
 import { api } from '@/api'
 import RunDataPanel from '@/components/RunDataPanel.vue'
 import RunChartsPanel from '@/components/RunChartsPanel.vue'
+
+const route = useRoute()
 
 // ---------- 任务记录列表 ----------
 const runs = ref([])
@@ -451,6 +458,9 @@ const dataModes = [
 ]
 const dataMode = ref('default')
 
+// Statistics 统计图联动开关（默认关闭：不联动浮动信息）
+const chartLinkage = ref(false)
+
 // ---------- 行4：图表行显示状态（默认全部开启） ----------
 const chartVisible = ref({ throughput: true, ttft: true, tpot: true, itl: true })
 const chartAllOn = computed(() => chartVisible.value.throughput && chartVisible.value.ttft && chartVisible.value.tpot && chartVisible.value.itl)
@@ -495,7 +505,44 @@ const caseGroupRows = computed(() => {
   return list
 })
 
-// ---------- 行3：annotatedRows（与实时数据一致的阈值高亮策略） ----------
+// ---------- 行2：三面板高度 = Perf Info 高度（参考 Performance 第一行实现） ----------
+const perfPanelRef = ref(null)
+const perfRowHeight = ref(0)
+const sideCardStyle = computed(() => (perfRowHeight.value ? { height: `${perfRowHeight.value}px` } : {}))
+function measurePerfInfo() {
+  // 关键：测量前临时 align-self:flex-start，避免 Perf 卡片被 flex 行拉伸，
+  // 导致测到"拉伸后高度"（首次进入多组任务时会被 Cases 撑高并固化）
+  const el = perfPanelRef.value?.$el || perfPanelRef.value
+  if (!el) return
+  const prev = el.style.alignSelf
+  el.style.alignSelf = 'flex-start'
+  const h = el.offsetHeight
+  el.style.alignSelf = prev
+  if (h) {
+    perfRowHeight.value = h
+  }
+}
+watch(
+  () => current.value?.run_id,
+  async () => {
+    await nextTick()
+    measurePerfInfo()
+  },
+  { immediate: true },
+)
+let perfInfoObserver = null
+onMounted(() => {
+  const el = perfPanelRef.value?.$el || perfPanelRef.value
+  if (el && typeof ResizeObserver !== 'undefined') {
+    perfInfoObserver = new ResizeObserver(() => measurePerfInfo())
+    perfInfoObserver.observe(el)
+  }
+})
+onBeforeUnmount(() => {
+  if (perfInfoObserver) perfInfoObserver.disconnect()
+})
+
+// ---------- 行3：annotatedRows（Datas 不标记 Best——Best 仅在 Performance 界面；阈值模式标记 BestPerf） ----------
 function rowCaseKey(r) {
   return r.case_id !== undefined && r.case_id !== null ? `${r.label}#g${r.case_id}` : (r.label || r.case || '-')
 }
@@ -512,7 +559,10 @@ const annotatedRows = computed(() => {
     const n = Number(v)
     return !isNaN(n) && n <= thr
   }
-  const markBestRow = (groupRows, tpotThr, outThr, flag) => {
+  // 阈值模式：任务阈值标记 BestPerf（每组唯一，取满足阈值的最大并发行）
+  const markBestPerf = (groupRows) => {
+    const tpotThr = Number(current.value?.run?.tpot_threshold_ms) || 0
+    const outThr = Number(current.value?.run?.output_throughput_threshold) || 0
     if (!(tpotThr > 0) && !(outThr > 0)) return
     let bestRow = null
     let bestConc = -Infinity
@@ -525,8 +575,9 @@ const annotatedRows = computed(() => {
         bestRow = r
       }
     }
-    if (bestRow) bestRow[flag] = true
+    if (bestRow) bestRow.bestPerf = true
   }
+  // 按 case 分组，组内按并发升序
   const groupMap = new Map()
   for (const r of rows) {
     r.caseKey = rowCaseKey(r)
@@ -538,14 +589,8 @@ const annotatedRows = computed(() => {
   for (const groupRows of groupMap.values()) {
     groupRows.sort((a, b) => Number(a.concurrency) - Number(b.concurrency))
     if (current.value?.run?.mode === 'threshold') {
-      markBestRow(
-        groupRows,
-        Number(current.value?.run?.tpot_threshold_ms) || 0,
-        Number(current.value?.run?.output_throughput_threshold) || 0,
-        'bestPerf'
-      )
+      markBestPerf(groupRows)
     }
-    markBestRow(groupRows, Number(current.value?.run?.tpot_threshold_ms) || 0, Number(current.value?.run?.output_throughput_threshold) || 0, 'best')
     grouped.push(...groupRows)
   }
   return grouped
@@ -656,13 +701,13 @@ async function doBackup() {
   message.success(t('backupDone'))
 }
 
-// 分享：将整个任务详情页面渲染为 PNG 图片并下载
+// 分享：将当前界面状态的任务详情页面渲染为 PNG 图片并下载
 async function doShare() {
   await nextTick()
   const el = detailRef.value
   if (!el) throw new Error('no element')
-  // 等图表完成布局后再截图；临时放开滚动容器的高度/裁剪约束，保证
-  // 长详情页（含下方数据表与图表分析区）全部内容输出到图片
+  // 按当前界面状态截图（不改动数据模式/图表显隐）；临时放开滚动容器的高度/裁剪约束，
+  // 保证长详情页（含数据表与图表分析区）全部内容输出到图片
   const saved = {
     overflow: el.style.overflow,
     height: el.style.height,
@@ -671,7 +716,12 @@ async function doShare() {
   el.style.overflow = 'visible'
   el.style.height = 'auto'
   el.style.flex = 'none'
+  // 展开嵌套滚动区（MetricsTable 的 ant-table-body 固定高度会被 html2canvas 裁剪），
+  // 保证 Perf Datas 表格数据完整进入分享图片
+  el.classList.add('sharing')
   await nextTick()
+  // 等图表完成重绘再截图
+  await new Promise((r) => setTimeout(r, 200))
   try {
     const canvas = await html2canvas(el, {
       useCORS: true,
@@ -687,6 +737,7 @@ async function doShare() {
     a.download = `${current.value.run_id}.png`
     a.click()
   } finally {
+    el.classList.remove('sharing')
     el.style.overflow = saved.overflow
     el.style.height = saved.height
     el.style.flex = saved.flex
@@ -755,7 +806,26 @@ async function onPickZip(file) {
 
 const detailRef = ref(null)
 
-onMounted(loadRuns)
+// 根据路由 query.run_id 自动选中对应任务（Dashboard Detail 跳转入口）
+async function selectRunFromQuery(rid) {
+  if (!rid) return
+  const target = runs.value.find((r) => r.run_id === rid)
+  if (target) {
+    await selectRun(target)
+  }
+}
+
+onMounted(async () => {
+  await loadRuns()
+  await selectRunFromQuery(route.query.run_id)
+})
+
+watch(
+  () => route.query.run_id,
+  async (rid) => {
+    await selectRunFromQuery(rid)
+  },
+)
 </script>
 
 <style scoped>
@@ -894,6 +964,14 @@ onMounted(loadRuns)
   gap: 12px;
 }
 
+/* 分享截图：展开嵌套滚动区（scoped 下需 :deep 命中 antd 类），保证 Perf Datas 表格数据完整输出 */
+.detail-scroll.sharing :deep(.ant-table-body),
+.detail-scroll.sharing :deep(.ant-table-content) {
+  height: auto !important;
+  max-height: none !important;
+  overflow: visible !important;
+}
+
 /* 行1 */
 .row1-header {
   display: flex;
@@ -934,16 +1012,32 @@ onMounted(loadRuns)
   font-weight: 500;
 }
 
-/* 行2：三面板各 1/3 */
+/* 行2：三面板各 1/3 固定宽度（minmax(0,1fr) 防止内容撑宽），等高（gridAutoRows 由 JS 固定为 Perf Info 高度），内容超出内部滚动 */
 .row-2 {
-  display: grid;
-  grid-template-columns: 1fr 1fr 1fr;
+  display: flex;
   gap: 12px;
-  width: 100%;
+  align-items: stretch;
+}
+.row-2 > .half-card {
+  flex: 1 1 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.row-2 .half-card :deep(.ant-card-body) {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;   /* body 不滚动：内部容器（case-groups / log-files）各自滚动 */
+  display: flex;      /* 关键：body 需为 flex 列容器，info-body 的 flex:1 才生效 */
+  flex-direction: column;
 }
 .info-body {
   padding: 4px 0;
-  /* 三面板等高由 grid 自动拉伸；高度随内容自适应，不留底部空白 */
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
 }
 .info-row {
   display: flex;
@@ -965,14 +1059,26 @@ onMounted(loadRuns)
   font-size: 12px;
   font-weight: 500;
   text-align: right;
+  /* 宽度不够时伪隐藏（省略号） */
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  min-width: 0;
+  max-width: 65%;
 }
 .case-groups {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 2px;
+  /* 灰色面板容器：滚动条在面板内部 */
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  background: var(--ant-color-fill-tertiary, #f5f5f5);
+  border: 1px solid var(--ant-color-border-secondary, #eee);
+  border-radius: 4px;
+  padding: 4px 6px;
 }
 .case-group-item {
   display: flex;
@@ -1005,12 +1111,12 @@ onMounted(loadRuns)
 }
 .case-req {
   margin-left: auto;
-  font-size: 11px;
+  font-size: 10px;   /* 请求数字体缩小 */
   color: var(--ant-color-text-secondary, #666);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  max-width: 60%;
+  /* 请求数过长时换行显示（不省略） */
+  white-space: normal;
+  word-break: break-all;
+  max-width: 100%;
   text-align: right;
 }
 .empty-hint {
@@ -1024,6 +1130,8 @@ onMounted(loadRuns)
   display: flex;
   flex-direction: column;
   gap: 6px;
+  flex: 1;
+  min-height: 0;
 }
 .run-dir-row {
   display: flex;
@@ -1038,9 +1146,11 @@ onMounted(loadRuns)
   font-size: 10px;
   color: var(--ant-color-text-secondary, #666);
   overflow: hidden;
-  text-overflow: ellipsis;
   white-space: nowrap;
   text-align: right;
+  /* 伪隐藏开头：方向反转使省略号在左侧，最少保留末尾文件名 */
+  direction: rtl;
+  text-overflow: ellipsis;
 }
 .copy-icon {
   color: var(--ant-color-primary, #1677ff);
@@ -1070,7 +1180,10 @@ onMounted(loadRuns)
   border: 1px solid var(--ant-color-border-secondary, #eee);
   border-radius: 4px;
   padding: 6px 8px;
-  max-height: 140px;
+  /* 高度随面板（以 Perf Info 为准）填充，内容超出滚动 */
+  flex: 1;
+  min-height: 0;
+  max-height: none;
   overflow-y: auto;
 }
 .log-file-head {
@@ -1142,6 +1255,16 @@ onMounted(loadRuns)
   gap: 2px;
   flex-wrap: wrap;
   flex-shrink: 0;
+}
+.linkage-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-right: 8px;
+}
+.linkage-label {
+  font-size: 12px;
+  color: var(--ant-color-text-secondary, #666);
 }
 .panel-head-btn {
   font-size: 12px;

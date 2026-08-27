@@ -31,6 +31,7 @@ export default {
   searchModel: '搜索模型...',
   detail: '详情',
   download: '下载',
+  latest8Hint: '*仅显示最新 8 条记录',
 
   // Performance
   newTask: '新建测试任务',
@@ -232,6 +233,7 @@ export default {
   compareAnalysis: '记录对比分析',
   compareSelect: '选择要对比的记录',
   evalsHint: '精度/评估测试记录（v5.0），展示误差情况',
+  linkage: '联动',
   mean: '均值',
   median: '中位数',
   terminalLog: '终端日志',

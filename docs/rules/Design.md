@@ -10,7 +10,7 @@
 | 项 | 规范 |
 | --- | --- |
 | 页面 | 浏览器全宽；内容区内部滚动（`height:100%` + `overflow:auto/hidden`） |
-| 顶部导航 | 5 栏固定：Dashboard / Performance / Accuracy / Sessions / Settings（AntDV Menu） |
+| 顶部导航 | 6 栏固定：Dashboard / Performance / Accuracy / Sessions / Datas / Settings（AntDV Menu）；左侧品牌区 Logo（`blue_logo.png`，48×48 圆角）+ BenchScope + 版本标签；右侧 Service 状态仅显示状态颜色图标（`StatusBadge no-label`，在线绿 / 离线红，无文字，hover tooltip 显示详情） |
 | 面板 | 统一 `a-card size="small"`，圆角 8–12px，卡片间距 12–20px |
 | 页面内布局 | 仪表盘类：`a-row/a-col`（gutter 16–24）；三面板：grid / flex 等高 |
 | 弹层 | 详情用 `a-modal`（宽 1100px）；侧边详情用 `a-drawer`（right，440px） |
@@ -55,8 +55,20 @@
 - 4 列 × 3 行 = 12 图：吞吐（Output/Peak/Total）、TTFT、TPOT、ITL（各 Mean/Median/P99）。
 - 每列 8 色调色板；同一列同一 case 颜色一致，不同列颜色不同。
 - x 轴：并发数（Requests 文字位于**轴末端、轴线上方**）；y 轴单位（tok/s / ms）。
-- 图例：多于 1 个序列时显示（可滚动）；tooltip axis 触发、虚线 axisPointer。
+- **图例（位于 Y 轴右侧、曲线图内，竖排对齐）**：多于 1 个序列时显示——
+  - `orient: vertical` **竖排**，`left: 48, top: 12`（紧贴 Y 轴刻度右侧、曲线图内）；`type: scroll`、`align: left`
+  - 颜色标记缩小：`itemWidth/Height: 8`、`itemGap: 5`、`icon: circle`
+  - 文字缩小：`textStyle.fontSize: 9`
+  - **透明度 60%**：`itemStyle.opacity: 0.6` + `textStyle.opacity: 0.6`
+- tooltip axis 触发、虚线 axisPointer。
 - 多组相同条件：序列键 `label#g{case_id}` 独立成线。
+
+## 5.5 表格列控制（MetricsTable）
+
+- 列定义集中在 `ALL_COLUMNS`（key + title + 组 + 默认可见 + fixed）。
+- **`defaultHidden` prop**：指定默认隐藏的列键（仍可在列控制下拉中开启）；隐藏后自动将首个可见任务列固定左侧（如 Datas Perf Datas 隐藏 Case 后 Requests 固定）。
+- 预设 `preset`（default / mean / median / p99）重置列选择，同样受 `defaultHidden` 过滤。
+- 列控制下拉按组展示（task / throughput / ttft / tpot / itl），勾选切换可见。
 
 ## 6. 主题与国际化
 

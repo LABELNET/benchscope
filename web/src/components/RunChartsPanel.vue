@@ -45,8 +45,12 @@ const props = defineProps({
     type: Object,
     default: () => ({ throughput: true, ttft: true, tpot: true, itl: true }),
   },
+  // 联动开关：开启时鼠标进入任一图，同组所有统计图浮动信息（tooltip）联动显示
+  linked: { type: Boolean, default: true },
 })
 const emit = defineEmits(['update:visible'])
+
+const GROUP = 'run-charts'
 
 // 每行 3 个，共 4 行：行 = 指标组（Throughput / TTFT / TPOT / ITL），列 = 统计口径
 const ROW_DEFS = [
@@ -170,8 +174,22 @@ function buildOption(def, rows) {
       textStyle: { color: 'rgba(0,0,0,0.88)', fontSize: 11 },
       valueFormatter: (v) => (v === null || v === undefined ? '-' : Number(v).toFixed(2)),
     },
-    legend: labels.length > 1 ? { data: labels, type: 'scroll', top: 0, textStyle: { fontSize: 10 } } : undefined,
-    grid: { left: 46, right: 12, top: labels.length > 1 ? 28 : 12, bottom: 22 },
+    // 图例：位于 Y 轴右侧、曲线图内部，竖排对齐；颜色标记与文字缩小、透明度 60%
+    legend: labels.length > 1 ? {
+      data: labels,
+      type: 'scroll',
+      orient: 'vertical',
+      left: 48,          // 紧贴 Y 轴刻度右侧（图内）
+      top: 12,
+      align: 'left',
+      icon: 'circle',
+      itemWidth: 8,
+      itemHeight: 8,
+      itemGap: 5,
+      itemStyle: { opacity: 0.6 },
+      textStyle: { fontSize: 9, opacity: 0.6 },
+    } : undefined,
+    grid: { left: 46, right: 12, top: 12, bottom: 22 },
     xAxis: {
       type: 'category',
       data: xData,
@@ -224,11 +242,20 @@ watch(enabledGroups, update, { deep: true, flush: 'post' })
 watch(() => props.visible, update, { deep: true, flush: 'post' })
 watch(groups, initGroups, { deep: true })
 
+// 联动开关：开启 connect 同组图表（hover 联动 tooltip），关闭 disconnect
+watch(
+  () => props.linked,
+  (v) => {
+    if (v) echarts.connect(GROUP)
+    else echarts.disconnect(GROUP)
+  },
+)
+
 onMounted(() => {
   initGroups()
   setTimeout(() => {
     update()
-    echarts.connect('run-charts')
+    if (props.linked) echarts.connect(GROUP)
   }, 0)
 })
 

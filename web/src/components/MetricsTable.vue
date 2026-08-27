@@ -97,6 +97,8 @@ const props = defineProps({
   exportable: { type: Boolean, default: false },
   // 列预设：default=默认列；mean/median/p99=仅显示对应统计口径列（变化时重置列选择）
   preset: { type: String, default: 'default' },
+  // 默认隐藏的列键（仍可在列控制中开启）；如 Datas Perf Datas 隐藏 Case/Concurrency/Successful
+  defaultHidden: { type: Array, default: () => [] },
 })
 
 // 列定义：key + title + 数据路径 + 默认可见
@@ -146,12 +148,18 @@ const PRESET_KEYS = {
 watch(
   () => props.preset,
   (p) => {
+    // 默认列：排除 defaultHidden 指定的列键（仍可经列控制开启）
+    const baseKeys = () =>
+      ALL_COLUMNS.value
+        .filter((c) => c.default && !props.defaultHidden.includes(c.key))
+        .map((c) => c.key)
     if (p === 'default' || !PRESET_KEYS[p]) {
-      // 默认：恢复默认数据列（与实时数据一致的默认列集）
-      visibleKeys.value = ALL_COLUMNS.value.filter((c) => c.default).map((c) => c.key)
+      visibleKeys.value = baseKeys()
       return
     }
-    visibleKeys.value = PRESET_KEYS[p].filter((k) => ALL_COLUMNS.value.some((c) => c.key === k))
+    visibleKeys.value = PRESET_KEYS[p].filter(
+      (k) => ALL_COLUMNS.value.some((c) => c.key === k) && !props.defaultHidden.includes(k),
+    )
   },
   { immediate: true },
 )
@@ -163,7 +171,7 @@ function toggleCol(key, checked) {
 
 const visibleColumns = computed(() => {
   const keys = visibleKeys.value
-  return ALL_COLUMNS.value
+  const cols = ALL_COLUMNS.value
     .filter((c) => keys.includes(c.key))
     .map((c) => {
       // 默认列：单行不换行；可选列：允许换行
@@ -183,6 +191,11 @@ const visibleColumns = computed(() => {
       }
       return col
     })
+  // Case(label) 列被隐藏（如 Datas Perf Datas）时，自动固定首个可见任务列（Requests）
+  if (cols.length && !cols.some((c) => c.fixed === 'left')) {
+    cols[0] = { ...cols[0], fixed: 'left' }
+  }
+  return cols
 })
 
 const columnGroups = computed(() => {

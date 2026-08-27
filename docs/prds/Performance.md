@@ -30,6 +30,14 @@ Performance 任务执行页存在两种执行模式，由任务创建时的 `mod
 
 ---
 
+## 1.5 第一行三面板布局（Perf / Cases / Console）
+
+- **各占 1/3 固定宽度**（flex `1 1 0` + `min-width: 0`，宽度保持一致；宽度不够时行内容**伪隐藏**——`.info-value` 省略号 + `max-width: 65%`）
+- **高度直接 = Perf 面板高度（无动画）**：JS 测量 Perf 卡片高度（`ref` 用 `$el` 取真实 DOM；用 **`scrollHeight`** 取自然内容高度——`offsetHeight` 在 `align-items:stretch` 下是拉伸后高度；`ResizeObserver` 观察 `$el` + 任务/状态/行数变化时重测）→ 直接应用为 **Cases / Console 卡片的 `height`**（`sideCardStyle`，非 max-height）；`align-items: stretch` 使三面板对齐；`.case-list` `scroll-behavior: auto` 无平滑动画
+- **内容超出滚动**：Cases 面板（`.cases-body`）与 Console 终端（`.terminal-box`）均 `flex:1; min-height:0; overflow-y:auto`，超出部分滚动条
+
+---
+
 ## 2. Cases 面板策略
 
 | 项 | 规则 |
@@ -37,9 +45,12 @@ Performance 任务执行页存在两种执行模式，由任务创建时的 `mod
 | header 右侧 mode | 纯文字绿色（`#52c41a`，12px，600），不做成 tag |
 | 并发内容排列 | 按并发数量从小到大升序排列，与 Realtime Data 无关（脱钩，各自排序） |
 | 阈值条件显示 | **仅阈值模式**显示只读条件，格式与 Perf 内容一致（仅文字，不可编辑）：`TTOT mean(ms) ≤ Xms`、`Output token throughput (tok/s) ≤ Y tok/s`；并发模式不显示 |
+| 阈值条件/列表滚动 | **阈值条件固定不滚动**，仅**分组列表（`.case-list`）内部滚动**（`flex:1; min-height:0; overflow-y:auto`；`.cases-body` 本身不滚动） |
+| 运行中自动滚动 | 任务 **running 时 Groups 列表自动向下滚动**（`caseListRef.scrollTop = scrollHeight`，随 rows/currentPos 变化触发） |
 | Output 条件显示 | 任务 `output_throughput_threshold > 0` 时才显示该条 |
 | 阈值模式请求显示 | 每个 case **独立**显示测试状态（请求数**不联动**）：已执行/执行中的 case 显示该 case 已测试过的**完整请求数列表**（已完成标绿、当前正在测试标蓝）；未执行的 case 显示灰色 `Pending`；并发模式仍显示全部请求数 tag（按并发升序） |
 | 多组相同条件 | 每组独立（唯一 `case_id`），显示 `g{id}` 组 id 标签，状态/进度互不联动（见 2.1） |
+| 请求数展示 | **分组信息/请求数两行结构**：第一行 `.case-head`（label + g{id} + 长度），第二行 `.case-tags` 请求数**单独一行**（`width:100%` + flex-wrap），一行不够**换行多行**，**每行至少 8 个**（tag `min-width:26px`、**字体缩小 10px**）；**面板高度不足时在 `.cases-body` 内滚动**（卡片 body `overflow:hidden` 约束 + `overflow-y:auto`） |
 
 ### 2.1 多组条件唯一组 id（case_id）
 
@@ -48,7 +59,8 @@ Performance 任务执行页存在两种执行模式，由任务创建时的 `mod
 - **数据链路**：创建页 `length_pairs` 每项第 4 个元素为条件组唯一 `id`（如 `[1024, 1024, "1024x1024", 1]`）→ 后端 `build_cases` 生成 `case_id` → 每条结果行（row）携带 `case_id`；`task_log` 广播同样携带，用于前端定位当前执行位置。
 - **Cases 面板**：每个 case 行显示 `g{case_id}` 组 id 标签（如 `1024x1024 g1` / `1024x1024 g2`）；已测试请求数、当前执行位置均按 case 身份（`case_id` 优先，缺省回退 label）匹配，互不联动。
 - **Realtime Data**：分组键为 `caseKey = label#g{case_id}`（如 `1024x1024#g1`），相同 label 的多组独立成组，组内各自执行 Best/BestPerf 高亮。
-- **Statistics**：12 张统计图序列键同样 case_id 感知（`label#g{case_id}`），相同条件多组独立成线、图例可区分。
+- **Statistics**：12 张统计图序列键同样 case_id 感知（`label#g{case_id}`），相同条件多组独立成线；**图例位于 Y 轴右侧、曲线图内**（`orient: vertical` 竖排、`left:48/top:12`；标记/文字缩小 `itemWidth/Height:8` + `fontSize:9`、**透明度 60%**）。
+- **Statistics 联动开关**：面板 header 右侧「联动」开关（默认开启）——开启时鼠标进入任一统计图，**同组所有统计图浮动信息（tooltip）联动显示**（`echarts.connect('perf-charts')`）；关闭时 `echarts.disconnect` 不联动。
 - **后端聚合**：`_annotate_best` / `_find_best`（xlsx 与运行详情最佳标记）按 `case_id or label` 分组；详情页 merged/display rows 透传 `case_id`。
 - **兼容性**：旧任务（无 `case_id`）自动回退按 label 匹配，行为不变。
 

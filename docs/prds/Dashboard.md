@@ -1,9 +1,9 @@
 # benchscope Dashboard 页面 — 面板结构与数据说明
 
-> **版本**：v1.0.5  
-> **最后更新**：2026-08-26  
+> **版本**：v1.0.6  
+> **最后更新**：2026-08-27  
 > **文档状态**：Dashboard 页面各面板的布局、内容、数据来源与交互规则说明  
-> **关联文档**：[Performance.md](./Performance.md)（Performance 双模式核心逻辑）
+> **关联文档**：[Performance.md](./Performance.md)（Performance 双模式核心逻辑）· [Datas.md](./Datas.md)（记录管理联动）
 
 ---
 
@@ -57,12 +57,13 @@ Dashboard 页面自上而下共三块内容：
 
 - 标题：**Perf Records**；header 右侧仅保留两个文字按钮（link 按钮）：
   - **刷新**：重新拉取运行记录并刷新统计
-  - **更多**：暂未实现，点击提示 toast「功能待实现」
+  - **更多**：跳转 **Datas/Perfs**（`router.push('/datas/perfs')`），进入记录管理页
 
 ### 3.2 数据与分页
 
 - 展示**最多 8 条最新记录**（`runs.slice(0, 8)`），**不分页**（`pagination: false`）。
 - 记录来源：`GET /api/logs/runs`（`resp.runs`）。
+- 面板底部 footer：**右侧灰色小字**提示 `*仅显示最新 8 条记录`（i18n `latest8Hint`，zh/en 双语），位于表格下方。
 
 ### 3.3 表格样式（纯文本，无按钮/边框）
 
@@ -70,15 +71,15 @@ Dashboard 页面自上而下共三块内容：
 | --- | --- |
 | 字体 | 表头/表体统一 12px |
 | 单元格 | 纯文本，无 `a-tag` / 按钮边框；Run ID 不加粗 |
-| 颜色 | 仅**状态列**（done 绿 / error 红 / stopped 橙 / running 蓝 / pending 灰）与**操作列**（详情蓝、删除红）着色；其余列统一默认文字色 |
-| 操作 | 「详情」文字点击 → 弹出运行详情（`RunDetailPanel`，含均值/P99 分析）；「删除」文字点击 → `popconfirm` 确认后删除记录及关联文件 |
+| 颜色 | 仅**状态列**（done 绿 / error 红 / stopped 橙 / running 蓝 / pending 灰）与**操作列**（详情蓝）着色；其余列统一默认文字色 |
+| 操作 | **无删除操作**；「详情」文字点击 → **跳转 Datas/Perfs 页面对应任务详情并自动选中该任务**（`router.push({path:'/datas/perfs', query:{run_id}})`，Datas 页加载后按 `route.query.run_id` 匹配记录列表并选中） |
 
 ---
 
 ## 4. Eval Records 面板
 
 - 标题：**Eval Records**（原 Acc Records，v5.0 精度/评估测试预留）。
-- 结构与 Perf Records 一致：最多 8 条、不分页、header 右侧「刷新 / 更多」文字按钮。
+- 结构与 Perf Records 一致：最多 8 条、不分页、header 右侧「刷新 / 更多」文字按钮（更多同样跳转 `/datas/perfs`）、面板底部 footer 灰色小字「仅显示最新 8 条记录」。
 - 当前无数据：`loadAccRuns` 恒返回空数组，表格空态显示「精度测试功能规划中,待 v5.0」。
 
 ---
@@ -88,11 +89,11 @@ Dashboard 页面自上而下共三块内容：
 | 接口 | 用途 |
 | --- | --- |
 | `GET /api/logs/runs` | 运行记录列表（Perf Records 数据源） |
-| `GET /api/logs/runs/{run_id}` | 单条运行详情（详情弹窗） |
-| `DELETE /api/logs/runs/{run_id}` | 删除运行记录 |
 | `GET /api/dashboard/stats` | 统计卡片：`total_runs` / `total_acc_runs` / `running_tasks` / `avg_tpot` / `best_model` |
 | `GET /api/dashboard/env` | 环境信息：`hardware` / `os` / `network` / `versions` |
 | `GET /api/config/status`（`config.refreshStatus`） | 推理服务状态：`inference` / `models`（测试环境状态徽标） |
+
+> 注：详情/删除接口不再由 Dashboard 直接调用（详情跳转 Datas/Perfs，删除操作已移除）。
 
 ---
 
@@ -100,9 +101,10 @@ Dashboard 页面自上而下共三块内容：
 
 | 场景 | 行为 |
 | --- | --- |
-| 记录超过 8 条 | 仅显示最新 8 条（按列表返回顺序，后端已按时间倒序） |
-| 删除记录 | popconfirm 确认 → 调 `DELETE` → 本地移除该行并刷新统计 |
-| 更多按钮 | toast「功能待实现」，无跳转 |
+| 记录超过 8 条 | 仅显示最新 8 条（按列表返回顺序，后端已按时间倒序），footer 提示灰色小字 |
+| 详情操作 | 跳转 Datas/Perfs 并自动选中对应任务（路由 query `run_id`），不再弹窗 |
+| 删除操作 | **已移除**（删除在 Datas/Perfs 详情页内完成） |
+| 更多按钮 | 跳转 `/datas/perfs`（记录管理页） |
 | 环境信息接口失败 | 面板保持为空，不报错 |
 | 统计接口失败 | 回退用记录列表本地计算 |
 | Max Perf / Max Acc Records | 显示 `—`，逻辑未实现 |
