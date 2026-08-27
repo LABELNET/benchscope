@@ -1,7 +1,7 @@
 # 设计规范 — Design
 
 > **文档状态**：benchscope UI / 字体 / 颜色等设计规范  
-> **关联**：[Software.md](./Software.md)（技术选型）· [Development.md](./Development.md)（开发规范）
+> **关联**：[Software.md](./Software.md)（技术选型）· [Development.md](./Development.md)（开发规范）· [TopBar.md](../prds/TopBar.md)（主导航全局参数与变更记录）
 
 ---
 

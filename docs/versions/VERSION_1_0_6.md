@@ -274,7 +274,9 @@
 - **Datas 行 2 改为与 Performance 第一行同构**：flex 布局（`flex:1 1 0` + `align-items:stretch`）；测量 Perf 卡片 `$el.scrollHeight` → `sideCardStyle` 应用 Cases/Logs 卡片 `height`（不再用 grid + gridAutoRows）
 - **Datas 行 2 测量防拉伸 + 灰面板**：测量前临时 `align-self:flex-start` 取 Perf 自然高度（否则被拉伸高度固化，切换任务高度不变）；`.case-groups` 改灰色面板（滚动条在面板内），`.case-req` 字体 10px；`ant-card-body` 补 `display:flex` 列（此前漏了导致滚动链断裂）
 
-### 迭代 15（2026-08-27）：Dashboard 改版（Logo 放大 / Service 状态去文字 / 记录表格去删除 + 详情跳转 + footer 提示）
+### 迭代 15（2026-08-28 00:16:53）：Dashboard 改版（Logo 放大 / Service 状态去文字 / 记录表格去删除 + 详情跳转 + footer 提示）
+
+> **完成时间**：2026-08-28 00:16:53（commit `cd2cac3`，本轮全部改动随该提交落库）
 
 **功能概述**：
 - **主导航 TopBar**：
@@ -295,7 +297,21 @@
 - [x] 前端 — Perf/Eval Records footer 右侧灰色小字（latest8Hint）
 - [x] 前端 — DatasPerfsView 路由 query.run_id 自动选中任务（onMounted + watch）
 - [x] 验证 — i18n + 构建 + bundle 内容确认
-- [x] 文档 — Dashboard.md / Datas.md / Design.md 更新 + 本版本记录（2026-08-27）
+- [x] 文档 — Dashboard.md / Datas.md / Design.md 更新 + 本版本记录（2026-08-28 00:16:53 随 commit `cd2cac3` 落库）
+
+### 迭代 16（2026-08-28 00:24:23）：新增主导航文档 TopBar.md（全局参数 + 精确时间变更记录）
+
+**功能概述**：
+- **新增 `docs/prds/TopBar.md`（主导航文档）**：docs/prds 此前缺少主导航（全局顶部导航栏）的页面级文档，本次补齐——
+  - **全局参数**：品牌区（Logo `/blue_logo.png` 48×48 圆角 12 / 品牌名 BenchScope / 动态版本标签 `GET /api/version`）；导航菜单（6 栏 key/图标/i18n 文案/路由前缀映射表，`computed` 随 `i18nState` 响应语言切换）；右侧 Service 状态（`StatusBadge no-label` 仅图标无文字，`serviceReady` 当前占位恒 true）；`StatusBadge` 组件 prop 表（含 1.0.6 新增 `noLabel`）；`.topbar` 样式参数（56px / 白底 / 边框阴影 / 菜单样式）
+  - **导航变更记录（精确到秒）**：自 v1.0.3 起共 10 条变更记录，**每条标注 commit + 精确时间（年-月-日 时:分:秒）**——`fc9fafb` 2026-08-24 11:13:52（v1.0.3 初始 3 栏导航）→ `895c905` 2026-08-24 16:19:29（v2.0 改 5 栏）→ `8f99cad` 2026-08-24 18:25:05（Logo 化）→ `c01fcaa` 2026-08-25 18:52:53（菜单 i18n 响应化）→ `890c7a2` 2026-08-26 00:54:05（右侧区精简去环境徽标）→ `00a09f8` 2026-08-26 23:56:12（v1.0.5 发布）→ `bbcf4cd` 2026-08-27 00:55:23（新增 Datas 导航 6 栏）→ `6f3a83d` 2026-08-27 13:20:02（Logo 换 blue_logo + 版本标签动态化）→ `02b2a8a` 2026-08-27 19:02:20（Datas 副导航子路由）→ `cd2cac3` 2026-08-28 00:16:53（Logo 放大 48px + Service 状态去文字）
+  - **维护约定**：此后任何导航/全局参数修改必须在 TopBar.md **追加变更记录并标注精确到秒的时间**，同步 Design.md / 本版本记录
+- **约定升级（重要）**：**全部迭代变更记录的时间须记录精确时间（年-月-日 时:分:秒）**——迭代标题与完成时间均标注 commit + 秒级时间，不再仅写日期（本条起执行，历史记录日期保留）
+
+**TODO 状态**：
+- [x] 文档 — 新增 docs/prds/TopBar.md（全局参数 + 变更记录精确到秒）
+- [x] 文档 — VERSION_1_0_6.md 迭代 15 补精确完成时间 + 新增迭代 16 + 相关文档列表补 TopBar.md
+- [x] 文档 — 维护约定升级：迭代记录时间精确到秒（年月日时分秒）
 
 ## 3. TODO 清单
 
@@ -333,5 +349,5 @@
 
 - 版本路线：[docs/Roadmap.md](../Roadmap.md)
 - 上一版本：[VERSION_1_0_5.md](./VERSION_1_0_5.md)
-- 页面行为文档：`docs/prds/`（Performance / Performance-Create / Dashboard / Accuracy / Sessions / Settings）
-- **维护约定**：`docs/versions/` 下内容更新均以**时间顺序**进行——1.0.6 的迭代内容按时间先后追加到本文档。
+- 页面行为文档：`docs/prds/`（Performance / Performance-Create / Dashboard / Datas / Accuracy / Sessions / Settings / **TopBar 主导航**）
+- **维护约定**：`docs/versions/` 下内容更新均以**时间顺序**进行——1.0.6 的迭代内容按时间先后追加到本文档；**所有迭代记录须标注精确时间（年-月-日 时:分:秒，含 commit）**，不再仅写日期；主导航变更另见 `docs/prds/TopBar.md` §5 变更记录。

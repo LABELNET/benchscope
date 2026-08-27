@@ -23,7 +23,7 @@ benchscope 按版本迭代推进，**倒序**列出各版本（最新在前）�
 
 - **发布时间**：2026-08-26
 - **主要功能点**：
-  - v2.0 UI 大改：5 栏导航（Dashboard / Performance / Accuracy / Sessions / Settings）
+  - UI 大改：5 栏导航（Dashboard / Performance / Accuracy / Sessions / Settings）
   - Performance **双模式**：并发压测（Concurrency）/ 阈值探测（Threshold，自动寻找满足条件的最大并发）
   - 创建任务三步表单（条件组 / 参数 YAML / 命令预览），多组条件带唯一 `case_id`（相同条件不叠加）
   - Progress 按 case 计数（1/1、2/2、N/N），与 Cases 面板一致

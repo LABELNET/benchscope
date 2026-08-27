@@ -20,7 +20,7 @@
 | 前端 | Vue 3 + Vite 5 | 组合式 API（`<script setup>`） |
 | UI 组件 | Ant Design Vue 4 | 组件库 |
 | 状态管理 | Pinia | `store/config.js` / `store/test.js` |
-| 路由 | Vue Router 4 | 5 栏导航 |
+| 路由 | Vue Router 4 | 6 栏主导航（TopBar 详见 [prds/TopBar.md](../prds/TopBar.md)） |
 | 图表 | ECharts 5 | 12 图网格 + 联动 tooltip |
 | 数据请求 | axios | 拦截器统一取 `data` / 错误 `detail` |
 | 构建 | Vite build → `benchscope/webui/` | 后端静态托管 |

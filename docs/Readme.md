@@ -1,7 +1,7 @@
 # docs 文档目录
 
 > **文档状态**：benchscope 文档体系说明与维护约定  
-> **最后更新**：2026-08-27
+> **最后更新**：2026-08-28 00:24:23
 
 本目录组织项目全部技术文档。**开发更新功能时，必须同步更新对应文档**（见文末「维护约定」）。
 
@@ -17,6 +17,7 @@
 | [prds/Performance-Create.md](prds/Performance-Create.md) | 创建任务子页（`/performance/create`）：三步表单、条件组、参数 YAML、payload 构建 |
 | [prds/Dashboard.md](prds/Dashboard.md) | Dashboard：Overview 六宫格、Envs info 四宫格、Perf/Eval Records 表格 |
 | [prds/Datas.md](prds/Datas.md) | Datas（1.0.6）：副导航（Perfs/Evals/Analysis）+ Records 记录面板（导入恢复/刷新）+ Perfs 详情 5 行布局（删除备份分享、Perf-Cases-Logs 等高、Perf Datas、分析面板）+ 占位页 |
+| [prds/TopBar.md](prds/TopBar.md) | **TopBar 主导航（1.0.6 新增）**：全局参数（品牌区/6 栏菜单/Service 状态/StatusBadge prop）+ **导航变更记录（含精确到秒的 commit 时间）** |
 | [prds/Accuracy.md](prds/Accuracy.md) | Accuracy 占位页与 v5.0 规划 |
 | [prds/Sessions.md](prds/Sessions.md) | Sessions：会话管理、SSE 流式、思考解析、性能栏 |
 | [prds/Settings.md](prds/Settings.md) | Settings：General / Envs / Models / Datasets / Plugins 五栏（1.0.6：Models 厂商目录、Datasets 分类行式、双语缓存路径） |
@@ -62,3 +63,5 @@
 > 4. 文档间引用使用相对链接，移动/改名后需同步修正引用。
 >
 > **版本迭代规则**：未特别说明版本号时，项目内容所有变更默认归属当前版本 **v1.0.6**（开发中显示 `v1.0.6-dev`），全部迭代到 `versions/VERSION_1_0_6.md`；**除非用户明确说「迭代下一个版本」**，才创建 `VERSION_x_y_z.md` 并同步升级版本号（`__init__.py` / `pyproject.toml`），否则不得擅自变更版本号。
+>
+> **时间记录规则（重要）**：**所有迭代变更记录的时间必须记录精确时间——年-月-日 时:分:秒**（含 commit 号，取自提交/落地时刻），禁止仅写日期；主导航相关变更另须在 `prds/TopBar.md` §5 追加记录（同样精确到秒）。
