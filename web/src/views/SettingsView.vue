@@ -20,7 +20,7 @@
     <!-- 右侧内容 -->
     <div class="settings-content">
       <!-- General：Language + Cache Paths 两个面板 -->
-      <div v-if="activeTab === 'general'" class="tab-content">
+      <div v-if="activeTab === 'general'" class="tab-content narrow">
         <a-card size="small" :bordered="true" class="panel-card">
           <template #title>{{ t('language') }}</template>
           <div class="panel-row">
@@ -35,8 +35,8 @@
           </template>
           <div v-for="d in dirs" :key="d.key" class="panel-row dir-row">
             <div class="dir-info">
-              <span class="dir-label">{{ d.label }}</span>
-              <span class="field-desc">{{ d.desc }}</span>
+              <span class="dir-label">{{ dirLabel(d) }}</span>
+              <span class="field-desc">{{ dirDesc(d) }}</span>
             </div>
             <div class="dir-right">
               <template v-if="editingKey === d.key">
@@ -72,7 +72,7 @@
       </div>
 
       <!-- Environment：本地测试环境面板 -->
-      <div v-if="activeTab === 'environment'" class="tab-content">
+      <div v-if="activeTab === 'environment'" class="tab-content narrow">
         <a-card size="small" :bordered="true" class="panel-card">
           <template #title>Envs</template>
           <template #extra>
@@ -109,32 +109,61 @@
         </a-card>
       </div>
 
-      <!-- Datasets：内置数据集 -->
+      <!-- Datasets：内置数据集（左侧分类 + 每行一个数据集） -->
       <div v-if="activeTab === 'datasets'" class="tab-content">
         <h3 style="margin: 0 0 8px">{{ t('builtinDatasets') }}</h3>
         <p class="section-desc">{{ t('datasetsHint') }}</p>
 
         <a-spin :spinning="datasetsLoading">
-          <div v-if="datasets.length" class="ds-list">
-            <div v-for="ds in datasets" :key="ds.id" class="ds-card">
-              <div class="ds-head">
-                <span class="ds-name">{{ ds.name }}</span>
-                <span v-if="ds.status?.cached" class="ds-status cached">{{ t('datasetCached') }}</span>
-                <span v-else class="ds-status">{{ t('datasetNotCached') }}</span>
+          <div v-if="datasets.length" class="catalog-layout">
+            <div class="catalog-sidebar">
+              <div class="catalog-group">
+                <div class="catalog-group-title">{{ t('category') }}</div>
+                <div class="catalog-items">
+                  <div
+                    class="catalog-item"
+                    :class="{ active: activeDsCat === 'all' }"
+                    @click="activeDsCat = 'all'"
+                  >
+                    <span>{{ t('allCategories') }}</span>
+                    <span class="catalog-count">{{ datasets.length }}</span>
+                  </div>
+                  <div
+                    v-for="c in datasetCats"
+                    :key="c.key"
+                    class="catalog-item"
+                    :class="{ active: activeDsCat === c.key }"
+                    @click="activeDsCat = c.key"
+                  >
+                    <span>{{ catName(c) }}</span>
+                    <span class="catalog-count">{{ catCount(c.key) }}</span>
+                  </div>
+                </div>
               </div>
-              <p class="ds-desc">{{ ds.description }}</p>
-              <div class="ds-row">
-                <span class="ds-label">{{ t('accessLink') }}</span>
-                <a class="ds-link" :href="ds.url" target="_blank" rel="noopener noreferrer">{{ ds.url }}</a>
-              </div>
-              <div class="ds-row column">
-                <span class="ds-label">{{ t('downloadCmd') }}</span>
-                <a-typography-text code copyable class="ds-cmd">{{ ds.download }}</a-typography-text>
-              </div>
-              <div class="ds-footer">
-                <a-button type="primary" size="small" :loading="downloadingId === ds.id" @click="downloadDataset(ds)">
-                  {{ t('download') }}
-                </a-button>
+            </div>
+            <div class="catalog-content">
+              <div v-for="ds in filteredDatasets" :key="ds.id" class="ds-row-item">
+                <div class="ds-row-main">
+                  <div class="ds-row-head">
+                    <span class="ds-name">{{ ds.name }}</span>
+                    <a-tag v-if="ds.status?.cached" color="green" size="small">{{ t('datasetCached') }}</a-tag>
+                    <a-tag v-else size="small">{{ t('datasetNotCached') }}</a-tag>
+                  </div>
+                  <p class="ds-desc">{{ ds.description }}</p>
+                  <div class="ds-row-links">
+                    <span class="ds-label">{{ t('accessLink') }}</span>
+                    <a class="ds-link" :href="ds.url" target="_blank" rel="noopener noreferrer">{{ ds.url }}</a>
+                  </div>
+                  <div class="ds-row-links column">
+                    <span class="ds-label">{{ t('downloadCmd') }}</span>
+                    <a-typography-text code copyable class="ds-cmd">{{ ds.download }}</a-typography-text>
+                  </div>
+                </div>
+                <div class="ds-row-actions">
+                  <a-button type="primary" size="small" :loading="downloadingId === ds.id" @click="downloadDataset(ds)">
+                    {{ t('download') }}
+                  </a-button>
+                </div>
               </div>
             </div>
           </div>
@@ -142,24 +171,68 @@
         </a-spin>
       </div>
 
-      <!-- Models：内置模型下载链接宫格 -->
+      <!-- Models：厂商目录（左侧分组副侧边栏 + 右侧厂商模型列表） -->
       <div v-if="activeTab === 'models'" class="tab-content">
         <h3 style="margin: 0 0 8px">{{ t('builtinModels') }}</h3>
-        <p class="section-desc">{{ t('modelsGridHint') }}</p>
+        <p class="section-desc">{{ t('modelsCatalogHint') }}</p>
 
-        <div class="model-grid">
-          <div v-for="m in modelCatalog" :key="m.id" class="model-card" @click="openModel(m)">
-            <div class="model-avatar" :style="{ background: m.color }">{{ m.short }}</div>
-            <div class="model-info">
-              <div class="model-name">{{ m.name }}</div>
-              <div class="model-intro">{{ m.intro[locale] }}</div>
+        <a-spin :spinning="catalogLoading">
+          <div v-if="modelGroups.length" class="catalog-layout">
+            <div class="catalog-sidebar">
+              <div v-for="g in modelGroups" :key="g.key" class="catalog-group">
+                <div class="catalog-group-title clickable" @click="toggleGroup(g.key)">
+                  <span class="group-caret" :class="{ collapsed: isCollapsed(g.key) }">▸</span>
+                  <span>{{ groupName(g) }}</span>
+                  <span class="catalog-count">{{ g.providers.length }}</span>
+                </div>
+                <div v-show="!isCollapsed(g.key)" class="catalog-items">
+                  <div
+                    v-for="p in g.providers"
+                    :key="p.key"
+                    class="catalog-item"
+                    :class="{ active: selectedProvider?.key === p.key }"
+                    @click="selectProvider(p)"
+                  >
+                    <span>{{ p.name }}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="catalog-content">
+              <template v-if="selectedProvider">
+                <div class="provider-head">
+                  <h3 class="provider-title">{{ selectedProvider.name }}</h3>
+                  <a
+                    v-if="selectedProvider.homepage"
+                    class="provider-homepage"
+                    :href="selectedProvider.homepage"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >{{ t('homepage') }}</a>
+                </div>
+                <div v-if="selectedProvider.models?.length" class="provider-models">
+                  <div
+                    v-for="m in selectedProvider.models"
+                    :key="m"
+                    class="provider-model-item"
+                    :class="{ clickable: !!matchCatalog(m) }"
+                    @click="openProviderModel(m)"
+                  >
+                    <span class="pm-name">{{ m }}</span>
+                    <a-tag v-if="matchCatalog(m)" color="blue" size="small">{{ t('details') }}</a-tag>
+                  </div>
+                </div>
+                <a-empty v-else :description="t('noModels')" />
+              </template>
+              <a-empty v-else :description="t('selectProvider')" />
             </div>
           </div>
-        </div>
+          <a-empty v-else-if="!catalogLoading" :description="t('noData')" />
+        </a-spin>
       </div>
 
       <!-- Plugins：占位 -->
-      <div v-if="activeTab === 'plugins'" class="tab-content">
+      <div v-if="activeTab === 'plugins'" class="tab-content narrow">
         <h3 style="margin: 0 0 8px">{{ t('plugins') }}</h3>
         <p class="section-desc">{{ t('pluginsDesc') }}</p>
         <a-empty :description="t('noData')" />
@@ -236,6 +309,14 @@ const selectedModel = ref(null)
 const datasets = ref([])
 const datasetsLoading = ref(false)
 const downloadingId = ref('')
+// Datasets 左侧分类
+const datasetCats = ref([])
+const activeDsCat = ref('all')
+// Models 厂商目录
+const catalogLoading = ref(false)
+const modelGroups = ref([])
+const collapsedGroups = ref([])
+const selectedProvider = ref(null)
 
 // ---- Cache Paths 目录管理 ----
 const dirs = ref([])
@@ -269,8 +350,8 @@ const form = reactive({
 const menuItems = computed(() => [
   { key: 'general', icon: SettingOutlined, label: t('general') },
   { key: 'environment', icon: DesktopOutlined, label: t('environment') },
-  { key: 'datasets', icon: CloudDownloadOutlined, label: t('datasetsTab') },
   { key: 'models', icon: DatabaseOutlined, label: t('modelsTab') },
+  { key: 'datasets', icon: CloudDownloadOutlined, label: t('datasetsTab') },
   { key: 'plugins', icon: ApiOutlined, label: t('plugins') },
 ])
 
@@ -303,6 +384,7 @@ onMounted(async () => {
     })
     loadDirs()
     loadDatasets()
+    loadModelCatalog()
   } catch { /* ignore */ }
 })
 
@@ -432,11 +514,80 @@ async function loadDatasets() {
   try {
     const resp = await api.getDatasets()
     datasets.value = resp.datasets || []
+    datasetCats.value = resp.categories || []
   } catch {
     datasets.value = []
   } finally {
     datasetsLoading.value = false
   }
+}
+
+// ---- Models 厂商目录 ----
+async function loadModelCatalog() {
+  catalogLoading.value = true
+  try {
+    const resp = await api.getModelCatalog()
+    modelGroups.value = resp.groups || []
+    // 默认展开全部组，选中第一个厂商
+    collapsedGroups.value = []
+    const first = modelGroups.value[0]?.providers?.[0]
+    if (first) selectedProvider.value = first
+  } catch {
+    modelGroups.value = []
+  } finally {
+    catalogLoading.value = false
+  }
+}
+
+function groupName(g) {
+  return locale.value === 'zh' ? g.name_zh : g.name_en
+}
+
+function toggleGroup(key) {
+  const i = collapsedGroups.value.indexOf(key)
+  if (i >= 0) collapsedGroups.value.splice(i, 1)
+  else collapsedGroups.value.push(key)
+}
+
+function isCollapsed(key) {
+  return collapsedGroups.value.includes(key)
+}
+
+function selectProvider(p) {
+  selectedProvider.value = p
+}
+
+function matchCatalog(modelName) {
+  const name = String(modelName || '').toLowerCase()
+  return modelCatalog.find((m) => m.name.toLowerCase() === name || m.id.toLowerCase() === name) || null
+}
+
+function openProviderModel(modelName) {
+  const hit = matchCatalog(modelName)
+  if (hit) openModel(hit)
+}
+
+// ---- Datasets 分类 ----
+function catName(c) {
+  return locale.value === 'zh' ? c.name_zh : c.name_en
+}
+
+function catCount(key) {
+  return datasets.value.filter((d) => d.category === key).length
+}
+
+const filteredDatasets = computed(() => {
+  if (activeDsCat.value === 'all') return datasets.value
+  return datasets.value.filter((d) => d.category === activeDsCat.value)
+})
+
+// ---- Cache Paths 双语 ----
+function dirLabel(d) {
+  return locale.value === 'zh' ? d.label_zh || d.label : d.label_en || d.label
+}
+
+function dirDesc(d) {
+  return locale.value === 'zh' ? d.desc_zh || d.desc : d.desc_en || d.desc
 }
 
 async function downloadDataset(ds) {
@@ -572,11 +723,15 @@ function deployModel() {
   flex: 1;
   overflow-y: auto;
   padding: 32px 40px;
-  max-width: 960px;
 }
 
 .tab-content {
   animation: fadeIn 0.2s ease;
+}
+
+/* 窄面板（General / Environment / Plugins）：减小面板宽度，滚动条保持在页面最右侧 */
+.tab-content.narrow {
+  max-width: 720px;
 }
 
 @keyframes fadeIn {
@@ -729,62 +884,198 @@ function deployModel() {
   border-top: 1px solid var(--ant-color-border, #f0f0f0);
 }
 
-/* ===== Models 宫格 ===== */
-.model-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
-  gap: 16px;
-}
-
-.model-card {
+/* ===== Models / Datasets 副侧边栏布局 ===== */
+.catalog-layout {
   display: flex;
-  gap: 12px;
-  padding: 16px;
+  align-items: flex-start;
+  gap: 0;
   border: 1px solid var(--ant-color-border, #e8e8e8);
   border-radius: 12px;
-  cursor: pointer;
-  background: var(--ant-color-bg-container, #fff);
-  transition: all 0.2s;
+  overflow: hidden;
 }
 
-.model-card:hover {
-  border-color: var(--ant-color-primary, #1677ff);
-  box-shadow: 0 2px 8px rgba(22, 119, 255, 0.12);
-  transform: translateY(-2px);
+.catalog-sidebar {
+  width: 210px;
+  flex-shrink: 0;
+  border-right: 1px solid var(--ant-color-border, #f0f0f0);
+  background: var(--ant-color-bg-layout, #fafafa);
+  max-height: calc(100vh - 220px);
+  overflow-y: auto;
+  padding: 8px 0;
 }
 
-.model-avatar {
-  width: 44px;
-  height: 44px;
-  border-radius: 10px;
-  color: #fff;
+.catalog-group {
+  margin-bottom: 4px;
+}
+
+.catalog-group-title {
   display: flex;
   align-items: center;
-  justify-content: center;
-  font-weight: 700;
-  font-size: 15px;
-  flex-shrink: 0;
-}
-
-.model-info {
-  min-width: 0;
-}
-
-.model-name {
-  font-size: 14px;
+  gap: 6px;
+  padding: 8px 14px;
+  font-size: 13px;
   font-weight: 600;
   color: var(--ant-color-text, #333);
 }
 
-.model-intro {
-  margin-top: 4px;
-  font-size: 12px;
-  line-height: 1.5;
-  color: var(--ant-color-text-secondary, #666);
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
+.catalog-group-title.clickable {
+  cursor: pointer;
+  user-select: none;
+}
+
+.catalog-group-title.clickable:hover {
+  background: var(--ant-color-fill-secondary, #f0f0f0);
+}
+
+.group-caret {
+  display: inline-block;
+  font-size: 10px;
+  transition: transform 0.2s;
+  color: var(--ant-color-text-tertiary, #999);
+}
+
+.group-caret.collapsed {
+  transform: rotate(90deg);
+}
+
+.catalog-items {
+  padding-bottom: 6px;
+}
+
+.catalog-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 7px 14px 7px 30px;
+  font-size: 13px;
+  color: var(--ant-color-text-secondary, #555);
+  cursor: pointer;
+  transition: all 0.15s;
+  white-space: nowrap;
   overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.catalog-item:hover {
+  background: var(--ant-color-fill-secondary, #f0f0f0);
+  color: var(--ant-color-text, #333);
+}
+
+.catalog-item.active {
+  background: var(--ant-color-primary-bg, #e6f4ff);
+  color: var(--ant-color-primary, #1677ff);
+  font-weight: 500;
+}
+
+.catalog-count {
+  font-size: 11px;
+  color: var(--ant-color-text-tertiary, #999);
+  flex-shrink: 0;
+}
+
+.catalog-item.active .catalog-count {
+  color: var(--ant-color-primary, #1677ff);
+}
+
+.catalog-content {
+  flex: 1;
+  min-width: 0;
+  padding: 16px 20px;
+}
+
+/* 厂商模型列表 */
+.provider-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.provider-title {
+  margin: 0;
+  font-size: 16px;
+}
+
+.provider-homepage {
+  font-size: 12px;
+}
+
+.provider-models {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.provider-model-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 14px;
+  border: 1px solid var(--ant-color-border, #e8e8e8);
+  border-radius: 8px;
+  background: var(--ant-color-bg-container, #fff);
+  transition: all 0.15s;
+}
+
+.provider-model-item:hover {
+  border-color: var(--ant-color-primary, #1677ff);
+}
+
+.provider-model-item.clickable {
+  cursor: pointer;
+}
+
+.pm-name {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--ant-color-text, #333);
+}
+
+/* ===== Datasets 行式数据集 ===== */
+.ds-row-item {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--ant-color-border-secondary, #f0f0f0);
+}
+
+.ds-row-item:last-child {
+  border-bottom: none;
+}
+
+.ds-row-main {
+  flex: 1;
+  min-width: 0;
+}
+
+.ds-row-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.ds-row-links {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 2px 0;
+  font-size: 12px;
+}
+
+.ds-row-links.column {
+  flex-direction: column;
+  align-items: flex-start;
+}
+
+.ds-row-actions {
+  flex-shrink: 0;
+  padding-top: 2px;
 }
 
 /* ===== 模型详情抽屉 ===== */

@@ -9,7 +9,7 @@ import threading
 from pathlib import Path
 
 from fastapi import APIRouter, File, HTTPException, UploadFile
-from fastapi.responses import FileResponse, PlainTextResponse
+from fastapi.responses import FileResponse, PlainTextResponse, Response
 
 from benchscope.server.state import state
 
@@ -88,15 +88,125 @@ def get_run(run_id: str):
     for lp in state.config.logs_dir.glob(f"{kind}_{run_id}_*.log"):
         files.append((lp.name, lp.stat().st_size))
     files = sorted(set(files))
-    return {"run_id": run_id, "dir": str(d), "files": files, "run": run_info}
+    return {"run_id": run_id, "dir": str(d), "files": [{"name": n, "size": s} for n, s in files], "run": run_info}
 
 
 @router.delete("/runs/{run_id}")
 def delete_run(run_id: str):
-    """删除整条运行记录目录。"""
+    """删除整条运行记录：run 目录 + 终端输出日志（logs_dir 下 perf|eval_runID_*.log）。"""
     d = _resolve_run_dir(run_id)
+    run_info = _load_run_json(d) or {}
+    kind = run_info.get("kind", "perf")
     shutil.rmtree(d)
+    # 同步删除终端输出日志
+    for lp in state.config.logs_dir.glob(f"{kind}_{run_id}_*.log"):
+        try:
+            lp.unlink()
+        except OSError:
+            log.warning("删除终端日志失败: %s", lp)
     return {"ok": True}
+
+
+@router.get("/runs/{run_id}/backup")
+def backup_run(run_id: str):
+    """将 run 目录全部文件 + 终端输出日志打包为 zip 下载，压缩包可重新导入恢复任务。"""
+    import io
+    import zipfile
+
+    d = _resolve_run_dir(run_id)
+    run_info = _load_run_json(d) or {}
+    kind = run_info.get("kind", "perf")
+    files: list[tuple[Path, str]] = [(p, p.name) for p in sorted(d.iterdir()) if p.is_file()]
+    for lp in state.config.logs_dir.glob(f"{kind}_{run_id}_*.log"):
+        files.append((lp, lp.name))
+    # 去除重名（run.json 已含终端日志路径，但压缩包内保留唯一名）
+    seen_names: set[str] = set()
+    unique: list[tuple[Path, str]] = []
+    for p, name in files:
+        if name in seen_names:
+            continue
+        seen_names.add(name)
+        unique.append((p, name))
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        for p, name in unique:
+            zf.write(p, arcname=name)
+    buf.seek(0)
+    return Response(
+        content=buf.getvalue(),
+        media_type="application/zip",
+        headers={"Content-Disposition": f'attachment; filename="{run_id}.zip"'},
+    )
+
+
+# ----------------------------------------------------------------------
+# 导入：从备份压缩包恢复任务记录
+@router.post("/runs/import")
+async def import_run(file: UploadFile = File(...)):
+    """导入备份 zip：解压 -> 校验任务 ID 一致性 -> 已存在则不导入，否则写入对应目录。"""
+    import io
+    import tempfile
+    import zipfile
+
+    content = await file.read()
+    if not content:
+        raise HTTPException(status_code=400, detail="上传内容为空")
+    tmp = Path(tempfile.mkdtemp(prefix="bs_import_"))
+    try:
+        try:
+            zf = zipfile.ZipFile(io.BytesIO(content))
+        except zipfile.BadZipFile:
+            raise HTTPException(status_code=400, detail="不是有效的 zip 压缩包")
+        with zf:
+            # zip-slip 防护：仅接受扁平文件名（backup 导出均为 arcname=name）
+            for info in zf.infolist():
+                name = info.filename
+                if not name or "/" in name or "\\" in name or ".." in name:
+                    continue
+                (tmp / name).write_bytes(zf.read(info))
+
+        run_json = tmp / "run.json"
+        if not run_json.is_file():
+            raise HTTPException(status_code=400, detail="压缩包缺少 run.json，无法识别任务")
+        try:
+            run_info = json.loads(run_json.read_text(encoding="utf-8"))
+        except Exception:
+            raise HTTPException(status_code=400, detail="run.json 解析失败")
+        kind = run_info.get("kind") or "perf"
+        if kind not in ("perf", "eval"):
+            kind = "perf"
+
+        # 任务 ID 一致性：优先 run.json 的 run_id，否则从终端日志文件名提取
+        run_id = (run_info.get("run_id") or "").strip()
+        if not run_id:
+            for p in tmp.iterdir():
+                m = re.match(r"^(perf|eval)_(.+)_\d{6}\d*\.log$", p.name)
+                if m:
+                    run_id = m.group(2)
+                    break
+        if not run_id:
+            raise HTTPException(status_code=400, detail="无法从压缩包识别任务 ID")
+
+        root = state.config.perfs_dir if kind == "perf" else state.config.evals_dir
+        root.mkdir(parents=True, exist_ok=True)
+        dest = (root / run_id).resolve()
+        if str(dest).startswith(str(root.resolve())) and dest.exists():
+            return {"ok": False, "exists": True, "run_id": run_id, "kind": kind}
+
+        dest.mkdir(parents=True, exist_ok=False)
+        moved = []
+        for p in sorted(tmp.iterdir()):
+            if not p.is_file():
+                continue
+            # 终端输出日志（perf_|eval_ 前缀 .log，与 backup 导出一致）放入 logs 根目录
+            if re.match(r"^(perf|eval)_.*\.log$", p.name):
+                shutil.move(str(p), state.config.logs_dir / p.name)
+            else:
+                shutil.move(str(p), dest / p.name)
+            moved.append(p.name)
+        return {"ok": True, "exists": False, "run_id": run_id, "kind": kind, "files": moved}
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
 
 
 # ----------------------------------------------------------------------

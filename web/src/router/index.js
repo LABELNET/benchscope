@@ -10,7 +10,17 @@ const routes = [
   { path: '/performance/:taskId', redirect: '/performance' },
   { path: '/accuracy', name: 'accuracy', component: () => import('@/views/AccuracyView.vue') },
   { path: '/sessions', name: 'sessions', component: () => import('@/views/SessionsView.vue') },
-  { path: '/datas', name: 'datas', component: () => import('@/views/DatasView.vue') },
+  {
+    path: '/datas',
+    name: 'datas',
+    component: () => import('@/views/DatasView.vue'),
+    redirect: '/datas/perfs',
+    children: [
+      { path: 'perfs', name: 'datas-perfs', component: () => import('@/views/DatasPerfsView.vue') },
+      { path: 'evals', name: 'datas-evals', component: () => import('@/views/DatasEvalsView.vue') },
+      { path: 'analysis', name: 'datas-analysis', component: () => import('@/views/DatasAnalysisView.vue') },
+    ],
+  },
   { path: '/settings', name: 'settings', component: () => import('@/views/SettingsView.vue') },
   // 兼容旧路由
   { path: '/vllm', redirect: '/performance' },

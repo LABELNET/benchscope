@@ -1,0 +1,177 @@
+# 模型厂商目录（Settings → Models 面板左侧副侧边栏）
+# 数据来源：https://recipes.vllm.ai 页面左侧 Providers 菜单，按 国内 / 国外 分组
+# 字段：key / name（厂商名）/ homepage（厂商主页）/ models（模型名列表，空表示暂无明细）
+groups:
+  - key: cn
+    name_zh: 国内
+    name_en: Domestic
+    providers:
+      - key: baidu
+        name: Baidu (ERNIE)
+        homepage: https://github.com/baidu/ERNIE
+        models: [ERNIE-4.5, ERNIE-3.5, ERNIE-Speed-128K]
+      - key: bytedance
+        name: Seed (ByteDance)
+        homepage: https://www.volcengine.com/product/doubao
+        models: [Seed-1.5, Seed-Double]
+      - key: deepseek
+        name: DeepSeek
+        homepage: https://huggingface.co/deepseek-ai
+        models: [DeepSeek-V3, DeepSeek-R1, DeepSeek-V2.5]
+      - key: inclusionai
+        name: inclusionAI
+        homepage: https://github.com/inclusionAI
+        models: [CyberAgentLM3-8B, CyberAgentLM3-3B]
+      - key: meituan
+        name: LongCat (Meituan)
+        homepage: https://github.com/Meituan-AI
+        models: [LongCat-1B]
+      - key: minimax
+        name: MiniMax
+        homepage: https://huggingface.co/MiniMaxAI
+        models: [MiniMax-Text-01, MiniMax-M2]
+      - key: moonshot
+        name: Moonshot AI
+        homepage: https://huggingface.co/moonshotai
+        models: [Kimi-K2, Kimi-K2-Turbo]
+      - key: openbmb
+        name: MiniCPM (OpenBMB)
+        homepage: https://huggingface.co/openbmb
+        models: [MiniCPM-V-2.6, MiniCPM-4B]
+      - key: internlm
+        name: InternLM
+        homepage: https://huggingface.co/internlm
+        models: [InternLM3-8B, InternLM2.5-7B]
+      - key: opengvlab
+        name: InternVL (OpenGVLab)
+        homepage: https://huggingface.co/OpenGVLab
+        models: [InternVL3-8B, InternVL2.5-26B]
+      - key: openmoss
+        name: OpenMOSS
+        homepage: https://github.com/OpenMOSS
+        models: [MOSS-003]
+      - key: paddlepaddle
+        name: PaddlePaddle
+        homepage: https://github.com/PaddlePaddle
+        models: []
+      - key: qwen
+        name: Qwen
+        homepage: https://huggingface.co/Qwen
+        models: [Qwen3-235B-A22B, Qwen3-32B, Qwen2.5-72B, Qwen3-VL]
+      - key: stepfun
+        name: StepFun
+        homepage: https://huggingface.co/stepfun-ai
+        models: [Step-2, Step-1]
+      - key: tencent
+        name: Hunyuan (Tencent)
+        homepage: https://huggingface.co/tencent/Tencent-Hunyuan-Large
+        models: [Hunyuan-Large, Hunyuan-4]
+      - key: alibaba
+        name: Wan (Alibaba)
+        homepage: https://huggingface.co/Wan-AI
+        models: [Wan2.2-VL, Wan2.1]
+      - key: xiaomi
+        name: MiMo (Xiaomi)
+        homepage: https://huggingface.co/XiaomiMiMo
+        models: [MiMo-7B-RL, MiMo-7B]
+      - key: zai
+        name: GLM (Z-AI)
+        homepage: https://huggingface.co/zai-org
+        models: [GLM-4.6, GLM-4.5]
+
+  - key: intl
+    name_zh: 国外
+    name_en: International
+    providers:
+      - key: arcee
+        name: Arcee AI
+        homepage: https://huggingface.co/arcee-ai
+        models: [Arcee-V2, Arcee-V2-R1]
+      - key: boson
+        name: Boson AI
+        homepage: https://huggingface.co/boson-ai
+        models: [Boson-Any]
+      - key: dots
+        name: Dots
+        homepage: https://huggingface.co/dots
+        models: [Dots-1.1B]
+      - key: fish-audio
+        name: Fish Audio
+        homepage: https://huggingface.co/fishaudio
+        models: [Fish-Audio-1.5]
+      - key: google
+        name: Google
+        homepage: https://huggingface.co/google
+        models: [Gemma-3, Gemma-3N, GPT-OSS-120B, PaliGemma]
+      - key: i
+        name: i
+        homepage: ""
+        models: []
+      - key: ibm-granite
+        name: ibm-granite
+        homepage: https://huggingface.co/ibm-granite
+        models: [Granite-4.0]
+      - key: indexteam
+        name: IndexTeam
+        homepage: https://huggingface.co/IndexTeam
+        models: [Index-1.8B]
+      - key: jetbrains
+        name: JetBrains
+        homepage: https://huggingface.co/jetbrains
+        models: [JetBrains-Jamba-1.5-Mini]
+      - key: jina
+        name: Jina AI
+        homepage: https://huggingface.co/jinaai
+        models: [Jina-Embeddings-V3]
+      - key: lightricks
+        name: Lightricks
+        homepage: https://huggingface.co/Lightricks
+        models: [LTX-Video]
+      - key: liquid
+        name: Liquid AI
+        homepage: https://huggingface.co/LiquidAI
+        models: [Liquid-1.5B]
+      - key: meta
+        name: Meta
+        homepage: https://huggingface.co/meta-llama
+        models: [Llama-4, Llama-4-Scout, Llama-3.3-70B, Llama-3.2-3B]
+      - key: muse
+        name: Muse (Meta)
+        homepage: https://huggingface.co/meta-muse
+        models: [Muse-1.0]
+      - key: microsoft
+        name: Microsoft
+        homepage: https://huggingface.co/microsoft
+        models: [Phi-4, Phi-4-Multimodal]
+      - key: mindlab
+        name: MindLab Research
+        homepage: https://huggingface.co/mind-lab
+        models: [MindLab-3.0]
+      - key: mistral
+        name: Mistral AI
+        homepage: https://huggingface.co/mistralai
+        models: [Mistral-Small, Codestral, Mistral-Nemo]
+      - key: nvidia
+        name: NVIDIA
+        homepage: https://huggingface.co/nvidia
+        models: [Nemotron, Llama-Nemotron, LLaVA]
+      - key: openai
+        name: OpenAI
+        homepage: https://huggingface.co/openai
+        models: [GPT-5, GPT-OSS-120B, GPT-OSS-20B]
+      - key: preferred-networks
+        name: Preferred Networks
+        homepage: https://huggingface.co/pfnet
+        models: [PLaMo-100B]
+      - key: poolside
+        name: Poolside
+        homepage: https://huggingface.co/poolsideai
+        models: [Poolside-Any, Poolside-Model]
+      - key: stability
+        name: Stability AI
+        homepage: https://huggingface.co/stabilityai
+        models: [StableLM-2]
+      - key: thinking-machines
+        name: Thinking Machines Lab
+        homepage: https://huggingface.co/thinkingmachines
+        models: []

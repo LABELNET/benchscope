@@ -18,6 +18,7 @@ export const api = {
 
   // 配置
   getConfig: () => http.get('/api/config'),
+  getModelCatalog: () => http.get('/api/config/model-catalog'),
   updateConfig: (patch) => http.post('/api/config', patch),
   getStatus: () => http.get('/api/config/status'),
   getModels: () => http.get('/api/config/models'),
@@ -57,6 +58,9 @@ export const api = {
   previewFile: (runId, name) =>
     http.get(`/api/logs/runs/${runId}/preview`, { params: { name } }),
   downloadUrl: (runId, name) => `/api/logs/runs/${runId}/download?name=${encodeURIComponent(name)}`,
+  backupRun: (runId) => http.get(`/api/logs/runs/${runId}/backup`, { responseType: 'blob' }),
+  importRun: (formData, onProgress) =>
+    http.post('/api/logs/runs/import', formData, { timeout: 120000, onUploadProgress: onProgress }),
   runSummary: (runId, threshold) =>
     http.get(`/api/logs/runs/${runId}/summary`, { params: { threshold } }),
   listDatasets: () => http.get('/api/logs/datasets'),

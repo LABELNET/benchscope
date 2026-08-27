@@ -188,17 +188,44 @@ def put_params_yaml(framework: str, req: YamlUpdateRequest):
 
 @router.get("/datasets")
 def list_builtin_datasets():
-    """返回内置数据集定义 + 缓存状态（Settings → Datasets 面板）。"""
+    """返回内置数据集定义 + 分类 + 缓存状态（Settings → Datasets 面板）。"""
+    import yaml
+
     from benchscope.builtin_datasets import dataset_status, load_builtin_datasets
 
     cache_root = state.config.datasets_dir
     datasets = load_builtin_datasets()
+    categories: list[dict] = []
+    yaml_path = _CONFIGS_DIR / "datasets.yaml"
+    if yaml_path.exists():
+        try:
+            raw = yaml.safe_load(yaml_path.read_text(encoding="utf-8")) or {}
+            categories = raw.get("categories", []) or []
+        except Exception:
+            log.exception("解析 datasets.yaml categories 失败")
     return {
+        "categories": categories,
         "datasets": [
             {**ds, "status": dataset_status(ds, cache_root)}
             for ds in datasets
         ],
     }
+
+
+@router.get("/model-catalog")
+def get_model_catalog():
+    """返回模型厂商目录（Settings → Models 面板左侧副侧边栏），按 国内/国外 分组。"""
+    import yaml
+
+    yaml_path = _CONFIGS_DIR / "models.yaml"
+    if not yaml_path.exists():
+        raise HTTPException(status_code=404, detail="models.yaml 不存在")
+    try:
+        data = yaml.safe_load(yaml_path.read_text(encoding="utf-8")) or {}
+    except Exception:
+        log.exception("解析 models.yaml 失败")
+        raise HTTPException(status_code=500, detail="解析 models.yaml 失败")
+    return {"groups": data.get("groups", [])}
 
 
 class DatasetDownloadRequest(BaseModel):
@@ -225,26 +252,36 @@ def download_dataset(req: DatasetDownloadRequest):
 # 缓存目录管理（Settings → General → Cache Paths）
 # ---------------------------------------------------------------------------
 
-# 目录展示配置：key -> {label, desc, sub（data_dir 下的默认子目录名或 None）}
+# 目录展示配置：key -> {label_zh/label_en, desc_zh/desc_en, sub（data_dir 下的默认子目录名或 None）}
+# 双语字段供前端按界面语言（zh/en）渲染，替换旧单语言 label/desc
 CACHE_DIR_INFO = [
-    {"key": "data_dir", "label": "Data", "sub": None,
-     "desc": "数据根目录（服务端数据持久化 / 任务 / 会话等），修改后需重启服务并可选迁移数据"},
-    {"key": "perfs_dir", "label": "Perf", "sub": "perfs",
-     "desc": "性能测试任务目录，有运行中的任务时不可修改"},
-    {"key": "evals_dir", "label": "Eval", "sub": "evals",
-     "desc": "精度测试任务目录，有运行中的任务时不可修改"},
-    {"key": "analysis_dir", "label": "Analysis", "sub": "analysys",
-     "desc": "数据分析目录，联动主导航 / Datas 相关缓存"},
-    {"key": "logs_dir", "label": "Logs", "sub": "logs",
-     "desc": "日志目录：runtime_年月日.log 与任务终端输出（perf/eval_runID_月日时分秒.log）"},
-    {"key": "sessions_dir", "label": "Sessions", "sub": "sessions",
-     "desc": "会话缓存目录，每个会话保存的路径"},
-    {"key": "models_dir", "label": "Models", "sub": "models",
-     "desc": "模型下载目录，联动 Settings / Models 管理"},
-    {"key": "datasets_dir", "label": "Datasets", "sub": "datasets",
-     "desc": "数据集下载目录，联动 Settings / Datasets 管理"},
-    {"key": "plugins_dir", "label": "Plugins", "sub": "plugins",
-     "desc": "插件安装加载目录，联动 Settings / Plugins"},
+    {"key": "data_dir", "label_zh": "数据", "label_en": "Data", "sub": None,
+     "desc_zh": "数据根目录（服务端数据持久化 / 任务 / 会话等），修改后需重启服务并可选迁移数据",
+     "desc_en": "Data root directory (server persistence / tasks / sessions). Changing it requires a service restart with optional data migration"},
+    {"key": "perfs_dir", "label_zh": "性能", "label_en": "Perf", "sub": "perfs",
+     "desc_zh": "性能测试任务目录，有运行中的任务时不可修改",
+     "desc_en": "Perf test task directory; locked while tasks are running"},
+    {"key": "evals_dir", "label_zh": "精度", "label_en": "Eval", "sub": "evals",
+     "desc_zh": "精度测试任务目录，有运行中的任务时不可修改",
+     "desc_en": "Accuracy test task directory; locked while tasks are running"},
+    {"key": "analysis_dir", "label_zh": "分析", "label_en": "Analysis", "sub": "analysys",
+     "desc_zh": "数据分析目录，联动主导航 / Datas 相关缓存",
+     "desc_en": "Analysis data directory, linked to Datas caches"},
+    {"key": "logs_dir", "label_zh": "日志", "label_en": "Logs", "sub": "logs",
+     "desc_zh": "日志目录：runtime_年月日.log 与任务终端输出（perf/eval_runID_月日时分秒.log）",
+     "desc_en": "Logs directory: runtime_YYYYMMDD.log and task terminal output (perf/eval_runID_MMDDHHMMSS.log)"},
+    {"key": "sessions_dir", "label_zh": "会话", "label_en": "Sessions", "sub": "sessions",
+     "desc_zh": "会话缓存目录，每个会话保存的路径",
+     "desc_en": "Session cache directory, saved path for each session"},
+    {"key": "models_dir", "label_zh": "模型", "label_en": "Models", "sub": "models",
+     "desc_zh": "模型下载目录，联动 Settings / Models 管理",
+     "desc_en": "Model download directory, linked to Settings / Models"},
+    {"key": "datasets_dir", "label_zh": "数据集", "label_en": "Datasets", "sub": "datasets",
+     "desc_zh": "数据集下载目录，联动 Settings / Datasets 管理",
+     "desc_en": "Dataset download directory, linked to Settings / Datasets"},
+    {"key": "plugins_dir", "label_zh": "插件", "label_en": "Plugins", "sub": "plugins",
+     "desc_zh": "插件安装加载目录，联动 Settings / Plugins",
+     "desc_en": "Plugin installation directory, linked to Settings / Plugins"},
 ]
 
 
@@ -261,8 +298,12 @@ def get_cache_dirs():
         value = cfg.get(key) or DEFAULT_CONFIG.get(key, "")
         result.append({
             "key": key,
-            "label": info["label"],
-            "desc": info["desc"],
+            "label": info.get("label") or info["label_en"],
+            "desc": info.get("desc") or info["desc_en"],
+            "label_zh": info["label_zh"],
+            "label_en": info["label_en"],
+            "desc_zh": info["desc_zh"],
+            "desc_en": info["desc_en"],
             "value": value,
             "default": DEFAULT_CONFIG.get(key, ""),
             "exists": cfg.resolve_dir(key).exists() if key else True,

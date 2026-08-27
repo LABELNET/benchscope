@@ -16,10 +16,10 @@
 | [prds/Performance.md](prds/Performance.md) | 性能任务执行页：双模式（并发/阈值）、Cases / Realtime / Statistics 面板、唯一组 id、Best/BestPerf 高亮、进度计数 |
 | [prds/Performance-Create.md](prds/Performance-Create.md) | 创建任务子页（`/performance/create`）：三步表单、条件组、参数 YAML、payload 构建 |
 | [prds/Dashboard.md](prds/Dashboard.md) | Dashboard：Overview 六宫格、Envs info 四宫格、Perf/Eval Records 表格 |
-| [prds/Datas.md](prds/Datas.md) | Datas（1.0.6）：Perfs 分页记录 + 最佳记录 + 详情（mean/median/p99）+ 对比分析、Evals 占位 |
+| [prds/Datas.md](prds/Datas.md) | Datas（1.0.6）：副导航（Perfs/Evals/Analysis）+ Records 记录面板（导入恢复/刷新）+ Perfs 详情 5 行布局（删除备份分享、Perf-Cases-Logs 等高、Perf Datas、分析面板）+ 占位页 |
 | [prds/Accuracy.md](prds/Accuracy.md) | Accuracy 占位页与 v5.0 规划 |
 | [prds/Sessions.md](prds/Sessions.md) | Sessions：会话管理、SSE 流式、思考解析、性能栏 |
-| [prds/Settings.md](prds/Settings.md) | Settings：General / Envs / Datasets / Models / Plugins 五栏 |
+| [prds/Settings.md](prds/Settings.md) | Settings：General / Envs / Models / Datasets / Plugins 五栏（1.0.6：Models 厂商目录、Datasets 分类行式、双语缓存路径） |
 
 > 命名规则：`<页面名>.md`；有子页面时 `Sessions-xxx.md` 形式。
 

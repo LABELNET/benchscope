@@ -2,21 +2,21 @@
 
 > **版本**：v1.0.6  
 > **最后更新**：2026-08-27  
-> **文档状态**：Settings 页面四个侧边栏（General / Envs / Models / Plugins）的功能与约束条件说明  
+> **文档状态**：Settings 页面五个侧边栏（General / Environment / Models / Datasets / Plugins）的功能与约束条件说明  
 > **关联文档**：[Performance.md](./Performance.md) · [Dashboard.md](./Dashboard.md)
 
 ---
 
 ## 0. 总览
 
-Settings 页面左侧 4 个侧边栏：
+Settings 页面左侧 5 个侧边栏：
 
 | 侧边栏 | 图标 | 内容 |
 | --- | --- | --- |
-| General | ⚙️ Setting | 2 个面板：Language、Cache Paths（9 目录配置） |
-| Envs | 🖥️ Desktop | 1 个运行环境面板（环境配置 + 状态 + 编辑/保存/测试连接） |
-| Datasets（1.0.6） | ☁️ CloudDownload | 内置数据集下载面板（见 2.5） |
-| Models | 🗄️ Database | 内置模型下载宫格 + 右侧详情面板 |
+| General | ⚙️ Setting | 2 个面板：Language、Cache Paths（9 目录配置，双语标签） |
+| Environment | 🖥️ Desktop | 1 个运行环境面板（环境配置 + 状态 + 编辑/保存/测试连接） |
+| Models | 🗄️ Database | 模型厂商目录（见 3）：按 国内/国外 分组的厂商列表 + 模型列表 + 详情抽屉 |
+| Datasets | ☁️ CloudDownload | 内置数据集下载面板（见 4）：左侧分类 + 右侧行式列表 |
 | Plugins | 🔌 Api | 占位（v5.0 预留） |
 
 所有配置持久化到服务端 `~/.benchscope/settings.json`（`ConfigManager`，旧版 `config.json` 首启自动迁移），默认配置见 `benchscope/constants.py::DEFAULT_CONFIG`。
@@ -51,20 +51,11 @@ Settings 页面左侧 4 个侧边栏：
 - 目录不存在显示红色「Missing」标签；后端 `ConfigManager` 对路径做 `expanduser` + `resolve`。
 - **Perf / Eval 目录在存在运行中任务时锁定**（`locked`）：面板标题显示「运行中锁定」橙色标签，点击值弹警告通知（后端 409 兜底校验）。
 - 修改 **Data 根目录** → 确认重启 → 确认是否迁移数据 → `POST /api/config/restart`（`migrate: true/false`）；迁移时 WebSocket 监听 `migration` 进度事件（进度 Modal + spinner）。
+- **双语标签**（1.0.6）：目录项名称与描述使用双语字段（`label_zh/label_en`、`desc_zh/desc_en`），随界面语言实时切换（`GET /api/config/dirs` 返回，后端 `CACHE_DIR_INFO` 定义）。
 
 ---
 
-## 2.5 Datasets（内置数据集面板，1.0.6 新增）
-
-- 数据源：`GET /api/config/datasets`（`benchscope/configs/datasets.yaml` 定义 + 缓存状态）
-- 内置数据集：ShareGPT（ModelScope）/ Alpaca / GSM8K / Dolly（HF）
-- 卡片内容：名称 + 缓存状态（已缓存/未缓存）、描述、**访问链接**（新窗口）、**下载命令**（可复制）、**下载按钮**
-- 下载：`POST /api/config/datasets/download`（`{id}`）→ 缓存到 `datasets_dir/{id}/`（默认 `~/.benchscope/datasets`）；modelscope 源按文件大小降序选数据文件（排除 `dataset_infos.json` 元数据）
-- 约束：huggingface 源在部分网络环境不可达时下载失败（返回 502）；下载为同步阻塞（大文件耗时较长）
-
----
-
-## 2. Envs（环境配置面板）
+## 2. Environment（环境配置面板）
 
 - 面板标题：**Envs**；标题右侧显示**环境状态**徽标：🟢 在线（含模型数 `N models`）/ 🔴 离线（来自 `config.status`，`/api/config/status` 轮询 + WebSocket 广播）。
 - 内容三行：**Framework**（vLLM / SGLang 单选）、**Base URL**（默认显示 `http://127.0.0.1:8000`）、**API Key**（**可不填**，placeholder 提示 optional）。
@@ -77,30 +68,49 @@ Settings 页面左侧 4 个侧边栏：
 
 ---
 
-## 3. Models（内置模型下载宫格）
+## 3. Models（模型厂商目录，1.0.6 新增）
 
-- 标题：**内置模型**（Built-in Models），提示「点击模型卡片查看详情」。
-- **宫格**：6 个内置模型卡片（数据源 `web/src/data/modelCatalog.js`）：
-  - DeepSeek-V3 / DeepSeek-R1 / Qwen2.5-72B-Instruct / Llama-3.1-70B-Instruct / GLM-4-9B / InternLM2.5-7B
-  - 卡片内容：品牌色字母 LOGO（`short`）、模型名称、双语简介（随界面语言切换，`intro.zh/en`）
-- **详情面板**（右侧 `a-drawer`，440px）：
-  - LOGO、名称、机构（org）、简介
+- 标题：**内置模型**（Built-in Models），副标题说明「点击厂商查看其模型，点击模型名查看详情」。
+- 数据源：`GET /api/config/model-catalog`（`benchscope/configs/models.yaml`，按 国内 / 国外 分组；数据参考 https://recipes.vllm.ai 的 Providers 菜单）。
+- **左侧分组副侧边栏**（210px）：
+  - 两个分组：**国内**（Domestic，18 厂商）/ **国外**（International，23 厂商），分组标题可点击折叠/展开（▸ 箭头旋转），标题右侧显示厂商数。
+  - 分组内厂商列表：点击选中高亮；默认全部展开并选中第一个厂商。
+- **右侧厂商模型列表**：
+  - 顶部：厂商名 + **Homepage 链接**（新窗口，空则不显示）。
+  - 模型列表：每行一个模型；**与内置模型目录 `web/src/data/modelCatalog.js` 匹配时**（名称/id 忽略大小写）显示蓝色「详情」标签且整行可点击。
+  - 无模型的厂商显示 `a-empty`（暂无模型）；未选中厂商时提示「请选择厂商」。
+- **详情抽屉**（`a-drawer` 440px，复用旧模型目录数据 `modelCatalog.js`）：
+  - LOGO、名称、机构（org）、简介（双语 `intro.zh/en`）
   - **支持的数据精度**（precision tags：如 BF16 / FP8 / W8A8 / AWQ / GPTQ / INT4）
   - **访问链接**（homepage，新窗口打开）
   - **下载命令**（download，可复制 `a-typography-text copyable`）
   - footer 右侧 **部署按钮**：功能暂未实现，点击 toast「功能待实现」
-- 约束：模型目录为静态内置数据；部署功能待实现。
+- 约束：厂商目录为静态内置数据（models.yaml）；厂商明细模型（models 列表）与模型目录（modelCatalog.js）为两套数据，仅在名称匹配时打通详情；部署功能待实现。
 
 ---
 
-## 4. Plugins
+## 4. Datasets（内置数据集面板，1.0.6 新增）
+
+- 数据源：`GET /api/config/datasets`（`benchscope/configs/datasets.yaml` 定义 + 分类 + 缓存状态）
+- 布局：**左侧分类侧边栏 + 右侧行式列表**（与 Models 相同的 `catalog-layout` 结构）
+  - 左侧分类：**全部**（All，含全部数据集数）+ `datasets.yaml::categories` 定义的各分类（双语名称 `name_zh/name_en`，右侧显示该分类数据集数）；点击过滤右侧列表。
+- 右侧行式列表：每行一个数据集，包含：
+  - 名称 + 缓存状态标签（绿色「已缓存」/ 默认「未缓存」）
+  - 描述（description）
+  - **访问链接**（新窗口）+ **下载命令**（可复制 `a-typography-text code copyable`）
+  - 右侧**下载按钮**（`POST /api/config/datasets/download` `{id}` → 缓存到 `datasets_dir/{id}/`，默认 `~/.benchscope/datasets`）
+- 约束：huggingface 源在部分网络环境不可达时下载失败（返回 502）；下载为同步阻塞（大文件耗时较长）；下载成功后刷新列表以更新缓存状态。
+
+---
+
+## 5. Plugins
 
 - 占位页：标题「插件」+ 描述「插件系统即将推出」+ 空状态（`a-empty`）。
 - v5.0 预留，无功能逻辑。
 
 ---
 
-## 5. 全局约束
+## 6. 全局约束
 
 | 项 | 约束 |
 | --- | --- |
@@ -109,7 +119,8 @@ Settings 页面左侧 4 个侧边栏：
 | 主题 | 使用 antd 变量（`var(--ant-color-*)`），亮/暗主题自适应 |
 | 面板样式 | 均为 `size="small"` 卡片，标签 12px，与 Dashboard 面板字体保持一致 |
 | 语言切换 | 立即生效并持久化；默认英文 |
+| 布局 | 左侧一级菜单（General/Environment/Models/Datasets/Plugins）+ 右侧内容区；Models/Datasets 在内容区内再嵌「副侧边栏 + 内容」结构 |
 
-## 6. 相关文档约定
+## 7. 相关文档约定
 
 > **约定**：后续对 Settings 页面的设计/界面修改、逻辑与策略调整、UI 调整，均需同步更新本文档。

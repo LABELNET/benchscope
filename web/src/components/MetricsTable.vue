@@ -77,7 +77,7 @@
 </template>
 
 <script setup>
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { DownloadOutlined, SettingOutlined } from '@ant-design/icons-vue'
 import { message } from 'ant-design-vue'
 import http from '@/api'
@@ -95,6 +95,8 @@ const props = defineProps({
   // 导出 Excel：需要任务 ID（写入任务记录缓存目录）；exportable 控制下载按钮显示
   taskId: { type: String, default: '' },
   exportable: { type: Boolean, default: false },
+  // 列预设：default=默认列；mean/median/p99=仅显示对应统计口径列（变化时重置列选择）
+  preset: { type: String, default: 'default' },
 })
 
 // 列定义：key + title + 数据路径 + 默认可见
@@ -132,6 +134,26 @@ const ALL_COLUMNS = computed(() => [
 ])
 
 const visibleKeys = ref(ALL_COLUMNS.value.filter((c) => c.default).map((c) => c.key))
+
+// 列预设：默认=与实时数据一致；mean/median/p99=仅显示对应统计口径（Requests/Concurrency/Output/Peak/Total + 各自TTFT/TPOT/ITL + Status）
+const PRESET_KEYS = {
+  default: null,
+  mean: ['requests', 'concurrency', 'output_mean', 'peakoutput_mean', 'total_mean', 'ttft_mean', 'tpot_mean', 'itl_mean', 'status'],
+  median: ['requests', 'concurrency', 'output_mean', 'peakoutput_mean', 'total_mean', 'ttft_median', 'tpot_median', 'itl_median', 'status'],
+  p99: ['requests', 'concurrency', 'output_mean', 'peakoutput_mean', 'total_mean', 'ttft_p99', 'tpot_p99', 'itl_p99', 'status'],
+}
+watch(
+  () => props.preset,
+  (p) => {
+    if (p === 'default' || !PRESET_KEYS[p]) {
+      // 默认：恢复默认数据列（与实时数据一致的默认列集）
+      visibleKeys.value = ALL_COLUMNS.value.filter((c) => c.default).map((c) => c.key)
+      return
+    }
+    visibleKeys.value = PRESET_KEYS[p].filter((k) => ALL_COLUMNS.value.some((c) => c.key === k))
+  },
+  { immediate: true },
+)
 
 function toggleCol(key, checked) {
   if (checked && !visibleKeys.value.includes(key)) visibleKeys.value.push(key)
