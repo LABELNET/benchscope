@@ -1,9 +1,9 @@
 # VERSION 1.0.6 — 版本修订记录
 
 > **版本**：1.0.6  
-> **状态**：开发中（In Development）  
-> **发布时间**：待定  
-> **文档状态**：当前开发版本——**未特别说明版本号时，项目内容所有变更均迭代在此版本**（显示 `v1.0.6-dev`），按时间顺序追加到本文档；仅当明确「迭代下一个版本」才切换  
+> **状态**：已发布（Released）  
+> **发布时间**：2026-08-28 17:24:30  
+> **文档状态**：已发布版本（PyPI `benchscope==1.0.6`）——后续迭代进入下一版本（`VERSION_x_y_z.md`）  
 > **目录**：页面级行为细则见 `docs/prds/`；版本路线见 `docs/Roadmap.md`
 
 ---
@@ -468,6 +468,19 @@
 - [x] 测试 — WebUI 旧格式任务回退（Performance + Datas/Perfs）
 - [x] 文档 — Performance.md / Datas.md 同步 + 本版本记录
 
+### 迭代 25（2026-08-28 17:24:30）：发布 v1.0.6 正式版（PyPI）
+
+**功能概述**：
+- 版本号去 dev：`1.0.6.dev0` → `1.0.6`（`benchscope/__init__.py` `__version__` / `pyproject.toml` / `web/package.json` 同步）
+- 前端重新构建（产物 hash 更新）
+- `python -m build` 生成 sdist + wheel → `twine upload` 发布 PyPI（`benchscope==1.0.6`）
+- git tag `v1.0.6` + 推送 main + tags
+
+**发布检查**：API 测试 49 通过 + WebUI 测试 18 通过（`./tests/run_tests.sh`）后发布。
+
+**TODO 状态**：
+- [x] 发布 — v1.0.6 正式版（版本号去 dev / 构建 / PyPI 上传 / git tag）
+
 ## 3. TODO 清单
 
 - [x] **设置/数据集 — 内置数据集模块**：配置文件 `configs/datasets.yaml`，可点击下载，缓存到 `~/.benchscope/datasets`（2026-08-27 完成）
@@ -509,6 +522,7 @@
 - [x] **dev.sh Python 环境探测修复**：`.venv`（指向系统 python3.12 的残缺 venv）缺 `fastapi`/`uvicorn` 导致 mock/后端启动失败；`scripts/dev.sh` 改为优先 `.venv` 但校验 `import fastapi, uvicorn` 成功，否则回退 `${PYTHON:-python3}`（系统 miniconda python3），开发环境一键启动恢复（2026-08-28 16:24 完成）
 - [x] **阈值信息字体减小**：`PerformanceView` Cases 请求 groups、`DatasPerfsView` Cases Info、`RunDataPanel` Perf Datas 分组阈值条的阈值条件文本由 11px 统一减至 10px（与 `.case-req` 请求数基准一致）（2026-08-28 16:45 完成）
 - [x] **移除 Output 达标金色文字**：`MetricsTable` Output 列不再按 `output_mean ≤ output_throughput_threshold` 渲染金色 `pass-val`（#faad14 加粗），Output 列始终黑色默认样式；同步删除 `outputThreshold` prop 及 Performance / Datas/Perfs / Realtime 三个调用方传参（Best 标签与 BestPerf 行背景金色保留）；WebUI 测试 18 个全量通过（2026-08-28 16:56 完成）
+- [x] **发布 v1.0.6 正式版（PyPI）**：版本号 `1.0.6.dev0` → `1.0.6`，前端重新构建，`python -m build` + `twine upload` 发布 PyPI `benchscope==1.0.6`，git tag `v1.0.6`（2026-08-28 17:24 完成）
 
 ---
 
