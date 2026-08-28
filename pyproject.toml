@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "benchscope"
-version = "1.0.6.dev0"
+version = "1.0.6"
 description = "LLM inference performance testing tool. Supports vLLM, SGLang, and any OpenAI-compatible API."
 readme = "README.md"
 requires-python = ">=3.9"
