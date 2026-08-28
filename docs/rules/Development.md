@@ -61,16 +61,17 @@ python -m benchscope.cli --port 8081 --no-browser                            # �
 ## 5. 发布（Release checklist）
 
 ```bash
-# 1. 版本号：pyproject.toml、benchscope/__init__.py、web/package.json
-# 2. 构建 + 打包
-cd web && npm run build
-cd .. && python -m build
-python -m twine check dist/*
-# 3. 发布（~/.pypirc 或 TWINE_USERNAME/TWINE_PASSWORD）
-python -m twine upload dist/*
+# 一键发布：升版本 → 构建 → PyPI 上传 → GitHub Release（自动提取迭代摘要）→ git tag + push
+TWINE_USERNAME=__token__ TWINE_PASSWORD=<pypi-token> ./scripts/release.sh 1.0.6
+# 可选 --notes 指定 Release 说明文件；缺省自动从 docs/versions/VERSION_1_0_6.md 提取迭代摘要
 ```
 
-- 发布记录写入 `docs/versions/VERSION_x_y_z.md`（按时间顺序）。
+- **发布 = 打包推送 PyPI + 推送 GitHub Release 总结 + 推送版本 tag**（三者缺一不算完整发布）：
+  1. **PyPI**：`python -m build` + `twine upload`（`TWINE_USERNAME=__token__` + PyPI API token）；
+  2. **GitHub Release 总结**：`scripts/release.sh` 自动创建（`gh release create` 或 `GITHUB_TOKEN` REST API 回退），说明默认从 `docs/versions/VERSION_x_y_z.md` 迭代记录提取，可用 `--notes <file>` 覆盖；
+  3. **版本 tag**：`git tag vX.Y.Z` + `git push origin main --tags`。
+- 前置：PyPI token（`TWINE_USERNAME/TWINE_PASSWORD` 或 `~/.pypirc`）+ GitHub 凭据（`gh auth` 或 `GITHUB_TOKEN`）。
+- 发布记录写入 `docs/versions/VERSION_x_y_z.md`（按时间顺序），并将该版本状态置为「已发布（Released）」，同步 `docs/Readme.md` 最后更新日期与版本表。
 
 ## 6. 目录约定
 

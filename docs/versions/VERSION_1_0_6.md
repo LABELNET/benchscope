@@ -468,18 +468,22 @@
 - [x] 测试 — WebUI 旧格式任务回退（Performance + Datas/Perfs）
 - [x] 文档 — Performance.md / Datas.md 同步 + 本版本记录
 
-### 迭代 25（2026-08-28 17:24:30）：发布 v1.0.6 正式版（PyPI）
+### 迭代 25（2026-08-28 17:24:30）：发布 v1.0.6 正式版（PyPI + GitHub Release + tag）
 
 **功能概述**：
 - 版本号去 dev：`1.0.6.dev0` → `1.0.6`（`benchscope/__init__.py` `__version__` / `pyproject.toml` / `web/package.json` 同步）
 - 前端重新构建（产物 hash 更新）
 - `python -m build` 生成 sdist + wheel → `twine upload` 发布 PyPI（`benchscope==1.0.6`）
 - git tag `v1.0.6` + 推送 main + tags
+- **GitHub Release 推送**：`v1.0.6` Release 创建成功（REST API，含英文版功能总结 Highlights/Details/Test Status/Install）→ https://github.com/LABELNET/benchscope/releases/tag/v1.0.6
+
+**发布约定升级（重要）**：**发布 = 打包推送 PyPI + 推送 GitHub Release 总结 + 推送版本 tag（三者缺一不算完整发布）**——`scripts/release.sh` 升级：新增 `--notes <file>` 支持；缺省自动从 `docs/versions/VERSION_x_y_z.md` 提取迭代摘要生成 Release 说明；GitHub Release 创建优先 `gh release create`，回退 `GITHUB_TOKEN` REST API（422 幂等）；同步 `docs/rules/Development.md` §5 发布清单与 `docs/Readme.md` 发布规则。
 
 **发布检查**：API 测试 49 通过 + WebUI 测试 18 通过（`./tests/run_tests.sh`）后发布。
 
 **TODO 状态**：
-- [x] 发布 — v1.0.6 正式版（版本号去 dev / 构建 / PyPI 上传 / git tag）
+- [x] 发布 — v1.0.6 正式版（版本号去 dev / 构建 / PyPI 上传 / GitHub Release / git tag）
+- [x] 约定 — 发布 = PyPI + GitHub Release 总结 + tag（release.sh 自动生成摘要 + gh/API 双通道 + Development.md §5 / Readme.md 同步）
 
 ## 3. TODO 清单
 
@@ -522,7 +526,7 @@
 - [x] **dev.sh Python 环境探测修复**：`.venv`（指向系统 python3.12 的残缺 venv）缺 `fastapi`/`uvicorn` 导致 mock/后端启动失败；`scripts/dev.sh` 改为优先 `.venv` 但校验 `import fastapi, uvicorn` 成功，否则回退 `${PYTHON:-python3}`（系统 miniconda python3），开发环境一键启动恢复（2026-08-28 16:24 完成）
 - [x] **阈值信息字体减小**：`PerformanceView` Cases 请求 groups、`DatasPerfsView` Cases Info、`RunDataPanel` Perf Datas 分组阈值条的阈值条件文本由 11px 统一减至 10px（与 `.case-req` 请求数基准一致）（2026-08-28 16:45 完成）
 - [x] **移除 Output 达标金色文字**：`MetricsTable` Output 列不再按 `output_mean ≤ output_throughput_threshold` 渲染金色 `pass-val`（#faad14 加粗），Output 列始终黑色默认样式；同步删除 `outputThreshold` prop 及 Performance / Datas/Perfs / Realtime 三个调用方传参（Best 标签与 BestPerf 行背景金色保留）；WebUI 测试 18 个全量通过（2026-08-28 16:56 完成）
-- [x] **发布 v1.0.6 正式版（PyPI）**：版本号 `1.0.6.dev0` → `1.0.6`，前端重新构建，`python -m build` + `twine upload` 发布 PyPI `benchscope==1.0.6`，git tag `v1.0.6`（2026-08-28 17:24 完成）
+- [x] **发布 v1.0.6 正式版（PyPI + GitHub Release + tag）**：版本号 `1.0.6.dev0` → `1.0.6`，前端重新构建，`python -m build` + `twine upload` 发布 PyPI `benchscope==1.0.6`，GitHub Release `v1.0.6` 推送成功（REST API），git tag `v1.0.6` + push；发布约定升级 = PyPI + Release 总结 + tag（2026-08-28 17:34 完成）
 
 ---
 

@@ -2,12 +2,14 @@
 # benchscope 一键发布脚本
 #
 # 用法:
-#   ./scripts/release.sh 1.0.4                 # 升版本并完整发布（build + upload + git tag + push）
-#   ./scripts/release.sh 1.0.4 --dry-run       # 只升版本/构建/校验，不上传也不提交（用于试跑）
+#   ./scripts/release.sh 1.0.4                        # 升版本并完整发布（build + PyPI upload + GitHub Release + git tag + push）
+#   ./scripts/release.sh 1.0.4 --notes notes.md       # 指定 GitHub Release 说明文件（缺省自动从 VERSION_x_y_z.md 提取迭代摘要）
+#   ./scripts/release.sh 1.0.4 --dry-run              # 只升版本/构建/校验，不上传也不提交（用于试跑）
 #   ./scripts/release.sh --help
 #
 # 前置:
 #   - 已配置 ~/.pypirc (twine) 或 TWINE_USERNAME/TWINE_PASSWORD 环境变量
+#   - GitHub Release：gh CLI 已认证，或 GITHUB_TOKEN/GH_TOKEN 环境变量（二者缺一则跳过 Release 创建，仅推送 tag）
 #   - 已配置 ~/.git-credentials + git credential.helper (push 免 token)
 #   - 已安装: python -m build, twine, 以及 web/ 的 npm 依赖
 set -euo pipefail
@@ -17,17 +19,19 @@ cd "$ROOT"
 
 NEW=""
 DRY_RUN=0
+NOTES_FILE=""
 
 usage() {
-  sed -n '1,12p' "$0" | sed 's/^# //'
+  sed -n '1,14p' "$0" | sed 's/^# //'
 }
 
 # ---------- 参数解析 ----------
-for a in "$@"; do
-  case "$a" in
-    --dry-run) DRY_RUN=1 ;;
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --dry-run) DRY_RUN=1; shift ;;
+    --notes) NOTES_FILE="$2"; shift 2 ;;
     --help|-h) usage; exit 0 ;;
-    *) NEW="$a" ;;
+    *) NEW="$1"; shift ;;
   esac
 done
 
@@ -112,6 +116,87 @@ git add -A
 git commit -m "release: benchscope v${NEW}"
 git tag "v${NEW}"
 git push origin main --tags
+
+# ---------- 生成 GitHub Release 说明并推送 ----------
+# 说明文件优先级：--notes 指定 > docs/versions/VERSION_x_y_z.md 自动提取迭代摘要 > 占位
+VER_DOC="docs/versions/VERSION_${NEW//./_}.md"
+NOTES_TMP="$(mktemp)"
+cleanup() { rm -f "$NOTES_TMP"; }
+trap cleanup EXIT
+
+if [ -n "$NOTES_FILE" ]; then
+  if [ ! -f "$NOTES_FILE" ]; then
+    echo "错误: --notes 文件不存在: $NOTES_FILE" >&2
+    exit 1
+  fi
+  cp "$NOTES_FILE" "$NOTES_TMP"
+elif [ -f "$VER_DOC" ]; then
+  echo "==> 从 ${VER_DOC} 提取迭代摘要生成 Release 说明 ..."
+  python3 - "$VER_DOC" > "$NOTES_TMP" <<'PYEOF'
+import re, sys
+src = open(sys.argv[1], encoding="utf-8").read()
+items = [m.group(1) for m in re.finditer(r"^### 迭代[^\n]*", src, re.M)]
+lines = []
+for it in items:
+    t = it.lstrip("#").strip()
+    lines.append(f"- {t}")
+print("## 迭代记录\n")
+print("\n".join(lines))
+print("\n详细版本说明见仓库 `docs/versions/`。")
+PYEOF
+else
+  echo "# benchscope v${NEW}" > "$NOTES_TMP"
+  echo "（未提供 --notes，也无对应 VERSION 文档，请手动补充说明。）" >> "$NOTES_TMP"
+fi
+
+create_github_release() {
+  local tag="v${NEW}"
+  # gh CLI 优先
+  if command -v gh >/dev/null 2>&1 && gh auth status >/dev/null 2>&1; then
+    if gh release view "$tag" >/dev/null 2>&1; then
+      echo "  GitHub Release $tag 已存在，跳过创建。"
+    else
+      echo "==> 创建 GitHub Release $tag（gh CLI）..."
+      gh release create "$tag" --repo LABELNET/benchscope \
+        --title "benchscope v${NEW}" --notes-file "$NOTES_TMP"
+    fi
+    return 0
+  fi
+  # 回退：GitHub REST API（GITHUB_TOKEN / GH_TOKEN）
+  if [ -n "${GITHUB_TOKEN:-}" ] || [ -n "${GH_TOKEN:-}" ]; then
+    echo "==> 创建 GitHub Release $tag（REST API）..."
+    python3 - "$tag" "$NOTES_TMP" <<'PYEOF'
+import json, os, sys, urllib.error, urllib.request
+tag, notes = sys.argv[1], sys.argv[2]
+token = os.environ.get("GITHUB_TOKEN") or os.environ.get("GH_TOKEN")
+body = open(notes, encoding="utf-8").read()
+payload = json.dumps({
+    "tag_name": tag, "target_commitish": "main",
+    "name": f"benchscope v{tag.lstrip('v')}", "body": body,
+    "draft": False, "prerelease": False,
+}).encode()
+req = urllib.request.Request(
+    "https://api.github.com/repos/LABELNET/benchscope/releases",
+    data=payload, method="POST",
+    headers={"Authorization": f"Bearer {token}", "Accept": "application/vnd.github+json",
+             "Content-Type": "application/json", "User-Agent": "benchscope-release"})
+try:
+    with urllib.request.urlopen(req, timeout=30) as r:
+        d = json.load(r)
+        print("  OK:", d.get("html_url", ""))
+except urllib.error.HTTPError as e:
+    # 422 = 已存在则视为成功（幂等）
+    if e.code == 422:
+        print(f"  GitHub Release {tag} 已存在，跳过创建。")
+    else:
+        print(f"  GitHub Release 创建失败 (HTTP {e.code}): {e.read().decode('utf-8', 'replace')}", file=sys.stderr)
+        sys.exit(1)
+PYEOF
+    return 0
+  fi
+  echo "警告: 未检测到 gh CLI 或 GITHUB_TOKEN/GH_TOKEN，跳过 GitHub Release 创建（tag 已推送，可在网页手动创建）。" >&2
+}
+create_github_release
 
 echo ""
 echo "✅ 发布完成: benchscope v${NEW}"
