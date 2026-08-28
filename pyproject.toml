@@ -60,3 +60,7 @@ packages = [
 
 [tool.setuptools.package-data]
 "benchscope" = ["webui/**/*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra"

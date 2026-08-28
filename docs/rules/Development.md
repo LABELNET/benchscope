@@ -35,16 +35,26 @@ python -m benchscope.cli --port 8081 --no-browser                            # �
 | i18n 键一致性（无重复、en/zh 一致） | `cd web && node scripts/check-i18n.js` |
 | 后端语法 | `python -m py_compile benchscope/**/*.py` |
 | 前端构建 | `cd web && npm run build`（产物含最新代码） |
-| 端到端冒烟 | `tests/ui_smoke.py`（Playwright，需浏览器缓存） |
+| 功能测试（API + WebUI） | `./tests/run_tests.sh`（自动启动 mock :8001 + FAKE 服务 :18081，隔离临时数据目录；可选 `--api-only` / `--ui-only`） |
+
+### 3.1 测试约定（强制）
+
+- **mock 唯一归属**：mock 仿真代码只保留在 `mocks/`（`openai_server.py` / `bench_outputs.py` / `cli.py`），`tests/` 不携带任何 mock 代码。
+- **每次开发新功能必须生成并执行 tests**：
+  - 新增/修改**后端 API 或功能** → 在 `tests/api/` 生成对应测试用例（config / dashboard / tasks / logs / sessions / test 模块）；
+  - 新增/修改**页面 / UI / 交互** → 在 `tests/webui/test_ui.py` 生成对应 Playwright 用例；
+  - 提交前执行 `./tests/run_tests.sh` 全量通过（API + WebUI），允许以 `--api-only` / `--ui-only` 限定范围。
+- **测试隔离**：`tests/run_tests.sh` 以 `BENCHSCOPE_DATA_DIR` 临时目录 + `BENCHSCOPE_FAKE_BENCH=1` 启动被测服务（:18081，与开发环境 :8080 隔离），测试不污染真实 `~/.benchscope` 数据。
 
 ## 4. 变更流程与文档同步
 
-1. 修改代码（后端 `benchscope/` / 前端 `web/` / 脚本 `scripts/` / mock `mocks/`）。
-2. **文档同步（强制）**：设计/界面修改、逻辑与策略调整、UI 调整，**必须同步更新**对应文档：
-   - 页面功能与约束 → `docs/prds/`（Performance / Performance-Create / Dashboard / Accuracy / Sessions / Settings）
-   - 版本修订与 todo → `docs/versions/VERSION_1_0_5.md`（新版本另建 `VERSION_x_y_z.md`）
+1. 修改代码（后端 `benchscope/` / 前端 `web/` / 脚本 `scripts/` / mock `mocks/` / 依赖 `pyproject.toml`、`web/package.json`）。
+2. **文档同步（强制）**：设计/界面修改、逻辑与策略调整、UI 调整、依赖与架构变更，**必须同步更新**对应文档：
+   - 页面功能与约束 → `docs/prds/`（Performance / Performance-Create / Dashboard / Accuracy / Sessions / Settings / Datas / TopBar）
+   - 版本修订与 todo → `docs/versions/VERSION_1_0_6.md`（新版本另建 `VERSION_x_y_z.md`）
    - 架构 / 方案 / 设计 / 开发规范 → `docs/rules/`（Architecture / Software / Design / Development）
-3. 运行 `check-i18n` + 构建 + 冒烟验证。
+   - **软件依赖变更（新增/升级/移除）** → 同步 `docs/rules/Software.md` §2 技术栈与 §3 依赖清单
+3. **测试（强制）**：生成/更新对应 tests（API → `tests/api/`，WebUI → `tests/webui/`），运行 `check-i18n` + 构建 + `./tests/run_tests.sh` 全量通过。
 4. 提交。
 
 ## 5. 发布（Release checklist）
@@ -68,7 +78,7 @@ benchscope/        # Python 后端（server/ benches/ 等）
 web/               # Vue 前端源码（构建产物 → benchscope/webui/）
 mocks/             # mock 仿真（bench 输出 + OpenAI 服务）
 scripts/           # dev.sh / maca.sh / release 脚本
-tests/             # mock OpenAI server / UI 冒烟
+tests/             # 功能测试（tests/api 接口 + tests/webui 页面），统一入口 run_tests.sh；不携带 mock（mock 唯一来源 mocks/）
 docs/              # README（目录）· Roadmap · Projects · prds/ · versions/ · rules/
 asserts/           # 截图与示例产物
 ```

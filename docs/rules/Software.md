@@ -29,7 +29,9 @@
 
 ### Python（`pyproject.toml`）
 
-`fastapi>=0.110` · `uvicorn[standard]>=0.29` · `requests>=2.31` · `openpyxl>=3.1`（Excel 导出）· `pydantic>=2` · `python-multipart>=0.0.9`（数据集上传）
+`fastapi>=0.110` · `uvicorn[standard]>=0.29` · `requests>=2.31` · `openpyxl>=3.1`（Excel 导出）· `pydantic>=2` · `python-multipart>=0.0.9`（数据集上传）· `pyyaml>=6.0`（1.0.6：内置数据集 / 模型厂商目录 yaml 定义解析）
+
+可选：`modelscope>=1.15`（`pip install benchscope[modelscope]`，1.0.6：数据集 modelscope 源下载）
 
 ### 前端（`web/package.json`）
 
@@ -54,3 +56,7 @@
 - 任务结果行统一结构：`{case, label, case_id, input_len, output_len, concurrency, cmd, metrics|error}`。
 - 指标键：`output_mean/peakoutput_mean/total_mean/ttft_mean|median|p99/tpot_mean|median|p99/itl_mean|median|p99/req_per_s/single_user`。
 - 环境信息结构：`{hardware:{host,cpu,memory,gpu}, os:{name,version,kernel}, network:[{iface,ip}], versions:{python,pytorch,vllm,sglang,benchscope}}`。
+
+## 6. 维护约定
+
+- **依赖变更必须同步**：任何 Python 依赖（`pyproject.toml`）或前端依赖（`web/package.json`）的**新增 / 升级 / 移除**，必须同步更新本文档 §2 技术栈与 §3 依赖清单，并在 `docs/versions/VERSION_x_y_z.md` 迭代记录中说明；架构级变更同步 [Architecture.md](./Architecture.md)。

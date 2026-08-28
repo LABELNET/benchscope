@@ -12,14 +12,25 @@ from benchscope.constants import DEFAULT_CONFIG
 
 log = logging.getLogger("benchscope.config")
 
+
+def _data_root() -> Path:
+    """数据根目录：默认 ~/.benchscope；可通过环境变量 BENCHSCOPE_DATA_DIR 覆盖（测试隔离）。"""
+    env = os.environ.get("BENCHSCOPE_DATA_DIR")
+    if env:
+        return Path(os.path.expanduser(env)).resolve()
+    return Path.home() / ".benchscope"
+
+
+DATA_ROOT = _data_root()
+
 # 设置持久化文件：~/.benchscope/settings.json
-DEFAULT_CONFIG_PATH = Path.home() / ".benchscope" / "settings.json"
+DEFAULT_CONFIG_PATH = DATA_ROOT / "settings.json"
 # 旧版配置（兼容迁移）
-LEGACY_CONFIG_PATH = Path.home() / ".benchscope" / "config.json"
+LEGACY_CONFIG_PATH = DATA_ROOT / "config.json"
 # 旧版默认路径 -> 新目录体系（迁移归一化）
 LEGACY_DEFAULT_PATHS = {
-    "./logs": "~/.benchscope/logs",
-    "./datasets": "~/.benchscope/datasets",
+    "./logs": str(DATA_ROOT / "logs"),
+    "./datasets": str(DATA_ROOT / "datasets"),
 }
 
 # data_dir 下的默认子目录映射：配置 key -> 子目录名
@@ -44,7 +55,21 @@ class ConfigManager:
         self.legacy_path = self.path.parent / "config.json"
         self._lock = threading.RLock()
         self._data: dict = deepcopy(DEFAULT_CONFIG)
+        self._redirect_default_dirs()
         self.load()
+
+    def _redirect_default_dirs(self) -> None:
+        """测试隔离：设置 BENCHSCOPE_DATA_DIR 时，把默认缓存目录重定向到该根目录下。
+
+        仅作用于默认值；settings.json 中已持久化的自定义目录仍以持久化值为准。
+        """
+        env = os.environ.get("BENCHSCOPE_DATA_DIR")
+        if not env:
+            return
+        root = Path(os.path.expanduser(env)).resolve()
+        self._data["data_dir"] = str(root)
+        for key, sub in DATA_SUBDIRS.items():
+            self._data[key] = str(root / sub)
 
     # ---------- 持久化 ----------
     def load(self) -> None:

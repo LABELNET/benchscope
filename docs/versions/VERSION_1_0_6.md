@@ -313,6 +313,43 @@
 - [x] 文档 — VERSION_1_0_6.md 迭代 15 补精确完成时间 + 新增迭代 16 + 相关文档列表补 TopBar.md
 - [x] 文档 — 维护约定升级：迭代记录时间精确到秒（年月日时分秒）
 
+### 迭代 17（2026-08-28 11:02:26）：测试体系重构（mock 唯一归属 mocks/ + 功能测试全覆盖 + 测试约定）
+
+**功能概述**：
+- **mock 唯一归属**：删除 `tests/mock_openai_server.py`（与 `mocks/openai_server.py` 重复），mock 仿真代码只保留在 `mocks/`；同步删除旧版 `tests/ui_smoke.py`（被新测试体系取代）
+- **tests 功能测试全覆盖**：
+  - `tests/api/`：6 个模块覆盖全部后端 API——`test_config.py`（config/status/test-connection/datasets）、`test_dashboard.py`（stats/env）、`test_tasks.py`（preview/CRUD/start/stop/threshold/完整生命周期）、`test_logs.py`（runs/summary/backup/import/datasets）、`test_sessions.py`（CRUD + SSE 流式）、`test_test.py`（精度测试预览 + 运行）
+  - `tests/webui/test_ui.py`：Playwright 页面功能测试（导航 / 各页面渲染 / Performance 模式入口 / Settings 表单 / Datas 详情跳转自动选中 / SPA 深度路由 fallback）
+  - 支撑：`tests/helpers.py`（任务工具：wait_task_terminal / create_task 等）、`tests/conftest.py`（client/base_url/mock_url fixtures）
+- **统一入口** `tests/run_tests.sh`：一键全量（支持 `--api-only` / `--ui-only`）；自动启动 mock(:8001，复用已运行实例) + 以「临时数据目录 + FAKE bench」启动被测服务(:18081)，退出自动清理
+- **测试数据隔离**：`config.py` 新增 `BENCHSCOPE_DATA_DIR` 环境变量重定向数据根目录（默认 `~/.benchscope` → 临时目录），测试不污染真实数据
+- **后端补全（暴露缺陷修复）**：`/api/test*`（精度测试 Accuracy）路由原实现未挂载（405）→ `app.py` `include_router(api_test.router)`；`state.tests`（TestManager）未接入 AppState 导致 500 → `AppState.__init__` 挂载 `TestManager`
+- **约定（重要）**：**每次开发新功能必须生成并执行对应 tests**——后端 API/功能 → `tests/api/` 用例；页面/UI/交互 → `tests/webui/` 用例；提交前全量执行 `./tests/run_tests.sh`
+
+**验证**：`./tests/run_tests.sh` 全量通过——API **45/45**、WebUI **14/14**；`pyproject.toml` 新增 `[tool.pytest.ini_options]`（testpaths/addopts）。
+
+**TODO 状态**：
+- [x] 工程 — mock 唯一归属 mocks/（删除 tests/mock_openai_server.py 与旧 ui_smoke.py）
+- [x] 测试 — tests/api 全覆盖（config/dashboard/tasks/logs/sessions/test 6 模块）
+- [x] 测试 — tests/webui 页面功能测试（test_ui.py）
+- [x] 测试 — 统一入口 tests/run_tests.sh（mock + FAKE + 临时数据目录 + 退出清理）
+- [x] 后端 — 修复 /api/test* 挂载（405）+ state.tests 接入 AppState（500）
+- [x] 配置 — BENCHSCOPE_DATA_DIR 测试数据隔离
+- [x] 约定 — 每次开发新功能生成并执行 tests（Development.md §3.1 测试约定）
+- [x] 验证 — API 45/45 + WebUI 14/14 全量通过
+
+### 迭代 18（2026-08-28 11:05:05）：文档约定升级（软件依赖/架构变更须同步 docs + README 以最新版为准）
+
+**功能概述**：
+- **README 以最新版为准**：`README.md` / `README.zh-CN.md` 由用户更新（herness coding 描述、`asserts/main-performance.png` 截图、Quick Start），后续文档引用与维护均以仓库内最新 README 为准
+- **约定升级（重要）**：**软件依赖和架构更新均需同步更新 docs 文档**——Python 依赖（`pyproject.toml`）或前端依赖（`web/package.json`）的新增/升级/移除，必须同步 `docs/rules/Software.md`（§2 技术栈 + §3 依赖清单）与 `VERSION_x_y_z.md` 迭代记录；架构级变更同步 `Architecture.md`
+- **依赖文档修正**：`Software.md` §3 依赖清单补齐 1.0.6 新增的 `pyyaml>=6.0`（内置数据集 / 厂商目录 yaml 解析）与可选依赖 `modelscope>=1.15`（数据集 modelscope 源下载）；新增 §6 维护约定
+
+**TODO 状态**：
+- [x] 约定 — 软件依赖与架构更新均需同步 docs（Development.md §4 + docs/Readme.md 维护约定）
+- [x] 文档 — Software.md 依赖清单补齐 pyyaml + modelscope 可选依赖 + §6 维护约定
+- [x] 文档 — README 以仓库最新版为准（不再按历史版本修改）
+
 ## 3. TODO 清单
 
 - [x] **设置/数据集 — 内置数据集模块**：配置文件 `configs/datasets.yaml`，可点击下载，缓存到 `~/.benchscope/datasets`（2026-08-27 完成）
@@ -342,6 +379,8 @@
 - [x] **主导航/Datas — 详情三次修复**：行 2 移除固定高度去底部空白、Log Files 行式完整显示（字体 9px）、Perf Datas 默认按钮联动（恢复默认数据列）（2026-08-27 完成）
 - [x] **主导航/Datas — 详情四次优化**：左栏导入提示（导入 record / Import Record）、Log Files 灰色面板 + 文字/图标缩小（8px/20px）（2026-08-27 完成）
 - [x] **主导航/Datas — 详情五次优化**：删除确认 prompt 改为 record 语义（i18n `deleteRunTitle/deleteRunConfirm` + 新增 `delete` 键）、分享全页（`doShare` 临时放开滚动 + html2canvas scrollHeight/Width）、Perf Datas 各模式列集对齐 Performance（mean/median/p99 补齐 label/requests/concurrency/successful）（2026-08-27 完成）
+- [x] **测试体系重构**：mock 唯一归属 mocks/；tests 全覆盖（api 6 模块 + webui）；统一入口 run_tests.sh + 临时数据目录隔离；/api/test* 与 state.tests 修复；**约定：每次开发新功能生成并执行 tests**（2026-08-28 完成）
+- [x] **文档约定升级**：软件依赖与架构更新均需同步 docs（rules/Software.md 依赖清单 / Architecture.md）；README 以仓库最新版为准（2026-08-28 完成）
 
 ---
 

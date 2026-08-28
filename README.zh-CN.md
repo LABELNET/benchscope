@@ -6,7 +6,7 @@
 
 <p align="center"><a href="README.md">English</a> | <strong>简体中文</strong></p>
 
-BenchScope 是一款开源大模型推理测试平台，基于 vibe‑coding 模式开发。
+BenchScope 基于 herness coding 开发的开源大模型推理测试平台。
 
 A visualization testing platform for LLM model **performance & accuracy**, supporting models deployed with vLLM / SGLang and any OpenAI-compatible inference service.
 
