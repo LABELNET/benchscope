@@ -25,6 +25,42 @@
 
       <!-- Step 1: 性能条件 -->
       <div v-show="step === 1" class="panel-body">
+        <!-- 引擎选择 + 环境校验（原生引擎环境不满足时禁止进入下一步） -->
+        <div class="bench-picker">
+          <div class="bench-picker-head">
+            <span class="bench-picker-label">{{ t('benchSelectLabel') }}</span>
+            <a-select
+              v-model:value="engineId"
+              size="small"
+              style="width: 260px"
+              :options="engineOptions"
+              @change="onEngineChange"
+            />
+            <a-spin v-if="envChecking" size="small" />
+            <a-tag v-else-if="envResult" :color="envResult.ok ? 'green' : 'red'" size="small">
+              {{ envResult.ok ? t('benchEnvReady') : t('benchEnvMissing') }}
+            </a-tag>
+          </div>
+          <p class="bench-picker-desc">{{ t('benchSelectDesc') }}</p>
+          <p v-if="selectedEngine?.description" class="bench-picker-desc bench-engine-desc">
+            {{ selectedEngine.description }}
+          </p>
+          <!-- 环境校验明细（原生引擎） -->
+          <div v-if="envResult && !envResult.ok && envResult.checks?.length" class="bench-env-detail">
+            <div v-for="c in envResult.checks" :key="c.name" class="bench-env-row">
+              <span class="env-name">{{ c.name }}</span>
+              <span class="env-req">{{ t('benchRequiredVersion') }}: {{ c.required }}</span>
+              <span class="env-installed">
+                {{ t('benchInstalled') }}:
+                <span :class="c.ok ? 'env-ok' : 'env-bad'">{{ c.installed || t('benchNotInstalled') }}</span>
+              </span>
+              <a-tag :color="c.ok ? 'green' : 'red'" size="small">{{ c.ok ? 'OK' : 'FAIL' }}</a-tag>
+            </div>
+            <div v-for="c in envResult.checks.filter((x) => !x.ok && x.hint)" :key="`h-${c.name}`" class="bench-hint">
+              {{ t('benchInstallHint') }}: {{ c.hint }}
+            </div>
+          </div>
+        </div>
         <BaseEnvPanel
           v-model:model="model"
           :framework="framework"
@@ -159,6 +195,50 @@ const conditions = ref([
 
 // Step2 参数 yaml
 const paramsYaml = ref({ vllm: { version: '', lines: [], content: '' }, sglang: { version: '', lines: [], content: '' } })
+
+// ---- Bench 引擎选择 + 环境校验 ----
+const engineId = ref('benchscope')
+const engines = ref([])
+const defaultEngineId = ref('benchscope')
+const envResult = ref(null)
+const envChecking = ref(false)
+
+const engineOptions = computed(() =>
+  engines.value.map((e) => ({ value: e.id, label: `${e.name}（${e.kind}${e.version && e.version !== 'stable' ? ' ' + e.version : ''}）` }))
+)
+const selectedEngine = computed(() => engines.value.find((e) => e.id === engineId.value) || null)
+
+async function loadEngines() {
+  try {
+    const resp = await api.getBenchEngines()
+    engines.value = resp.engines || []
+    defaultEngineId.value = resp.default_engine_id || 'benchscope'
+    if (!engines.value.some((e) => e.id === engineId.value)) {
+      engineId.value = defaultEngineId.value
+    }
+    await checkEngineEnv()
+  } catch {
+    engines.value = []
+    envResult.value = null
+  }
+}
+
+async function checkEngineEnv() {
+  if (!engineId.value) return
+  envChecking.value = true
+  try {
+    const resp = await api.checkBenchEnv(engineId.value)
+    envResult.value = { ok: !!resp.ok, checks: resp.checks || [] }
+  } catch {
+    envResult.value = null
+  } finally {
+    envChecking.value = false
+  }
+}
+
+function onEngineChange() {
+  checkEngineEnv()
+}
 
 // Step3 预览：任务详情文本 + 示例命令
 const previewCommand = ref('')
@@ -306,6 +386,11 @@ function validateStep1() {
 }
 
 async function nextToParams() {
+  // 环境校验：原生引擎（vllm/sglang）环境不满足时禁止进入参数选择
+  if (!envResult.value || !envResult.value.ok) {
+    message.warning(t('benchEnvBlocked').replace('{name}', selectedEngine.value?.name || engineId.value))
+    return
+  }
   if (!validateStep1()) return
   step1Saving.value = true
   try {
@@ -335,6 +420,7 @@ function buildPayload() {
   const g = conditions.value[0]
   return {
     framework: framework.value,
+    engine_id: engineId.value,
     model: model.value,
     tokenizer: '',
     dataset: {
@@ -422,7 +508,7 @@ onMounted(async () => {
   } else {
     config.refreshStatus()
   }
-  await Promise.all([loadModels(), loadParamsYaml()])
+  await Promise.all([loadModels(), loadParamsYaml(), loadEngines()])
 })
 </script>
 
@@ -526,6 +612,66 @@ onMounted(async () => {
   text-align: center;
   color: #999;
 }
+/* 引擎选择 + 环境校验（Step1 顶部） */
+.bench-picker {
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  border-radius: 8px;
+  padding: 10px 12px;
+  margin-bottom: 12px;
+}
+.bench-picker-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.bench-picker-label {
+  font-size: 12px;
+  font-weight: 600;
+  flex-shrink: 0;
+}
+.bench-picker-desc {
+  font-size: 11px;
+  color: #999;
+  margin: 6px 0 0;
+  line-height: 1.6;
+}
+.bench-engine-desc {
+  color: #666;
+}
+.bench-env-detail {
+  margin-top: 8px;
+  border-top: 1px dashed rgba(0, 0, 0, 0.08);
+  padding-top: 6px;
+}
+.bench-env-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 11px;
+  padding: 2px 0;
+  flex-wrap: wrap;
+}
+.bench-env-row .env-name {
+  min-width: 64px;
+  font-weight: 500;
+}
+.bench-env-row .env-req,
+.bench-env-row .env-installed {
+  color: #666;
+}
+.bench-env-row .env-ok {
+  color: #52c41a;
+}
+.bench-env-row .env-bad {
+  color: #ff4d4f;
+}
+.bench-hint {
+  font-size: 11px;
+  color: #faad14;
+  word-break: break-all;
+}
+
 /* Step2 tabs 内容区紧凑显示 */
 .panel-body :deep(.ant-tabs-nav) {
   margin-bottom: 10px;

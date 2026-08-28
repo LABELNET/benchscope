@@ -231,6 +231,85 @@
         </a-spin>
       </div>
 
+      <!-- Bench 引擎：内置引擎 + 介绍 + 对比 + 环境状态 -->
+      <div v-if="activeTab === 'benches'" class="tab-content">
+        <h3 style="margin: 0 0 8px">{{ t('benchesTab') }}</h3>
+        <p class="section-desc">{{ t('benchesDesc') }}</p>
+
+        <a-spin :spinning="benchesLoading">
+          <!-- 引擎卡片列表 -->
+          <div v-if="benches.length" class="bench-list">
+            <div
+              v-for="eng in benches"
+              :key="eng.id"
+              class="bench-card"
+              :class="{ 'bench-default': eng.id === defaultEngineId }"
+            >
+              <div class="bench-head">
+                <span class="bench-name">{{ eng.name }}</span>
+                <a-tag v-if="eng.id === defaultEngineId" color="blue" size="small">{{ t('benchDefault') }}</a-tag>
+                <a-tag :color="eng.kind === 'builtin' ? 'purple' : 'cyan'" size="small">{{ eng.kind }}</a-tag>
+                <a-tag v-if="eng.env?.ok" color="green" size="small">{{ t('benchEnvReady') }}</a-tag>
+                <a-tag v-else color="red" size="small">{{ t('benchEnvMissing') }}</a-tag>
+              </div>
+              <div class="bench-meta">
+                <span class="bench-label">{{ t('benchVersion') }}</span>
+                <span class="bench-value">{{ eng.version || '-' }}</span>
+              </div>
+              <p class="bench-desc">{{ eng.description }}</p>
+
+              <div v-if="eng.highlights?.length" class="bench-highlights">
+                <div class="bench-label">{{ t('benchHighlights') }}</div>
+                <ul class="bench-ul">
+                  <li v-for="(h, i) in eng.highlights" :key="i">{{ h }}</li>
+                </ul>
+              </div>
+
+              <!-- 环境要求与校验结果 -->
+              <div v-if="eng.requires?.length" class="bench-env">
+                <div class="bench-label">{{ t('benchRequires') }}</div>
+                <div class="bench-env-table">
+                  <div v-for="c in eng.env?.checks || []" :key="c.name" class="bench-env-row">
+                    <span class="env-name">{{ c.name }}</span>
+                    <span class="env-req">{{ t('benchRequiredVersion') }}: {{ c.required }}</span>
+                    <span class="env-installed">
+                      {{ t('benchInstalled') }}:
+                      <span :class="c.ok ? 'env-ok' : 'env-bad'">{{ c.installed || t('benchNotInstalled') }}</span>
+                    </span>
+                    <a-tag :color="c.ok ? 'green' : 'red'" size="small">{{ c.ok ? 'OK' : 'FAIL' }}</a-tag>
+                  </div>
+                  <div v-for="c in (eng.env?.checks || []).filter((x) => !x.ok && x.hint)" :key="`hint-${c.name}`" class="bench-hint">
+                    {{ t('benchInstallHint') }}: {{ c.hint }}
+                  </div>
+                </div>
+              </div>
+              <div v-else class="bench-env-none">{{ t('benchesDesc') }}</div>
+            </div>
+          </div>
+
+          <!-- 引擎对比表 -->
+          <div v-if="benchComparison.length" class="bench-compare">
+            <h4 class="compare-title">{{ t('benchCompareTable') }}</h4>
+            <table class="compare-table">
+              <thead>
+                <tr>
+                  <th class="compare-dim"></th>
+                  <th v-for="eng in benches" :key="eng.id">{{ eng.name }}</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="row in benchComparison" :key="row.dimension">
+                  <td class="compare-dim">{{ row.dimension }}</td>
+                  <td v-for="eng in benches" :key="eng.id">{{ row.values?.[eng.id] || '-' }}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <a-empty v-if="!benchesLoading && !benches.length" :description="t('noData')" />
+        </a-spin>
+      </div>
+
       <!-- Plugins：占位 -->
       <div v-if="activeTab === 'plugins'" class="tab-content narrow">
         <h3 style="margin: 0 0 8px">{{ t('plugins') }}</h3>
@@ -292,7 +371,7 @@ import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 import { message, notification, Modal } from 'ant-design-vue'
 import {
   SettingOutlined, DesktopOutlined, DatabaseOutlined, ApiOutlined,
-  CloudDownloadOutlined,
+  CloudDownloadOutlined, ThunderboltOutlined,
 } from '@ant-design/icons-vue'
 import { api, wsUrl } from '@/api'
 import { useConfigStore } from '@/store/config'
@@ -309,6 +388,11 @@ const selectedModel = ref(null)
 const datasets = ref([])
 const datasetsLoading = ref(false)
 const downloadingId = ref('')
+// Bench 引擎
+const benches = ref([])
+const benchComparison = ref([])
+const defaultEngineId = ref('benchscope')
+const benchesLoading = ref(false)
 // Datasets 左侧分类
 const datasetCats = ref([])
 const activeDsCat = ref('all')
@@ -352,6 +436,7 @@ const menuItems = computed(() => [
   { key: 'environment', icon: DesktopOutlined, label: t('environment') },
   { key: 'models', icon: DatabaseOutlined, label: t('modelsTab') },
   { key: 'datasets', icon: CloudDownloadOutlined, label: t('datasetsTab') },
+  { key: 'benches', icon: ThunderboltOutlined, label: t('benchesTab') },
   { key: 'plugins', icon: ApiOutlined, label: t('plugins') },
 ])
 
@@ -385,6 +470,7 @@ onMounted(async () => {
     loadDirs()
     loadDatasets()
     loadModelCatalog()
+    loadBenches()
   } catch { /* ignore */ }
 })
 
@@ -519,6 +605,22 @@ async function loadDatasets() {
     datasets.value = []
   } finally {
     datasetsLoading.value = false
+  }
+}
+
+// ---- Bench 引擎 ----
+async function loadBenches() {
+  benchesLoading.value = true
+  try {
+    const resp = await api.getBenchEngines()
+    benches.value = resp.engines || []
+    benchComparison.value = resp.comparison || []
+    defaultEngineId.value = resp.default_engine_id || 'benchscope'
+  } catch {
+    benches.value = []
+    benchComparison.value = []
+  } finally {
+    benchesLoading.value = false
   }
 }
 
@@ -1223,5 +1325,137 @@ function deployModel() {
   display: flex;
   justify-content: flex-end;
   margin-top: 8px;
+}
+
+/* ---------------- Bench 引擎面板 ---------------- */
+.bench-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-bottom: 20px;
+}
+.bench-card {
+  border: 1px solid var(--ant-color-border-secondary, #f0f0f0);
+  border-radius: 8px;
+  padding: 12px 14px;
+  background: var(--ant-color-bg-container, #fff);
+}
+.bench-card.bench-default {
+  border-color: var(--ant-color-primary, #1677ff);
+}
+.bench-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 6px;
+}
+.bench-name {
+  font-size: 14px;
+  font-weight: 600;
+}
+.bench-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  margin-bottom: 6px;
+}
+.bench-label {
+  color: var(--ant-color-text-tertiary, #999);
+  font-size: 12px;
+  flex-shrink: 0;
+}
+.bench-value {
+  font-size: 12px;
+  color: var(--ant-color-text-secondary, #666);
+}
+.bench-desc {
+  font-size: 12px;
+  color: var(--ant-color-text-secondary, #666);
+  margin: 0 0 8px;
+  line-height: 1.6;
+}
+.bench-highlights {
+  margin-bottom: 8px;
+}
+.bench-ul {
+  margin: 4px 0 0;
+  padding-left: 18px;
+  font-size: 12px;
+  color: var(--ant-color-text-secondary, #666);
+  line-height: 1.7;
+}
+.bench-env {
+  border-top: 1px dashed var(--ant-color-border-secondary, #f0f0f0);
+  padding-top: 8px;
+}
+.bench-env-none {
+  font-size: 12px;
+  color: var(--ant-color-text-tertiary, #999);
+  border-top: 1px dashed var(--ant-color-border-secondary, #f0f0f0);
+  padding-top: 8px;
+}
+.bench-env-table {
+  margin-top: 4px;
+}
+.bench-env-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 12px;
+  padding: 2px 0;
+  flex-wrap: wrap;
+}
+.env-name {
+  min-width: 70px;
+  font-weight: 500;
+}
+.env-req,
+.env-installed {
+  color: var(--ant-color-text-secondary, #666);
+}
+.env-ok {
+  color: var(--ant-color-success, #52c41a);
+}
+.env-bad {
+  color: var(--ant-color-error, #ff4d4f);
+}
+.bench-hint {
+  font-size: 11px;
+  color: var(--ant-color-warning, #faad14);
+  margin-top: 2px;
+  word-break: break-all;
+}
+.bench-compare {
+  margin-top: 4px;
+}
+.compare-title {
+  font-size: 13px;
+  font-weight: 600;
+  margin: 0 0 8px;
+}
+.compare-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+.compare-table th,
+.compare-table td {
+  border: 1px solid var(--ant-color-border-secondary, #f0f0f0);
+  padding: 6px 8px;
+  text-align: left;
+  vertical-align: top;
+}
+.compare-table th {
+  background: var(--ant-color-fill-tertiary, #fafafa);
+  font-weight: 600;
+}
+.compare-table td.compare-dim,
+.compare-table th.compare-dim {
+  background: var(--ant-color-fill-tertiary, #fafafa);
+  color: var(--ant-color-text-secondary, #666);
+  white-space: nowrap;
+  width: 130px;
 }
 </style>

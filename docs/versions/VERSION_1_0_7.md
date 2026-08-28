@@ -75,14 +75,43 @@
 
 **TODO 状态**：
 - [x] 规划 — 核心引擎改造方案（BenchEngine.md）+ 版本文档/Roadmap 同步
-- [ ] 待确认 — 自研 bench 核心技术选型（异步 HTTP / token 计数 / 长度控制 / 口径对齐）与引擎版本策略
+- [x] 确认 — 自研 bench 核心技术选型：aiohttp / 服务端 usage 计数 / 近似长度 / 口径严格对齐 vLLM / 内置+可扩展
+
+### 迭代 3（2026-08-28 18:45:12）：P1 引擎抽象 + P2 环境校验（自研引擎可用，原生引擎按环境阻断）
+
+> **完成时间**：2026-08-28 18:45:12
+
+**功能概述**：
+- **引擎定义文件** `benchscope/configs/benchs.yaml`（yaml 驱动，用户可扩展）：三个内置引擎 + 6 维对比表
+  - `benchscope`（kind=builtin，自研）：无框架环境依赖，`requires: []`
+  - `vllm-0.23`（kind=vllm）：要求 `torch>=2.0` + `vllm>=0.23,<0.24`
+  - `sglang-0.5.10`（kind=sglang）：要求 `torch>=2.0` + `sglang==0.5.10`
+- **引擎注册表** `benchscope/benchs.py`：yaml 加载（`load_bench_engines` / `load_comparison` / `get_engine` / `default_engine_id`）、版本范围匹配（`_match_spec` 支持 `>=,>,<,<=,==,!=`、忽略 rc/dev 后缀、零新增依赖）、环境校验（`check_env`：builtin 恒通过；原生引擎逐项校验 torch + 目标框架 + CLI 可用性）、摘要（`engine_summary` / `list_engines`）
+- **API** `benchscope/server/api_benchs.py`（挂载 `app.py`）：
+  - `GET /api/benchs`（引擎清单 + 对比表 + 默认引擎 + 环境校验）
+  - `GET /api/benchs/{engine_id}`（单引擎详情）
+  - `GET /api/benchs/{engine_id}/env-check`（`{ok, checks:[{name,required,installed,ok,hint}]}`）
+- **前端 Settings → Bench 引擎栏**（菜单顺序：General / Environment / Models / Datasets / **Bench 引擎** / Plugins）：引擎卡片（名称 + 类型 + 版本 + 默认标签 + 环境状态标签 + 介绍 + 特点列表 + 环境要求明细（要求版本/已安装/OK-FAIL/安装提示））+ 引擎对比表（6 维 × 3 引擎）
+- **前端创建页（PerfCreateView）引擎选择 + 环境阻断**：Step1 顶部新增引擎选择器（下拉 + 引擎介绍 + 环境校验明细）；默认自研引擎；**原生引擎环境不满足时点击「下一步」被阻断**并 `message.warning`（`benchEnvBlocked`）；payload 新增 `engine_id` 字段
+
+**实现策略**：引擎定义与代码解耦（yaml 驱动，新增引擎/版本无需改代码）；环境校验复用 `importlib.metadata.version` 检测已装版本，原生引擎追加 CLI 可用性探测（`vllm` 可执行文件 / `sglang.bench_serving` 模块可导入）；自研引擎 `requires` 为空 → 恒可用，保证「pip 装完即可远程测 OpenAI 服务」。
+
+**验证**：`check:i18n` 通过（zh/en 键集一致，新增 21 组 bench 相关文案）；`npm run build` 通过；`./tests/run_tests.sh` 全量通过（**API 65/65**（新增 `tests/api/test_benchs.py` 16 项）、**WebUI 20/20**（新增 `test_settings_benches_panel`、`test_perf_create_engine_select_and_env_block`））。
+
+**TODO 状态**：
+- [x] P1 — 引擎抽象（configs/benchs.yaml + benchs.py 注册表 + /api/benchs* + 前端 Settings Bench 栏 + 创建页引擎选择）
+- [x] P2 — 环境校验（torch/vllm/sglang 版本范围 + CLI 探测 + 前端阻断交互）
+- [ ] P3 — 参数体系（ParamSpec + 选项级描述 + 前端下拉描述面板）
+- [ ] P4 — 自研引擎（aiohttp + 流式采集 + 口径对齐 vLLM + task_manager 集成）
+- [ ] P5 — Settings Bench 栏增强（如用户自定义引擎编辑，随 P1 已落地基础版）
+- [ ] P6 — 测试与文档收口（Architecture.md / Software.md 依赖同步）
 
 ## 4. TODO 清单
 
 - [x] **版本初始化**：VERSION_1_0_7.md + 版本号 `1.0.7.dev0` + Roadmap/Readme 同步 + 开发模式启动（2026-08-28 完成）
 - [x] **核心引擎改造规划**：架构方案 `docs/rules/BenchEngine.md`（引擎抽象 / 版本化 / 环境校验 / 参数描述 / 自研 bench 核心）（2026-08-28 完成，待确认后实施）
-- [ ] **P1 引擎抽象**：BenchEngine 接口 + configs/benchs.yaml + 注册表 + /api/benchs*
-- [ ] **P2 环境校验**：torch/vllm/sglang 版本范围校验 + 前端阻断交互
+- [x] **P1 引擎抽象**：configs/benchs.yaml（3 内置引擎 + 对比表）+ benchs.py 注册表 + /api/benchs* + Settings Bench 栏 + 创建页引擎选择（2026-08-28 完成）
+- [x] **P2 环境校验**：torch/vllm/sglang 版本范围校验（_match_spec）+ CLI 探测 + 前端阻断「下一步」（2026-08-28 完成）
 - [ ] **P3 参数体系**：ParamSpec + 选项级描述 + 前端下拉描述面板
 - [ ] **P4 自研引擎**：LoadGenerator / Requester / MetricsCollector / ResultSink + task_manager 集成
 - [ ] **P5 Settings Bench 栏**：内置引擎列表 + 介绍 + 对比表 + 环境状态

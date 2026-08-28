@@ -121,6 +121,72 @@ def test_perf_create_threshold_mode(page):
     assert page.locator(".condition-panel").is_visible()
 
 
+def test_settings_benches_panel(page):
+    """Settings → Bench 引擎栏：三个内置引擎（自研 / vllm-0.23 / sglang-0.5.10）
+    + 介绍文案 + 环境校验结果 + 引擎对比表。"""
+    page.goto(f"{BASE_URL}/settings", wait_until="domcontentloaded")
+    _visible(page, ".settings-page")
+
+    # 切换到 Bench 引擎栏（菜单项文本：Bench Engines）
+    page.locator(".menu-item").filter(has_text="Bench Engines").first.click()
+    _visible(page, ".bench-list", timeout=15000)
+
+    cards = page.locator(".bench-card")
+    assert cards.count() == 3, f"expected 3 engines, got {cards.count()}"
+
+    names = page.locator(".bench-name").all_inner_texts()
+    joined = " | ".join(names)
+    assert "BenchScope" in joined, f"缺少自研引擎: {joined}"
+    assert "vllm-0.23" in joined or "0.23" in joined, f"缺少 vllm-0.23: {joined}"
+    assert "sglang-0.5.10" in joined or "0.5.10" in joined, f"缺少 sglang-0.5.10: {joined}"
+
+    # 每个引擎有介绍文案
+    descs = page.locator(".bench-desc").all_inner_texts()
+    assert len(descs) == 3 and all(d.strip() for d in descs), f"引擎介绍缺失: {descs}"
+
+    # 自研引擎（第 1 张卡）环境恒满足；原生引擎展示环境要求明细
+    first_env = cards.nth(0).locator(".ant-tag").all_inner_texts()
+    assert "Ready" in " ".join(first_env), f"自研引擎环境应恒满足: {first_env}"
+    assert cards.nth(1).locator(".bench-env-row").count() >= 2, "vllm 引擎应展示 torch/vllm 环境要求行"
+
+    # 对比表：维度列 + 各引擎取值
+    _visible(page, ".compare-table")
+    assert page.locator(".compare-table tbody tr").count() >= 3
+
+
+def test_perf_create_engine_select_and_env_block(page):
+    """创建页引擎选择：默认自研引擎（可用）；切到原生引擎且环境不满足时禁止进入下一步。"""
+    page.goto(f"{BASE_URL}/performance/create?mode=concurrency", wait_until="domcontentloaded")
+    _visible(page, ".perf-create-page")
+    _visible(page, ".bench-picker", timeout=15000)
+
+    # 默认引擎为自研 bench（无框架环境依赖，标签显示 Ready）
+    tags = page.locator(".bench-picker .ant-tag").all_inner_texts()
+    assert any("Ready" in x for x in tags), f"默认引擎环境应可用: {tags}"
+
+    # 选择原生引擎 vllm-0.23 → 环境校验（本机未安装 → Not Satisfied）
+    page.locator(".bench-picker .ant-select").first.click()
+    _visible(page, ".ant-select-dropdown", timeout=8000)
+    page.locator(".ant-select-item-option").filter(has_text="vLLM Bench").first.click()
+    # 等待环境校验完成（标签变为 Ready / Not Satisfied）
+    page.wait_for_function(
+        "() => { const t = document.querySelector('.bench-picker .ant-tag');"
+        " return t && /Ready|Not Satisfied/.test(t.textContent); }",
+        timeout=15000,
+    )
+    tags = page.locator(".bench-picker .ant-tag").all_inner_texts()
+    # 环境不满足时展示安装提示或环境明细；满足时直接进入下一步
+    if any("Not Satisfied" in x for x in tags):
+        assert page.locator(".bench-env-row").count() >= 2, "环境不满足应展示逐项检查结果"
+        assert page.locator(".bench-hint").count() >= 1, "环境不满足应展示安装提示"
+        # 点击下一步 → 被阻断，仍停留在 Step1
+        page.locator(".panel-footer button").filter(has_text="Next").first.click()
+        _visible(page, ".ant-message", timeout=8000)
+        msg = page.locator(".ant-message").inner_text()
+        assert "Environment not satisfied" in msg, f"unexpected message: {msg}"
+        assert page.locator(".condition-panel").is_visible()
+
+
 def test_datas_perfs_record_list(page):
     """Datas/Perfs 记录面板与导入入口。"""
     page.goto(f"{BASE_URL}/datas/perfs", wait_until="domcontentloaded")

@@ -15,6 +15,13 @@
 
 ## 1. Step 1 性能条件
 
+### 1.0 测试引擎选择（BenchPicker，1.0.7）
+
+- 位于 Step1 顶部：下拉选择**测试引擎**（自研 `benchscope` / 原生 `vllm-0.23` / `sglang-0.5.10`），引擎定义来自 `GET /api/benchs`（`benchscope/configs/benchs.yaml`，可用户扩展）
+- 选中后展示引擎介绍文案；原生引擎展示**环境校验明细**（要求版本 / 已安装 / OK-FAIL / 安装提示）
+- **环境校验约定（强制）**：原生引擎（vllm / sglang）必须校验 `torch` 与目标框架安装版本（+ CLI 可用性），**不满足则点击「下一步」被阻断**并提示 `benchEnvBlocked`；**自研引擎无框架环境依赖，恒可用**（pip 安装即可远程测 OpenAI 兼容服务）
+- 引擎 id 随 payload 提交（`engine_id` 字段）
+
 ### 1.1 环境面板（BaseEnvPanel）
 
 - 展示：框架（vLLM / SGLang）、模型选择（来自 `/v1/models`，可刷新）、Base URL、推理服务在线状态

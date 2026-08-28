@@ -30,6 +30,11 @@ export const api = {
   getDatasets: () => http.get('/api/config/datasets'),
   downloadDataset: (id) => http.post('/api/config/datasets/download', { id }),
 
+  // 内置 bench 引擎
+  getBenchEngines: () => http.get('/api/benchs'),
+  getBenchEngine: (engineId) => http.get(`/api/benchs/${engineId}`),
+  checkBenchEnv: (engineId) => http.get(`/api/benchs/${engineId}/env-check`),
+
   // 缓存目录管理
   getDirs: () => http.get('/api/config/dirs'),
   updateDirs: (patch) => http.post('/api/config/dirs', patch),
