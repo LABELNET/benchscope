@@ -52,6 +52,7 @@ engines:
     kind: builtin
     framework: builtin
     version: stable
+    params_key: benchscope
     name: BenchScope Bench（自研）
     description: >-
       自研测试引擎，基于 OpenAI 兼容 API 的异步流式负载生成器。

@@ -90,6 +90,7 @@
               :version="paramsYaml.vllm.version"
               :version-label="versionLabel('vllm')"
               :lines="paramsYaml.vllm.lines"
+              :specs="paramSpecs"
               @save="syncParams('vllm')"
               @update:version="(v) => { paramsYaml.vllm.version = v; syncParams('vllm') }"
             />
@@ -101,6 +102,7 @@
               :version="paramsYaml.sglang.version"
               :version-label="versionLabel('sglang')"
               :lines="paramsYaml.sglang.lines"
+              :specs="paramSpecs"
               @save="syncParams('sglang')"
               @update:version="(v) => { paramsYaml.sglang.version = v; syncParams('sglang') }"
             />
@@ -202,6 +204,8 @@ const engines = ref([])
 const defaultEngineId = ref('benchscope')
 const envResult = ref(null)
 const envChecking = ref(false)
+// 引擎参数定义（下拉选项 + 描述信息）
+const paramSpecs = ref({})
 
 const engineOptions = computed(() =>
   engines.value.map((e) => ({ value: e.id, label: `${e.name}（${e.kind}${e.version && e.version !== 'stable' ? ' ' + e.version : ''}）` }))
@@ -217,9 +221,24 @@ async function loadEngines() {
       engineId.value = defaultEngineId.value
     }
     await checkEngineEnv()
+    await loadParamSpecs()
   } catch {
     engines.value = []
     envResult.value = null
+    paramSpecs.value = {}
+  }
+}
+
+async function loadParamSpecs() {
+  if (!engineId.value) {
+    paramSpecs.value = {}
+    return
+  }
+  try {
+    const resp = await api.getBenchParams(engineId.value)
+    paramSpecs.value = resp.params || {}
+  } catch {
+    paramSpecs.value = {}
   }
 }
 
@@ -238,6 +257,7 @@ async function checkEngineEnv() {
 
 function onEngineChange() {
   checkEngineEnv()
+  loadParamSpecs()
 }
 
 // Step3 预览：任务详情文本 + 示例命令

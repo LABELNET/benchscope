@@ -307,6 +307,33 @@
           </div>
 
           <a-empty v-if="!benchesLoading && !benches.length" :description="t('noData')" />
+
+          <!-- 引擎定义编辑（用户可扩展：新增引擎 / 版本） -->
+          <div class="bench-yaml">
+            <div class="bench-yaml-head">
+              <span class="bench-label">{{ t('benchYamlTitle') }}</span>
+              <a-space size="small">
+                <a-button v-if="!benchesYamlEditing" size="small" @click="startEditBenchesYaml">
+                  {{ t('benchYamlEdit') }}
+                </a-button>
+                <template v-else>
+                  <a-button size="small" type="primary" :loading="benchesSaving" @click="saveBenchesYaml">
+                    {{ t('save') }}
+                  </a-button>
+                  <a-button size="small" @click="benchesYamlEditing = false">{{ t('cancel') }}</a-button>
+                </template>
+              </a-space>
+            </div>
+            <p class="bench-yaml-desc">{{ t('benchYamlDesc') }}</p>
+            <a-textarea
+              v-if="benchesYamlEditing"
+              v-model:value="benchesYamlDraft"
+              :rows="14"
+              class="bench-yaml-editor"
+              spellcheck="false"
+            />
+            <pre v-else class="bench-yaml-view">{{ benchesYaml || t('noData') }}</pre>
+          </div>
         </a-spin>
       </div>
 
@@ -393,6 +420,11 @@ const benches = ref([])
 const benchComparison = ref([])
 const defaultEngineId = ref('benchscope')
 const benchesLoading = ref(false)
+// 引擎定义 yaml（查看 / 编辑，用户可扩展引擎与版本）
+const benchesYaml = ref('')
+const benchesYamlDraft = ref('')
+const benchesYamlEditing = ref(false)
+const benchesSaving = ref(false)
 // Datasets 左侧分类
 const datasetCats = ref([])
 const activeDsCat = ref('all')
@@ -616,11 +648,40 @@ async function loadBenches() {
     benches.value = resp.engines || []
     benchComparison.value = resp.comparison || []
     defaultEngineId.value = resp.default_engine_id || 'benchscope'
+    await loadBenchesYaml()
   } catch {
     benches.value = []
     benchComparison.value = []
   } finally {
     benchesLoading.value = false
+  }
+}
+
+async function loadBenchesYaml() {
+  try {
+    const resp = await api.getBenchsYaml()
+    benchesYaml.value = resp.content || ''
+  } catch {
+    benchesYaml.value = ''
+  }
+}
+
+function startEditBenchesYaml() {
+  benchesYamlDraft.value = benchesYaml.value
+  benchesYamlEditing.value = true
+}
+
+async function saveBenchesYaml() {
+  benchesSaving.value = true
+  try {
+    await api.saveBenchsYaml(benchesYamlDraft.value)
+    benchesYamlEditing.value = false
+    message.success(t('saved'))
+    await loadBenches()
+  } catch (e) {
+    message.error(e?.response?.data?.detail || t('saveFail'))
+  } finally {
+    benchesSaving.value = false
   }
 }
 
@@ -1457,5 +1518,42 @@ function deployModel() {
   color: var(--ant-color-text-secondary, #666);
   white-space: nowrap;
   width: 130px;
+}
+/* 引擎定义 yaml（查看 / 编辑） */
+.bench-yaml {
+  margin-top: 16px;
+  border-top: 1px solid var(--ant-color-border-secondary, #f0f0f0);
+  padding-top: 12px;
+}
+.bench-yaml-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.bench-yaml-desc {
+  font-size: 11px;
+  color: var(--ant-color-text-tertiary, #999);
+  margin: 4px 0 8px;
+  line-height: 1.6;
+}
+.bench-yaml-view {
+  max-height: 260px;
+  overflow: auto;
+  background: var(--ant-color-fill-tertiary, #fafafa);
+  border: 1px solid var(--ant-color-border-secondary, #f0f0f0);
+  border-radius: 6px;
+  padding: 8px 10px;
+  font-size: 11px;
+  line-height: 1.6;
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+.bench-yaml-editor {
+  font-family: 'SFMono-Regular', Consolas, monospace;
+  font-size: 11px;
+  line-height: 1.6;
 }
 </style>

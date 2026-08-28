@@ -50,6 +50,7 @@
 | 操作 | 入口 → 链路 |
 | --- | --- |
 | 配置推理服务 | Settings → Envs → Edit/Save + Test Connection → `config.api`（base_url / api_key） |
+| 选择测试引擎 | Performance 创建页 Step1 → 引擎下拉（`GET /api/benchs`）→ 环境校验（`env-check`）→ 不满足则禁止下一步 |
 | 创建性能任务 | Performance → 并发/阈值入口 → `/performance/create` 三步表单 → `POST /api/tasks` + `start` |
 | 任务执行监控 | WS 广播：`task_log`（终端行 + 当前 case/concurrency 位置）、`task_result`（结果行）、`task_snapshot`、`task_done` |
 | 阈值高亮 | 前端 computed 按组（`caseKey`）标记 Best/BestPerf（本地阈值与任务阈值） |
@@ -62,6 +63,10 @@
 ## 4. 关键设计约束
 
 - **单进程**：前端构建产物由后端静态托管，无独立前端服务（dev 脚本亦然）。静态资源 `/assets` 挂载目录；`bs-logo.png` 与 `blue_logo.png`（网站 LOGO）单独注册路由，避免被 SPA fallback 拦截。
-- **子进程执行 bench**：`bash -lic` + 最小环境变量，自动 source 平台脚本（maca 等），支持用户自定义 `bench_shell_init`。
+- **引擎分层执行（1.0.7）**：`task_manager._run_one` 按 `engine_id` 分支——
+  - **原生引擎**（vllm / sglang）：`bash -lic` + 最小环境变量执行 CLI，自动 source 平台脚本（maca 等），支持用户自定义 `bench_shell_init`，输出经 `parser` 解析；
+  - **自研引擎**（benchscope）：**进程内异步压测**（aiohttp + SSE），不经命令构建 / 子进程 / 输出解析，无框架环境依赖；
+  - 未指定 `engine_id` 的旧任务回退原生链路。详见 [BenchEngine.md](./BenchEngine.md)。
+- **引擎与版本解耦（1.0.7）**：引擎定义由 `configs/benchs.yaml` 驱动（注册表模式），参数描述由 `configs/bench-params.yaml` 驱动，均支持用户扩展；新增引擎 / 版本无需改代码。
 - **无服务端插件**：仅需推理服务暴露 OpenAI 兼容 API。
 - **持久化**：配置 `~/.benchscope/settings.json`（旧版 `config.json` 首启自动迁移）。**9 目录体系**：`data_dir` 根（默认 `~/.benchscope`）+ 8 功能子目录（perfs / evals / analysis / logs / sessions / models / datasets / plugins），子目录未自定义时跟随 `data_dir`；任务 run_dir 按 `kind` 落 `perfs_dir` / `evals_dir`；终端输出日志 `logs_dir/perf|eval_runID_*.log`；会话 `sessions_dir`；内置数据集缓存 `datasets_dir/{id}/`。

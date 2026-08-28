@@ -32,33 +32,51 @@
         <div
           v-for="(line, i) in group.rows"
           :key="line.key + i"
-          class="param-row"
-          :class="{ editing: editingKey === line.key }"
-          @click="startEdit(line)"
+          class="param-row-wrap"
         >
-          <span class="param-key" :title="line.key">{{ line.key }}</span>
-          <div class="param-value">
-            <a-switch
-              v-if="isBool(line.value)"
-              size="small"
-              :checked="line.value === 'true'"
-              class="param-switch"
-              @click.stop
-              @change="(checked) => onSwitch(line, checked)"
-            />
-            <a-input
-              v-else-if="editingKey === line.key"
-              ref="editInputRef"
-              size="small"
-              v-model:value="editValue"
-              class="edit-input"
-              @click.stop
-              @press-enter="commit(line)"
-              @blur="commit(line)"
-              @keydown.esc.prevent="cancel(line)"
-            />
-            <span v-else class="param-chip" :class="chipClass(line.value)">{{ line.value }}</span>
+          <div
+            class="param-row"
+            :class="{ editing: editingKey === line.key }"
+            @click="startEdit(line)"
+          >
+            <span class="param-key" :title="specOf(line).label || line.key">
+              {{ specOf(line).label || line.key }}
+            </span>
+            <div class="param-value">
+              <!-- 有下拉选项：用 select 选择（选中后展示描述） -->
+              <a-select
+                v-if="optionsOf(line).length"
+                size="small"
+                :value="line.value"
+                :options="optionsOf(line)"
+                class="param-select"
+                @click.stop
+                @change="(val) => onSelect(line, val)"
+              />
+              <a-switch
+                v-else-if="isBool(line.value)"
+                size="small"
+                :checked="line.value === 'true'"
+                class="param-switch"
+                @click.stop
+                @change="(checked) => onSwitch(line, checked)"
+              />
+              <a-input
+                v-else-if="editingKey === line.key"
+                ref="editInputRef"
+                size="small"
+                v-model:value="editValue"
+                class="edit-input"
+                @click.stop
+                @press-enter="commit(line)"
+                @blur="commit(line)"
+                @keydown.esc.prevent="cancel(line)"
+              />
+              <span v-else class="param-chip" :class="chipClass(line.value)">{{ line.value }}</span>
+            </div>
           </div>
+          <!-- 描述信息：优先展示「当前选中值」的选项描述，否则展示参数说明 -->
+          <div v-if="descOf(line)" class="param-desc">{{ descOf(line) }}</div>
         </div>
       </div>
     </div>
@@ -73,7 +91,30 @@ const props = defineProps({
   version: { type: String, default: '' },
   versionLabel: { type: String, default: '' },
   lines: { type: Array, default: () => [] },
+  // 参数定义：{ <yaml_key>: { label, help, type, options: [{value,label,description}] } }
+  specs: { type: Object, default: () => ({}) },
 })
+
+// 参数定义辅助：下拉选项 / 描述信息
+function specOf(line) {
+  return props.specs?.[line.key] || {}
+}
+function optionsOf(line) {
+  const opts = specOf(line).options || []
+  return opts
+    .filter((o) => o && typeof o === 'object')
+    .map((o) => ({ value: String(o.value), label: o.label || String(o.value) }))
+}
+function descOf(line) {
+  const spec = specOf(line)
+  // 选中值有选项级描述时优先展示，否则展示参数说明
+  const hit = (spec.options || []).find((o) => o && String(o.value) === String(line.value))
+  return (hit && hit.description) || spec.help || ''
+}
+function onSelect(line, val) {
+  line.value = String(val)
+  emit('save')
+}
 const emit = defineEmits(['save', 'update:version'])
 
 // 自动分组规则：未知 key 归入「其他」
@@ -258,14 +299,32 @@ function cancelVersion() {
 .param-group-body {
   padding: 4px 12px;
 }
+.param-row-wrap {
+  border-bottom: 1px dashed rgba(0, 0, 0, 0.05);
+}
+.param-group-body .param-row-wrap:last-child {
+  border-bottom: none;
+}
 .param-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 10px;
   padding: 5px 0;
-  border-bottom: 1px dashed rgba(0, 0, 0, 0.05);
   cursor: text;
+}
+/* 参数描述（选项级描述优先，其次参数说明） */
+.param-desc {
+  font-size: 11px;
+  line-height: 1.6;
+  color: var(--ant-color-text-tertiary, #8c8c8c);
+  padding: 0 0 6px 2px;
+  word-break: break-word;
+}
+.param-select {
+  min-width: 200px;
+  max-width: 70%;
+  font-size: 12px;
 }
 .param-group-body .param-row:last-child {
   border-bottom: none;

@@ -206,6 +206,37 @@ def engine_summary(engine: dict, with_env: bool = True) -> dict:
     return out
 
 
+def load_benchs_yaml_text() -> str:
+    """读取 benchs.yaml 原文（供 Settings 面板查看 / 编辑）。"""
+    if not BENCHS_YAML.exists():
+        return ""
+    return BENCHS_YAML.read_text(encoding="utf-8")
+
+
+def save_benchs_yaml_text(content: str) -> None:
+    """保存 benchs.yaml（用户自定义引擎 / 版本扩展）。
+
+    校验：必须是合法 yaml、顶层为 dict、engines 为非空列表且每项含 id；
+    校验失败抛 ValueError（不写文件）。
+    """
+    try:
+        data = yaml.safe_load(content or "")
+    except yaml.YAMLError as e:
+        raise ValueError(f"YAML 格式错误：{e}") from e
+    if not isinstance(data, dict):
+        raise ValueError("配置顶层必须是对象（含 engines / comparison 键）")
+    engines = data.get("engines")
+    if not isinstance(engines, list) or not engines:
+        raise ValueError("engines 必须是非空列表")
+    for i, e in enumerate(engines):
+        if not isinstance(e, dict) or not e.get("id"):
+            raise ValueError(f"engines[{i}] 缺少 id 字段")
+        kind = e.get("kind")
+        if kind not in ("builtin", "vllm", "sglang"):
+            raise ValueError(f"engines[{i}]（{e.get('id')}）的 kind 必须是 builtin / vllm / sglang")
+    BENCHS_YAML.write_text(content, encoding="utf-8")
+
+
 def list_engines(with_env: bool = True) -> dict:
     """全部引擎 + 对比表 + 默认引擎。"""
     engines = load_bench_engines()

@@ -146,16 +146,50 @@ conc= 8  out_tps= 517.8  req/s=16.18  ttft=2.92ms  tpot=15.83ms  ok=8
 - [ ] P5 — Settings Bench 栏增强（用户自定义引擎编辑）
 - [ ] P6 — 测试与文档收口（Architecture.md 同步）
 
+### 迭代 5（2026-08-28 23:20:40）：P3 参数描述体系 + P5 引擎可扩展 + P6 架构文档 + 核心实现存档
+
+> **完成时间**：2026-08-28 23:20:40
+
+**功能概述**：
+- **P3 参数下拉 + 描述**（用户原始需求第 4 条）：
+  - 新增 `benchscope/configs/bench-params.yaml`：为三引擎共 **37 项参数**提供说明文案与下拉选项（**每个选项都带描述**）——自研 7 项（backend/endpoint/request-rate/num-warmups/chars-per-token/timeout/temperature）、vLLM 19 项、SGLang 11 项
+  - 新增 `benchscope/bench_params.py`：参数定义加载（按 `params_key` 取参数集 / 单参数定义 / 选项描述）
+  - API：`GET /api/benchs/{id}/params`（参数集）、`GET /api/benchs/{id}/params/{key}/option-desc`（单取值描述）
+  - 前端 `ParamGroupPanel.vue`：参数行改为**下拉选择**（有 options 时）→ 选中后在参数行下方**展示该选项描述**；无选项时展示参数说明；参数名优先用 `label`
+  - 自研引擎读取新增参数：`timeout` / `chars_per_token` / `seed` / `temperature`
+- **P5 引擎可扩展**（Settings Bench 栏增强）：
+  - API：`GET/PUT /api/benchs/config/yaml`（查看 / 保存 `configs/benchs.yaml`），保存时校验（YAML 合法 / 顶层 dict / engines 非空列表 / 每项含 id / kind 属于 builtin|vllm|sglang），**校验失败返回 400 且不写文件**
+  - 前端 Settings → Bench 引擎栏底部新增「引擎定义（benchs.yaml）」区：只读预览 → 点击「编辑」进入 textarea → 保存后刷新引擎列表
+- **P6 文档**：`Architecture.md` 新增「§5 测试引擎架构」分层图与关键设计、操作流补充「选择测试引擎」、设计约束补充「引擎分层执行」「引擎与版本解耦」
+- **⭐ 核心实现存档**：新增 [`docs/rules/BenchCore.md`](../rules/BenchCore.md)——自研 bench 核心实现总结（核心结论 / 为何必须流式 / 四子系统实现 / 与原生链路对比 / 设计决策与取舍 / 实测数据 / 已知限制 / 代码地图），并登记到 `docs/Readme.md` 文档索引
+
+**核心结论存档（BenchCore.md 摘要）**：
+> 自研 bench 的核心 = **「基于 OpenAI 兼容 API 的异步流式负载生成器」** + **「与 vLLM bench 严格对齐的指标口径」**。前者决定能不能测，后者决定测得准不准、能否与原生引擎对比。
+> - **必须流式**：非流式只能测 E2E，TTFT / ITL / TPOT 均不可测；时间线 `t0 → t_first → t_i → t_end`
+> - **两个易错点**：① TPOT 分母是 `tokens - 1`（首 token 已计入 TTFT）；② `benchmark_duration` 必须是墙钟时间（否则吞吐严重高估）
+> - **实测**：并发 1/2/4/8 → 吞吐 64.9/130.5/260.2/517.8 tok/s（线性增长），TPOT 稳定 ≈15.8ms
+
+**验证**：`./tests/run_tests.sh` 全量通过——**API 78/78**（新增 4 项：参数集 API、原生引擎参数描述完整性、选项描述 API、benchs.yaml 读写校验含非法输入 400 与 finally 还原）、**WebUI 20/20**；i18n 一致、构建通过。
+
+**修复记录**：
+- **模块名冲突**：`benchscope/benchs/params.py` 与 `benchscope/benchs.py`（引擎注册表）同名，Python 将 `benchscope.benchs` 解析为模块而非包 → `ModuleNotFoundError: 'benchscope.benchs' is not a package`。已迁移为 `benchscope/bench_params.py`（并在 BenchCore.md 代码地图标注该陷阱）
+- 自研引擎缺 `params_key`，回退为 `builtin` 导致参数集为空 → `configs/benchs.yaml` 补 `params_key: benchscope`
+
+**TODO 状态**：
+- [x] P3 — 参数体系（yaml 参数描述 + 前端下拉 + 选中后展示描述）
+- [x] P5 — Settings Bench 栏增强（benchs.yaml 查看/编辑 + 保存校验，用户可扩展引擎）
+- [x] P6 — 架构文档（Architecture.md 引擎分层）+ 核心实现存档（BenchCore.md）
+
 ## 4. TODO 清单
 
 - [x] **版本初始化**：VERSION_1_0_7.md + 版本号 `1.0.7.dev0` + Roadmap/Readme 同步 + 开发模式启动（2026-08-28 完成）
 - [x] **核心引擎改造规划**：架构方案 `docs/rules/BenchEngine.md`（引擎抽象 / 版本化 / 环境校验 / 参数描述 / 自研 bench 核心）（2026-08-28 完成，待确认后实施）
 - [x] **P1 引擎抽象**：configs/benchs.yaml（3 内置引擎 + 对比表）+ benchs.py 注册表 + /api/benchs* + Settings Bench 栏 + 创建页引擎选择（2026-08-28 完成）
 - [x] **P2 环境校验**：torch/vllm/sglang 版本范围校验（_match_spec）+ CLI 探测 + 前端阻断「下一步」（2026-08-28 完成）
-- [ ] **P3 参数体系**：ParamSpec + 选项级描述 + 前端下拉描述面板
-- [ ] **P4 自研引擎**：LoadGenerator / Requester / MetricsCollector / ResultSink + task_manager 集成
-- [ ] **P5 Settings Bench 栏**：内置引擎列表 + 介绍 + 对比表 + 环境状态
-- [ ] **P6 测试与文档**：tests/api + tests/webui + prds/Architecture/Software 同步
+- [x] **P3 参数体系**：configs/bench-params.yaml（37 项参数描述 + 选项级描述）+ /api/benchs/*/params + 前端下拉描述面板（2026-08-28 完成）
+- [x] **P4 自研引擎**：LoadGenerator / Requester / MetricsCollector + task_manager 集成（2026-08-28 完成）
+- [x] **P5 Settings Bench 栏**：内置引擎列表 + 介绍 + 对比表 + 环境状态 + benchs.yaml 查看/编辑（2026-08-28 完成）
+- [x] **P6 测试与文档**：tests/api 78 + tests/webui 20 + Architecture.md / Software.md / BenchCore.md 同步（2026-08-28 完成）
 
 ---
 

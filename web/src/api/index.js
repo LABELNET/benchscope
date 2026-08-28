@@ -33,7 +33,10 @@ export const api = {
   // 内置 bench 引擎
   getBenchEngines: () => http.get('/api/benchs'),
   getBenchEngine: (engineId) => http.get(`/api/benchs/${engineId}`),
+  getBenchParams: (engineId) => http.get(`/api/benchs/${engineId}/params`),
   checkBenchEnv: (engineId) => http.get(`/api/benchs/${engineId}/env-check`),
+  getBenchsYaml: () => http.get('/api/benchs/config/yaml'),
+  saveBenchsYaml: (content) => http.put('/api/benchs/config/yaml', { content }),
 
   // 缓存目录管理
   getDirs: () => http.get('/api/config/dirs'),

@@ -99,6 +99,14 @@ def _builtin_options(task, ds: dict, concurrency: int, api: dict) -> BuiltinOpti
     except (TypeError, ValueError):
         rate = float("inf")
     curated = payload.get("curated") or {}
+    # 自研引擎专属参数（见 configs/bench-params.yaml 的 benchscope 段）
+    def _num(key, default):
+        try:
+            v = curated.get(key)
+            return type(default)(v) if v not in (None, "") else default
+        except (TypeError, ValueError):
+            return default
+
     return BuiltinOptions(
         base_url=base_url,
         api_key=api.get("api_key") or "",
@@ -110,6 +118,10 @@ def _builtin_options(task, ds: dict, concurrency: int, api: dict) -> BuiltinOpti
         num_prompts=int(payload.get("num_prompts") or concurrency),
         request_rate=rate,
         warmups=int(curated.get("num_warmups") or 0),
+        timeout=_num("timeout", 600.0),
+        chars_per_token=_num("chars_per_token", 4.0),
+        seed=curated.get("seed"),
+        extra_body={"temperature": _num("temperature", 0.0)},
         extra_headers=api.get("extra_headers") or {},
     )
 
