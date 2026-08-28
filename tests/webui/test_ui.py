@@ -11,6 +11,8 @@ import os
 import pytest
 from playwright.sync_api import sync_playwright
 
+import tests.helpers as helpers
+
 BASE_URL = os.environ.get("BS_TEST_URL", "http://127.0.0.1:18081")
 CHROMIUM = os.environ.get(
     "BS_CHROMIUM_PATH",
@@ -90,6 +92,35 @@ def test_perf_create_form(page):
     assert page.locator(".ant-steps").count() >= 1
 
 
+def test_perf_create_threshold_mode(page):
+    """阈值模式创建页：TTFT/TPOT(Mean/Median/P99)+Output 三行阈值；三者全 0 不能下一步并提醒。"""
+    page.goto(f"{BASE_URL}/performance/create?mode=threshold", wait_until="domcontentloaded")
+    _visible(page, ".perf-create-page")
+    _visible(page, ".condition-panel")
+
+    # 三行阈值输入：TTFT / TPOT / Output token throughput
+    assert page.locator(".threshold-field").count() == 3
+    # 两个统计量选择器（TTFT/TPOT）默认 Mean
+    sel_texts = page.locator(".threshold-field .ant-select-selection-item").all_inner_texts()
+    assert [s for s in sel_texts if s == "Mean"], f"expected Mean selects, got {sel_texts}"
+    # 默认值：TTFT=0、TPOT=100、Output=0
+    nums = page.locator(".threshold-field .ant-input-number-input")
+    vals = nums.evaluate_all("els => els.map(e => e.value)")
+    vals = [v for v in vals if v not in (None, "")]
+    assert vals[:3] == ["0", "100", "0"], f"expected [0,100,0] defaults, got {vals[:3]}"
+
+    # 三者全部置 0 → 不能进入下一步，并弹出提醒
+    nums.nth(0).fill("0")
+    nums.nth(1).fill("0")
+    nums.nth(2).fill("0")
+    page.locator(".panel-footer button").filter(has_text="Next").first.click()
+    _visible(page, ".ant-message", timeout=8000)
+    msg = page.locator(".ant-message").inner_text()
+    assert "cannot all be 0" in msg, f"unexpected message: {msg}"
+    # 仍停留在 Step1（条件面板可见，未跳转 Step2）
+    assert page.locator(".condition-panel").is_visible()
+
+
 def test_datas_perfs_record_list(page):
     """Datas/Perfs 记录面板与导入入口。"""
     page.goto(f"{BASE_URL}/datas/perfs", wait_until="domcontentloaded")
@@ -97,6 +128,135 @@ def test_datas_perfs_record_list(page):
     _visible(page, ".record-panel")
     # 导入按钮存在
     assert page.locator(".record-panel-title .icon-btn").count() >= 1
+
+
+def test_threshold_cond_in_case_group(page):
+    """阈值信息并入 case 分组标记右侧：Performance 执行页 + Datas/Perfs Cases Info 不再单独显示阈值块。
+    阈值信息跟随每组请求配置（length_pairs 第 5 元素），标识含统计量（TTFT-Mean/Median/P99、TPOT-Mean/Median/P99）。"""
+    import requests as req
+
+    snap = helpers.create_and_run_task(
+        req,
+        BASE_URL,
+        {
+            "mode": "threshold",
+            # 阈值信息在每组请求配置中，不跟随主任务
+            "dataset": {
+                "type": "random",
+                "length_pairs": [[64, 64, "用例A", "case-a", {
+                    "ttft_statistic": "mean", "ttft_threshold_ms": 50,
+                    "tpot_statistic": "median", "tpot_threshold_ms": 100,
+                    "output_throughput_threshold": 200,
+                }]],
+            },
+        },
+        timeout=120,
+    )
+    task_id = snap["task_id"]
+    try:
+        # 1) Performance 任务执行页：阈值文本在分组标记右侧（含统计量标识），无独立阈值区块
+        page.goto(f"{BASE_URL}/performance", wait_until="domcontentloaded")
+        _visible(page, ".perf-detail")
+        _visible(page, ".case-threshold")
+        assert page.locator(".threshold-conds").count() == 0
+        text = page.locator(".case-threshold").first.inner_text()
+        assert "TTFT-Mean ≤ 50ms" in text and "TPOT-Median ≤ 100ms" in text and "Output ≤ 200 tok/s" in text, text
+
+        # 2) Datas/Perfs Cases Info 面板：同样并入分组标记右侧，无独立阈值 info-row
+        page.goto(f"{BASE_URL}/datas/perfs?run_id={helpers.run_id_of(task_id)}", wait_until="domcontentloaded")
+        _visible(page, ".perfs-page")
+        cases_card = page.locator(".half-card", has=page.locator(".case-groups"))
+        cases_card.locator(".case-threshold").first.wait_for(state="visible", timeout=10000)
+        assert cases_card.locator(".info-row").count() == 0
+    finally:
+        req.delete(f"{BASE_URL}/api/tasks/{task_id}", timeout=10)
+
+
+def test_group_threshold_in_data_tables(page):
+    """分组阈值展示到数据表格：Performance Realtime Data 分组标题行（.group-threshold）
+    与 Datas/Perfs Perf Datas 分组 tab 内（.group-threshold-bar），文本含统计量标识。"""
+    import requests as req
+
+    snap = helpers.create_and_run_task(
+        req,
+        BASE_URL,
+        {
+            "mode": "threshold",
+            "dataset": {
+                "type": "random",
+                "length_pairs": [[64, 64, "用例A", "case-a", {
+                    "ttft_statistic": "mean", "ttft_threshold_ms": 50,
+                    "tpot_statistic": "median", "tpot_threshold_ms": 100,
+                    "output_throughput_threshold": 200,
+                }]],
+            },
+        },
+        timeout=120,
+    )
+    task_id = snap["task_id"]
+    try:
+        # 1) Performance 执行页：Realtime Data 分组标题行展示该组阈值（跟随 Groups）
+        page.goto(f"{BASE_URL}/performance", wait_until="domcontentloaded")
+        _visible(page, ".perf-detail")
+        _visible(page, ".metrics-table .group-title", timeout=15000)
+        gtext = page.locator(".metrics-table .group-threshold").first.inner_text()
+        assert "TTFT-Mean ≤ 50ms" in gtext and "TPOT-Median ≤ 100ms" in gtext and "Output ≤ 200 tok/s" in gtext, gtext
+
+        # 2) Datas/Perfs Perf Datas：分组 tab 内阈值条展示该组阈值
+        page.goto(f"{BASE_URL}/datas/perfs?run_id={helpers.run_id_of(task_id)}", wait_until="domcontentloaded")
+        _visible(page, ".perfs-page")
+        bar = page.locator(".group-threshold-bar")
+        bar.first.wait_for(state="visible", timeout=10000)
+        btext = bar.first.inner_text()
+        assert "TTFT-Mean ≤ 50ms" in btext and "TPOT-Median ≤ 100ms" in btext and "Output ≤ 200 tok/s" in btext, btext
+    finally:
+        req.delete(f"{BASE_URL}/api/tasks/{task_id}", timeout=10)
+
+
+def test_legacy_task_threshold_fallback(page):
+    """旧格式任务（阈值在任务级，cases 无 per-group 阈值）兼容：
+    Performance Cases 面板与 Datas/Perfs Cases Info 回退显示任务级阈值（含统计量标识）。"""
+    import requests as req
+
+    snap = helpers.create_and_run_task(
+        req,
+        BASE_URL,
+        {
+            "mode": "threshold",
+            "tpot_threshold_ms": 80,
+            "tpot_statistic": "mean",
+            "ttft_threshold_ms": 0,
+            "output_throughput_threshold": 0,
+            "dataset": {
+                "type": "random",
+                "length_pairs": [[64, 64, "用例B", "case-b"]],
+            },
+        },
+        timeout=120,
+    )
+    task_id = snap["task_id"]
+    try:
+        page.goto(f"{BASE_URL}/performance", wait_until="domcontentloaded")
+        _visible(page, ".perf-detail")
+        _visible(page, ".case-threshold", timeout=15000)
+        ctext = page.locator(".case-threshold").first.inner_text()
+        assert "TPOT-Mean ≤ 80ms" in ctext, ctext
+        # 旧格式任务回退任务级阈值 → Realtime Data 标记 BestPerf 高亮行（行背景色恢复）
+        best_row2 = page.locator(".metrics-table .row-bestperf").first
+        best_row2.wait_for(state="visible", timeout=10000)
+        assert best_row2.locator("td").count() > 0
+
+        page.goto(f"{BASE_URL}/datas/perfs?run_id={helpers.run_id_of(task_id)}", wait_until="domcontentloaded")
+        _visible(page, ".perfs-page")
+        _visible(page, ".case-threshold", timeout=10000)
+        dtext = page.locator(".case-threshold").first.inner_text()
+        assert "TPOT-Mean ≤ 80ms" in dtext, dtext
+        # 旧格式任务回退任务级阈值 → Perf Datas 标记 BestPerf 高亮行（行背景色恢复）
+        best_row = page.locator(".metrics-table .row-bestperf").first
+        best_row.wait_for(state="visible", timeout=10000)
+        assert best_row.locator("td").count() > 0
+    finally:
+        req.delete(f"{BASE_URL}/api/tasks/{task_id}", timeout=10)
 
 
 def test_settings_sidebar(page):

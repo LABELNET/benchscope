@@ -15,6 +15,7 @@
           <span v-if="column.key === 'label'" class="group-title">
             <span class="group-label">{{ record.label }}</span>
             <span class="group-count">{{ record.groupCount }} {{ t('rows') }}</span>
+            <span v-if="groupThresholds[record.label]" class="group-threshold" :title="groupThresholds[record.label]">{{ groupThresholds[record.label] }}</span>
           </span>
           <template v-else></template>
         </template>
@@ -32,7 +33,7 @@
           {{ successRate(record) }}
         </template>
         <template v-else-if="column.key === 'output_mean'">
-          <span :class="{ 'pass-val': outputPass(record) }">{{ num(record.metrics?.output_mean) }}</span>
+          <span>{{ num(record.metrics?.output_mean ?? record.metrics?.output) }}</span>
         </template>
         <template v-else-if="column.key === 'status'">
           <span class="status-tags">
@@ -88,10 +89,10 @@ const props = defineProps({
   threshold: { type: Number, default: null },
   requestRate: { type: [String, Number], default: 'inf' },
   maxRows: { type: Number, default: 16 },
-  // Output Token Threshold：output_mean 达到该值即金色高亮（与任务阈值独立）
-  outputThreshold: { type: Number, default: null },
   // 按该字段分组显示：每个组插入一行组标题；组内数据保持传入顺序
   groupBy: { type: String, default: null },
+  // 分组标题行阈值信息：分组 label → 阈值条件文本（跟随 Groups 每组独立配置；0 表示未配置不显示）
+  groupThresholds: { type: Object, default: () => ({}) },
   // 导出 Excel：需要任务 ID（写入任务记录缓存目录）；exportable 控制下载按钮显示
   taskId: { type: String, default: '' },
   exportable: { type: Boolean, default: false },
@@ -265,16 +266,6 @@ function successRate(record) {
   return Math.round((Number(ok) / total) * 100) + '%'
 }
 
-// Output Token Threshold 达标：output_mean <= 阈值（阈值未设置或非正数时无效）
-function outputPass(record) {
-  const thr = props.outputThreshold
-  if (thr == null || Number(thr) <= 0) return false
-  const v = record.metrics?.output_mean
-  if (v === undefined || v === null) return false
-  const n = Number(v)
-  return !isNaN(n) && n <= Number(thr)
-}
-
 function rowKey(record) {
   if (record.group) return record.key
   return `${record.label || record.case || ''}-${record.concurrency}`
@@ -371,11 +362,6 @@ async function exportExcel() {
 .metrics-table .num-cell {
   font-weight: 600;
 }
-/* Output Token Threshold 达标值：金色高亮 */
-.metrics-table .pass-val {
-  color: #faad14;
-  font-weight: 600;
-}
 .metrics-table .status-tags {
   display: inline-flex;
   align-items: center;
@@ -401,6 +387,18 @@ async function exportExcel() {
   font-size: 11px;
   font-weight: 400;
   color: var(--ant-color-text-secondary, #666);
+}
+/* 组标题行阈值信息：跟随 Groups 每组独立配置；宽度不够伪隐藏（省略号 + title 完整文本） */
+.metrics-table .group-threshold {
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--ant-color-text-tertiary, #999);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+  flex-shrink: 1;
+  max-width: 300px;
 }
 .metrics-table .row-group > td {
   background-color: #e6f4ff !important;

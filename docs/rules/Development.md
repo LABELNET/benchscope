@@ -14,6 +14,7 @@
 ```
 
 - 每次 `start` 自动执行 `npm run build` → `benchscope/webui`（后端托管最新前端）。
+- Python 解释器探测：优先 `.venv/bin/python`，但该环境缺少 `fastapi`/`uvicorn`（如指向系统 python 的残缺 venv）时自动回退 `${PYTHON:-python3}`，保证 mock 与后端可启动。
 - 日志：`logs/dev/*.log`（openai / backend / build）。
 - 前端热更新：`cd web && npm run dev`（:5173，proxy `/api`、`/ws` 到 :8080）。
 - `mocks/` 单独运行：`python -m mocks.cli vllm bench serve ...` / `python -m mocks.openai_server --port 8001`。

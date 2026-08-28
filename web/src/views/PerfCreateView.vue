@@ -149,6 +149,9 @@ const conditions = ref([
     dataset: 'Random',
     requestRates: [1, 2, 4, 8, 16, 32, 40, 64, 128],
     rateMode: 'inf',
+    ttftStatistic: 'mean',
+    ttftThreshold: 0,
+    tpotStatistic: 'mean',
     tpotThreshold: 100,
     outThroughput: 0,
   },
@@ -178,8 +181,10 @@ const previewConditions = computed(() => {
     lines.push(`${t('requestRate')}: ${g?.rateMode === 'follow' ? 'Follow' : 'Inf'}`)
   } else {
     const g = conditions.value[0]
+    const statLabel = (s) => (s === 'median' ? t('median') : s === 'p99' ? t('p99') : t('mean'))
     lines.push(`${t('requestRate')}: ${g?.rateMode === 'follow' ? 'Follow' : 'Inf'}`)
-    lines.push(`${t('tpotMeanLabel')}: ≤ ${g?.tpotThreshold ?? '-'} ms`)
+    lines.push(`${t('ttftThresholdLabel')} (${statLabel(g?.ttftStatistic)}): ≤ ${g?.ttftThreshold ?? 0} ms`)
+    lines.push(`${t('tpotThresholdLabel')} (${statLabel(g?.tpotStatistic)}): ≤ ${g?.tpotThreshold ?? 0} ms`)
     lines.push(`${t('outputThroughputLabel')}: ≤ ${g?.outThroughput ?? 0} tok/s`)
   }
   return lines.join('\n')
@@ -198,6 +203,9 @@ function addCondition() {
     dataset: 'Random',
     requestRates: last ? [...last.requestRates] : [1, 2, 4, 8, 16, 32, 40, 64, 128],
     rateMode: 'inf',
+    ttftStatistic: 'mean',
+    ttftThreshold: 0,
+    tpotStatistic: 'mean',
     tpotThreshold: 100,
     outThroughput: 0,
   })
@@ -275,15 +283,23 @@ function validateStep1() {
     return false
   }
   if (mode.value === 'threshold') {
-    const tp = Number(g.tpotThreshold)
-    if (!Number.isInteger(tp) || tp <= 0) {
-      message.warning(t('thresholdRequired'))
-      return false
-    }
-    const ot = Number(g.outThroughput)
-    if (!Number.isInteger(ot) || ot < 0) {
-      message.warning(t('outThresholdRequired'))
-      return false
+    // 每组独立校验：TTFT / TPOT / Output token throughput 三者不能同时为 0
+    for (const c of conditions.value) {
+      const tt = Number(c.ttftThreshold)
+      const tp = Number(c.tpotThreshold)
+      const ot = Number(c.outThroughput)
+      if (
+        !Number.isInteger(tt) || tt < 0 ||
+        !Number.isInteger(tp) || tp < 0 ||
+        !Number.isInteger(ot) || ot < 0
+      ) {
+        message.warning(t('thresholdRequired'))
+        return false
+      }
+      if (tt === 0 && tp === 0 && ot === 0) {
+        message.warning(t('thresholdAllZeroWarning'))
+        return false
+      }
     }
   }
   return true
@@ -323,14 +339,27 @@ function buildPayload() {
     tokenizer: '',
     dataset: {
       type: 'random',
-      // [inputLen, outputLen, label, case_id]：case_id 为唯一组 id，保证相同条件（如 1024x1024）的多组不叠加
-      length_pairs: conditions.value.map((c) => [c.inputLen, c.outputLen, `${c.inputLen}x${c.outputLen}`, c.id]),
+      // [inputLen, outputLen, label, case_id, thresholds]：阈值信息在每组请求配置中，不跟随主任务；
+      // case_id 为唯一组 id，保证相同条件（如 1024x1024）的多组不叠加
+      length_pairs: conditions.value.map((c) => [
+        c.inputLen, c.outputLen, `${c.inputLen}x${c.outputLen}`, c.id,
+        {
+          ttft_statistic: mode.value === 'threshold' ? c.ttftStatistic || 'mean' : 'mean',
+          ttft_threshold_ms: mode.value === 'threshold' ? Number(c.ttftThreshold) || 0 : 0,
+          tpot_statistic: mode.value === 'threshold' ? c.tpotStatistic || 'mean' : 'mean',
+          tpot_threshold_ms: mode.value === 'threshold' ? Number(c.tpotThreshold) || 0 : 0,
+          output_throughput_threshold: mode.value === 'threshold' ? Number(c.outThroughput) || 0 : 0,
+        },
+      ]),
     },
     concurrency_list: mode.value === 'threshold' ? [1] : [...(g.requestRates || [])],
     gpu: {},
     request_rate: g.rateMode === 'follow' ? 'follow' : 'inf',
-    tpot_threshold_ms: mode.value === 'threshold' ? Number(g.tpotThreshold) : null,
-    output_throughput_threshold: mode.value === 'threshold' ? Number(g.outThroughput) : 0,
+    ttft_threshold_ms: mode.value === 'threshold' ? Number(g.ttftThreshold) || 0 : 0,
+    ttft_statistic: mode.value === 'threshold' ? g.ttftStatistic || 'mean' : 'mean',
+    tpot_threshold_ms: mode.value === 'threshold' ? Number(g.tpotThreshold) || 0 : 0,
+    tpot_statistic: mode.value === 'threshold' ? g.tpotStatistic || 'mean' : 'mean',
+    output_throughput_threshold: mode.value === 'threshold' ? Number(g.outThroughput) || 0 : 0,
     mode: mode.value,
     params_yaml: {
       vllm: buildContent('vllm'),

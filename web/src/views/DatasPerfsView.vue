@@ -131,21 +131,12 @@
           <a-card size="small" class="half-card" :style="sideCardStyle">
             <template #title>{{ t('casesInfo') }}</template>
             <div class="info-body">
-              <template v-if="current.run?.mode === 'threshold'">
-                <div class="info-row">
-                  <span class="info-label">{{ t('tpotCondLabel') }} ≤</span>
-                  <span class="info-value">{{ current.run?.tpot_threshold_ms || '-' }} ms</span>
-                </div>
-                <div class="info-row" v-if="current.run?.output_throughput_threshold">
-                  <span class="info-label">{{ t('outputCondLabel') }} ≤</span>
-                  <span class="info-value">{{ current.run.output_throughput_threshold }} tok/s</span>
-                </div>
-              </template>
               <div class="case-groups">
                 <div v-for="cg in caseGroupRows" :key="cg.key" class="case-group-item">
                   <span class="case-label" :title="cg.label">{{ cg.label }}</span>
                   <span class="case-gid" v-if="cg.case_id !== undefined && cg.case_id !== null">g{{ cg.case_id }}</span>
                   <span class="case-meta" v-if="cg.inputLen">{{ cg.inputLen }}/{{ cg.outputLen }}</span>
+                  <span v-if="caseThresholdText(cg)" class="case-threshold" :title="caseThresholdText(cg)">{{ caseThresholdText(cg) }}</span>
                   <span class="case-req" :title="cg.reqsText">{{ cg.reqsText }}</span>
                 </div>
                 <div v-if="!caseGroupRows.length" class="empty-hint">{{ t('noData') }}</div>
@@ -224,7 +215,7 @@
             :rows="annotatedRows"
             :threshold="current.run?.tpot_threshold_ms || null"
             :request-rate="current.run?.request_rate || 'inf'"
-            :output-threshold="current.run?.output_throughput_threshold || null"
+            :group-thresholds="groupThresholdTexts"
           />
         </a-card>
 
@@ -476,13 +467,17 @@ const caseGroupRows = computed(() => {
   const rows = current.value?.run?.rows || []
   const cases = current.value?.run?.cases || []
   const map = new Map()
-  const seed = (label, caseId, inputLen, outputLen) => {
+  const seed = (label, caseId, inputLen, outputLen, c) => {
     const key = caseId !== undefined && caseId !== null ? `${label}#g${caseId}` : label || 'unknown'
     if (!map.has(key)) {
-      map.set(key, { key, label: label || 'unknown', case_id: caseId, inputLen, outputLen, concs: [], reqsText: '' })
+      map.set(key, { key, label: label || 'unknown', case_id: caseId, inputLen, outputLen, concs: [], reqsText: '',
+        // 阈值信息跟随 Groups 数据（每组独立配置），供 caseThresholdText 展示
+        ttft_threshold_ms: c?.ttft_threshold_ms, ttft_statistic: c?.ttft_statistic,
+        tpot_threshold_ms: c?.tpot_threshold_ms, tpot_statistic: c?.tpot_statistic,
+        output_throughput_threshold: c?.output_throughput_threshold })
     }
   }
-  for (const c of cases) seed(c.label, c.case_id, c.input_len, c.output_len)
+  for (const c of cases) seed(c.label, c.case_id, c.input_len, c.output_len, c)
   // 兼容无 cases 元数据的历史任务：直接用 rows 生成分组
   if (!cases.length) {
     for (const r of rows) seed(r.label || r.case, r.case_id, r.input_len, r.output_len)
@@ -542,6 +537,35 @@ onBeforeUnmount(() => {
   if (perfInfoObserver) perfInfoObserver.disconnect()
 })
 
+// 阈值模式：单 case 的阈值条件文本（并入每个 case 分组标记右侧；0 表示未配置不显示）。
+// 阈值信息跟随 Groups 数据（每组独立配置），不跟随主任务；
+// 标识使用 TTFT-Mean/Median/P99、TPOT-Mean/Median/P99（statistic 由每组决定）
+const statSuffix = (stat) => (stat === 'median' ? 'Median' : stat === 'p99' ? 'P99' : 'Mean')
+function caseThresholdText(cg) {
+  const run = current.value?.run
+  if (!run || run.mode !== 'threshold') return ''
+  // 兼容旧格式任务：cases 无 per-group 阈值（全 0）时回退任务级阈值字段（任务级同名字段保留，取第一组口径）
+  const legacy = (run.cases || []).every(
+    (x) => !Number(x?.ttft_threshold_ms) && !Number(x?.tpot_threshold_ms) && !Number(x?.output_throughput_threshold),
+  )
+  const parts = []
+  const tt = Number(cg?.ttft_threshold_ms) || (legacy ? Number(run.ttft_threshold_ms) || 0 : 0)
+  if (tt > 0) parts.push(`${t('ttftThresholdLabel')}-${statSuffix(cg?.ttft_statistic || (legacy ? run.ttft_statistic : '') || 'mean')} ≤ ${tt}ms`)
+  const tp = Number(cg?.tpot_threshold_ms) || (legacy ? Number(run.tpot_threshold_ms) || 0 : 0)
+  if (tp > 0) parts.push(`${t('condTpotLabel')}-${statSuffix(cg?.tpot_statistic || (legacy ? run.tpot_statistic : '') || 'mean')} ≤ ${tp}ms`)
+  const ot = Number(cg?.output_throughput_threshold) || (legacy ? Number(run.output_throughput_threshold) || 0 : 0)
+  if (ot > 0) parts.push(`${t('condOutputLabel')} ≤ ${ot} tok/s`)
+  return parts.join(' · ')
+}
+// Perf Datas 分组（tab）：分组 key → 该组阈值条件文本（跟随 Groups，与 Cases Info 面板同一口径）
+const groupThresholdTexts = computed(() => {
+  const map = {}
+  for (const cg of caseGroupRows.value) {
+    map[cg.key] = caseThresholdText(cg)
+  }
+  return map
+})
+
 // ---------- 行3：annotatedRows（Datas 不标记 Best——Best 仅在 Performance 界面；阈值模式标记 BestPerf） ----------
 function rowCaseKey(r) {
   return r.case_id !== undefined && r.case_id !== null ? `${r.label}#g${r.case_id}` : (r.label || r.case || '-')
@@ -559,16 +583,30 @@ const annotatedRows = computed(() => {
     const n = Number(v)
     return !isNaN(n) && n <= thr
   }
-  // 阈值模式：任务阈值标记 BestPerf（每组唯一，取满足阈值的最大并发行）
-  const markBestPerf = (groupRows) => {
-    const tpotThr = Number(current.value?.run?.tpot_threshold_ms) || 0
-    const outThr = Number(current.value?.run?.output_throughput_threshold) || 0
-    if (!(tpotThr > 0) && !(outThr > 0)) return
+  // 阈值模式：按每组 case 的阈值全条件判断（TTFT/TPOT 的 statistic + Output），
+  // 满足所有配置条件的行里取并发最大的一行标记 BestPerf（阈值跟随 Groups 数据，不跟随主任务）；
+  // 旧格式任务（cases 无每组阈值）回退任务级阈值，与分组阈值文本（caseThresholdText）一致
+  const markBestPerf = (groupRows, caseObj) => {
+    const run = current.value?.run || {}
+    const legacy = (run.cases || []).every(
+      (x) => !Number(x?.ttft_threshold_ms) && !Number(x?.tpot_threshold_ms) && !Number(x?.output_throughput_threshold),
+    )
+    const cTtft = Number(caseObj?.ttft_threshold_ms) || 0
+    const cTpot = Number(caseObj?.tpot_threshold_ms) || 0
+    const cOut = Number(caseObj?.output_throughput_threshold) || 0
+    // caseObj 阈值为有效正值时以每组为准；否则（0/未配置）旧格式任务回退任务级阈值
+    const ttftThr = cTtft > 0 ? cTtft : (legacy ? Number(run.ttft_threshold_ms) || 0 : 0)
+    const tpotThr = cTpot > 0 ? cTpot : (legacy ? Number(run.tpot_threshold_ms) || 0 : 0)
+    const outThr = cOut > 0 ? cOut : (legacy ? Number(run.output_throughput_threshold) || 0 : 0)
+    const ttftStat = cTtft > 0 ? caseObj?.ttft_statistic || 'mean' : (legacy ? run.ttft_statistic || 'mean' : 'mean')
+    const tpotStat = cTpot > 0 ? caseObj?.tpot_statistic || 'mean' : (legacy ? run.tpot_statistic || 'mean' : 'mean')
+    if (!(ttftThr > 0) && !(tpotThr > 0) && !(outThr > 0)) return
     let bestRow = null
     let bestConc = -Infinity
     for (const r of groupRows) {
-      if (!condPass(r.metrics?.tpot_mean, tpotThr)) continue
-      if (!condPass(r.metrics?.output_mean, outThr)) continue
+      if (!condPass(r.metrics?.[`ttft_${ttftStat}`], ttftThr)) continue
+      if (!condPass(r.metrics?.[`tpot_${tpotStat}`], tpotThr)) continue
+      if (!condPass(r.metrics?.output_mean ?? r.metrics?.output, outThr)) continue
       const c = Number(r.concurrency)
       if (c > bestConc) {
         bestConc = c
@@ -585,11 +623,17 @@ const annotatedRows = computed(() => {
     if (!groupMap.has(key)) groupMap.set(key, [])
     groupMap.get(key).push(r)
   }
+  // 由 run.cases 构建 caseKey → case（含每组阈值）
+  const caseByKey = new Map()
+  for (const c of current.value?.run?.cases || []) {
+    const key = c.case_id !== undefined && c.case_id !== null ? `${c.label}#g${c.case_id}` : c.label || '-'
+    caseByKey.set(key, c)
+  }
   const grouped = []
-  for (const groupRows of groupMap.values()) {
+  for (const [key, groupRows] of groupMap) {
     groupRows.sort((a, b) => Number(a.concurrency) - Number(b.concurrency))
     if (current.value?.run?.mode === 'threshold') {
-      markBestPerf(groupRows)
+      markBestPerf(groupRows, caseByKey.get(key) || {})
     }
     grouped.push(...groupRows)
   }
@@ -1108,6 +1152,17 @@ watch(
   color: var(--ant-color-text-secondary, #666);
   font-size: 11px;
   flex-shrink: 0;
+}
+/* 阈值条件文本：并入分组标记右侧，宽度不够伪隐藏（省略号） */
+.case-threshold {
+  color: var(--ant-color-text-tertiary, #999);
+  font-size: 10px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+  flex-shrink: 1;
+  max-width: 45%;
 }
 .case-req {
   margin-left: auto;

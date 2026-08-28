@@ -291,12 +291,14 @@ export default {
   cancelImport: '取消',
 
   // Performance task detail i18n
-  tpotThresholdLabel: 'TPOT Threshold',
+  tpotThresholdLabel: 'TPOT',
   outThresholdLabel: 'Output Throughput Threshold',
   outputTokenThresholdLabel: 'Output Token Threshold',
   bestPerf: 'BestPerf',
   tpotCondLabel: 'TTOT mean(ms)',
   outputCondLabel: 'Output token throughput (tok/s)',
+  condTpotLabel: 'TPOT',
+  condOutputLabel: 'Output',
 
   // Performance 创建向导（并发模式 / 阈值模式）
   concurrencyMode: '并发模式',
@@ -344,9 +346,10 @@ export default {
   commandPreviewTitle: '预览命令',
   commandHint: '阈值模式从 1 并发开始，按 2 的次方递增，超阈值后二分查找最佳并发',
   startTestConfirm: '即将创建并启动性能测试任务，确认继续？',
-  thresholdRequired: '阈值参数必须为正整数',
+  thresholdRequired: '阈值参数必须为大于等于 0 的整数',
   outThresholdRequired: 'Output 吞吐阈值必须为大于等于 0 的整数',
-  tpotMeanLabel: 'TPOT Mean',
+  thresholdAllZeroWarning: 'TTFT / TPOT / Output token throughput 阈值不能同时为 0，请至少设置一项',
+  ttftThresholdLabel: 'TTFT',
   outputThroughputLabel: 'Output token throughput (tok/s)',
   featMultiFramework: '多框架对比',
   featMultiFrameworkDesc: '支持 vLLM 与 SGLang 服务吞吐对比',

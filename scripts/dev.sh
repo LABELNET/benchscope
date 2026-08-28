@@ -24,8 +24,11 @@ BACKEND_PORT="${PORT:-8080}"
 LOG_DIR="$ROOT/logs/dev"
 mkdir -p "$LOG_DIR"
 
+# 优先 .venv，但 .venv 缺 fastapi/uvicorn（如指向系统 python 的残缺 venv）时回退 ${PYTHON:-python3}
 PY="$ROOT/.venv/bin/python"
-[ -x "$PY" ] || PY="${PYTHON:-python3}"
+if ! { [ -x "$PY" ] && "$PY" -c "import fastapi, uvicorn" >/dev/null 2>&1; }; then
+  PY="${PYTHON:-python3}"
+fi
 
 # 环境可能没有 lsof/ss/fuser，统一用 Python 探测端口（TCP 连接成功 = 已被监听）。
 # 注意不能用 bind 探测：macOS(BSD) 下 SO_REUSEADDR 允许 wildcard 覆盖特定地址监听，会误判。

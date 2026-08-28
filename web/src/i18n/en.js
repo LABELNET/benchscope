@@ -283,12 +283,14 @@ export default {
   cancelImport: 'Cancel',
 
   // Performance task detail i18n
-  tpotThresholdLabel: 'TPOT Threshold',
+  tpotThresholdLabel: 'TPOT',
   outThresholdLabel: 'Output Throughput Threshold',
   outputTokenThresholdLabel: 'Output Token Threshold',
   bestPerf: 'BestPerf',
   tpotCondLabel: 'TTOT mean(ms)',
   outputCondLabel: 'Output token throughput (tok/s)',
+  condTpotLabel: 'TPOT',
+  condOutputLabel: 'Output',
 
   // Performance create wizard (Concurrency / Threshold mode)
   concurrencyMode: 'Concurrency Mode',
@@ -336,9 +338,10 @@ export default {
   commandPreviewTitle: 'Preview command',
   commandHint: 'Threshold mode starts at 1 concurrency, doubles until threshold exceeded, then binary search for the best concurrency',
   startTestConfirm: 'Create and launch the performance test now?',
-  thresholdRequired: 'Threshold values must be positive integers',
+  thresholdRequired: 'Threshold values must be integers >= 0',
   outThresholdRequired: 'Output throughput threshold must be an integer >= 0',
-  tpotMeanLabel: 'TPOT Mean',
+  thresholdAllZeroWarning: 'TTFT / TPOT / Output token throughput thresholds cannot all be 0. Set at least one.',
+  ttftThresholdLabel: 'TTFT',
   outputThroughputLabel: 'Output token throughput (tok/s)',
   featMultiFramework: 'Multi-Framework Compare',
   featMultiFrameworkDesc: 'Compare vLLM & SGLang throughput',

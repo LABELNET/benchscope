@@ -123,25 +123,15 @@
             <span class="cases-mode">{{ theTask.mode === 'threshold' ? t('thresholdMode') : t('concurrencyMode') }}</span>
           </template>
           <div class="cases-body">
-            <!-- 阈值模式：显示任务阈值条件（TTOT mean(ms) ≤ x ms；Output token throughput ≤ y tok/s；仅文字，不可编辑，并发模式不显示）——固定不滚动 -->
-            <div v-if="theTask.mode === 'threshold'" class="threshold-conds">
-              <div class="info-row">
-                <span class="info-label">{{ t('tpotCondLabel') }} ≤</span>
-                <span class="info-value">{{ theTask.tpot_threshold_ms || '-' }}ms</span>
-              </div>
-              <div class="info-row" v-if="theTask.output_throughput_threshold">
-                <span class="info-label">{{ t('outputCondLabel') }} ≤</span>
-                <span class="info-value">{{ theTask.output_throughput_threshold }} tok/s</span>
-              </div>
-            </div>
             <!-- 分组列表：独立滚动区域 -->
             <div class="case-list" ref="caseListRef">
             <div v-for="(c, i) in theTask.cases || []" :key="c.case_id || c.label || i" class="case-row">
-              <!-- 第一行：分组信息 -->
+              <!-- 第一行：分组信息（阈值模式：阈值条件并入分组标记右侧，宽度不够伪隐藏） -->
               <div class="case-head">
                 <span class="case-label">{{ c.label }}</span>
                 <a-tag v-if="c.case_id" size="small" class="case-gid">g{{ c.case_id }}</a-tag>
                 <span class="case-meta" v-if="c.input_len">{{ c.input_len }}/{{ c.output_len }}</span>
+                <span v-if="caseThresholdText(c)" class="case-threshold" :title="caseThresholdText(c)">{{ caseThresholdText(c) }}</span>
               </div>
               <!-- 第二行：请求数（单独一行，一行不够自动换行多行） -->
               <span class="case-tags">
@@ -237,7 +227,7 @@
           :rows="annotatedRows"
           :threshold="theTask.tpot_threshold_ms"
           :request-rate="theTask.request_rate || 'inf'"
-          :output-threshold="effectiveOutputThreshold"
+          :group-thresholds="groupThresholdTexts"
           group-by="caseKey"
           :task-id="taskId"
           exportable
@@ -350,6 +340,27 @@ onBeforeUnmount(() => {
   if (perfRowObserver) perfRowObserver.disconnect()
 })
 
+// 阈值模式：单 case 的阈值条件文本（并入每个 case 分组标记右侧；0 表示未配置不显示）。
+// 阈值信息跟随 Groups 数据（每组独立配置），不跟随主任务；
+// 标识使用 TTFT-Mean/Median/P99、TPOT-Mean/Median/P99（statistic 由每组决定）
+const statSuffix = (stat) => (stat === 'median' ? 'Median' : stat === 'p99' ? 'P99' : 'Mean')
+function caseThresholdText(c) {
+  const tk = theTask.value
+  if (!tk || tk.mode !== 'threshold') return ''
+  // 兼容旧格式任务：cases 无 per-group 阈值（全 0）时回退任务级阈值字段（任务级同名字段保留，取第一组口径）
+  const legacy = (tk.cases || []).every(
+    (x) => !Number(x?.ttft_threshold_ms) && !Number(x?.tpot_threshold_ms) && !Number(x?.output_throughput_threshold),
+  )
+  const parts = []
+  const tt = Number(c?.ttft_threshold_ms) || (legacy ? Number(tk.ttft_threshold_ms) || 0 : 0)
+  if (tt > 0) parts.push(`${t('ttftThresholdLabel')}-${statSuffix(c?.ttft_statistic || (legacy ? tk.ttft_statistic : '') || 'mean')} ≤ ${tt}ms`)
+  const tp = Number(c?.tpot_threshold_ms) || (legacy ? Number(tk.tpot_threshold_ms) || 0 : 0)
+  if (tp > 0) parts.push(`${t('condTpotLabel')}-${statSuffix(c?.tpot_statistic || (legacy ? tk.tpot_statistic : '') || 'mean')} ≤ ${tp}ms`)
+  const ot = Number(c?.output_throughput_threshold) || (legacy ? Number(tk.output_throughput_threshold) || 0 : 0)
+  if (ot > 0) parts.push(`${t('condOutputLabel')} ≤ ${ot} tok/s`)
+  return parts.join(' · ')
+}
+
 // Groups 列表：任务运行中自动向下滚动（跟随最新执行位置）
 const caseListRef = ref(null)
 watch(
@@ -438,14 +449,31 @@ const annotatedRows = computed(() => {
     return !isNaN(n) && n <= thr
   }
 
-  // 在 groupRows 中，满足 tpotThr/outThr 条件的行里取并发最大的一行标记；两阈值全为 0 时不处理
-  const markBestRow = (groupRows, tpotThr, outThr, flag) => {
-    if (!(tpotThr > 0) && !(outThr > 0)) return
+  // 在 groupRows 中，按 caseObj 的阈值条件（TTFT/TPOT 的 statistic + Output）全条件判断，
+  // 满足所有配置条件的行里取并发最大的一行标记；全部阈值为 0 时不处理。
+  // 阈值信息跟随 Groups 数据（每组独立配置），不跟随主任务；
+  // 旧格式任务（cases 无每组阈值）回退任务级阈值，与分组阈值文本（caseThresholdText）一致
+  const markBestRow = (groupRows, caseObj, flag) => {
+    const tk = theTask.value || {}
+    const legacy = (tk.cases || []).every(
+      (x) => !Number(x?.ttft_threshold_ms) && !Number(x?.tpot_threshold_ms) && !Number(x?.output_throughput_threshold),
+    )
+    const cTtft = Number(caseObj?.ttft_threshold_ms) || 0
+    const cTpot = Number(caseObj?.tpot_threshold_ms) || 0
+    const cOut = Number(caseObj?.output_throughput_threshold) || 0
+    // caseObj 阈值为有效正值时以每组为准；否则（0/未配置）旧格式任务回退任务级阈值
+    const ttftThr = cTtft > 0 ? cTtft : (legacy ? Number(tk.ttft_threshold_ms) || 0 : 0)
+    const tpotThr = cTpot > 0 ? cTpot : (legacy ? Number(tk.tpot_threshold_ms) || 0 : 0)
+    const outThr = cOut > 0 ? cOut : (legacy ? Number(tk.output_throughput_threshold) || 0 : 0)
+    const ttftStat = cTtft > 0 ? caseObj?.ttft_statistic || 'mean' : (legacy ? tk.ttft_statistic || 'mean' : 'mean')
+    const tpotStat = cTpot > 0 ? caseObj?.tpot_statistic || 'mean' : (legacy ? tk.tpot_statistic || 'mean' : 'mean')
+    if (!(ttftThr > 0) && !(tpotThr > 0) && !(outThr > 0)) return
     let bestRow = null
     let bestConc = -Infinity
     for (const r of groupRows) {
-      if (!condPass(r.metrics?.tpot_mean, tpotThr)) continue
-      if (!condPass(r.metrics?.output_mean, outThr)) continue
+      if (!condPass(r.metrics?.[`ttft_${ttftStat}`], ttftThr)) continue
+      if (!condPass(r.metrics?.[`tpot_${tpotStat}`], tpotThr)) continue
+      if (!condPass(r.metrics?.output_mean ?? r.metrics?.output, outThr)) continue
       const c = Number(r.concurrency)
       if (c > bestConc) {
         bestConc = c
@@ -463,20 +491,31 @@ const annotatedRows = computed(() => {
     if (!groupMap.has(key)) groupMap.set(key, [])
     groupMap.get(key).push(r)
   }
+  // 由任务 cases 构建 caseKey → case（含每组阈值）
+  const caseByKey = new Map()
+  for (const c of theTask.value?.cases || []) {
+    caseByKey.set(caseKeyOf(c), c)
+  }
   const grouped = []
-  for (const groupRows of groupMap.values()) {
+  for (const [key, groupRows] of groupMap) {
     groupRows.sort((a, b) => Number(a.concurrency) - Number(b.concurrency))
-    // 任务阈值 → BestPerf（仅阈值模式，同样策略）
+    const caseObj = caseByKey.get(key) || {}
+    // 阈值模式：按每组自己的阈值全条件判断 → BestPerf
     if (theTask.value?.mode === 'threshold') {
-      markBestRow(
-        groupRows,
-        Number(theTask.value?.tpot_threshold_ms) || 0,
-        Number(theTask.value?.output_throughput_threshold) || 0,
-        'bestPerf'
-      )
+      markBestRow(groupRows, caseObj, 'bestPerf')
     }
-    // 本地面板阈值 → Best
-    markBestRow(groupRows, effectiveTpotThreshold.value, effectiveOutputThreshold.value, 'best')
+    // 本地面板阈值 → Best（沿用 tpot_mean + output，output 兼容后端原始键 output / 转换键 output_mean）
+    markBestRow(
+      groupRows,
+      {
+        ttft_statistic: 'mean',
+        ttft_threshold_ms: 0,
+        tpot_statistic: 'mean',
+        tpot_threshold_ms: effectiveTpotThreshold.value,
+        output_throughput_threshold: effectiveOutputThreshold.value,
+      },
+      'best'
+    )
     grouped.push(...groupRows)
   }
   return grouped
@@ -519,6 +558,14 @@ function caseKeyOf(caseObj) {
     ? `${caseObj.label}#g${caseObj.case_id}`
     : (caseObj?.label || '-')
 }
+// Realtime Data 分组标题行：caseKey → 该组阈值条件文本（跟随 Groups 每组独立配置，与 Cases 面板同一口径）
+const groupThresholdTexts = computed(() => {
+  const map = {}
+  for (const c of theTask.value?.cases || []) {
+    map[caseKeyOf(c)] = caseThresholdText(c)
+  }
+  return map
+})
 function rowCaseKey(r) {
   return r.case_id !== undefined && r.case_id !== null ? `${r.label}#g${r.case_id}` : (r.label || r.case || '-')
 }
@@ -844,15 +891,19 @@ onMounted(async () => {
   font-size: 12px;
   font-weight: 600;
 }
-.threshold-conds {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  padding: 4px 0 8px;
-  margin-bottom: 4px;
-  border-bottom: 1px dashed var(--ant-color-border, #f0f0f0);
+/* 阈值条件文本：并入分组标记右侧，宽度不够伪隐藏（省略号） */
+.case-threshold {
+  margin-left: auto;
+  color: var(--ant-color-text-tertiary, #999);
+  font-size: 10px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+  flex-shrink: 1;
+  max-width: 55%;
 }
-/* Cases 面板：阈值条件固定不滚动，仅分组列表（case-list）内部滚动 */
+/* Cases 面板：仅分组列表（case-list）内部滚动 */
 .cases-panel :deep(.ant-card-body) {
   overflow: hidden;
 }

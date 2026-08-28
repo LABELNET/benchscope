@@ -69,10 +69,20 @@
 
       <template v-if="mode === 'threshold'">
         <div class="cond-row">
-          <span class="cond-label">{{ t('tpotMeanLabel') }}</span>
+          <span class="cond-label">{{ t('ttftThresholdLabel') }}</span>
           <span class="cond-field threshold-field">
+            <a-select v-model:value="g.ttftStatistic" size="small" style="width: 96px" :options="statOptions" />
             <span class="threshold-sign">≤</span>
-            <a-input-number v-model:value="g.tpotThreshold" :min="1" :precision="0" :parser="intParser" style="width: 120px" />
+            <a-input-number v-model:value="g.ttftThreshold" :min="0" :precision="0" :parser="intParser" style="width: 110px" />
+            <span class="threshold-unit">ms</span>
+          </span>
+        </div>
+        <div class="cond-row">
+          <span class="cond-label">{{ t('tpotThresholdLabel') }}</span>
+          <span class="cond-field threshold-field">
+            <a-select v-model:value="g.tpotStatistic" size="small" style="width: 96px" :options="statOptions" />
+            <span class="threshold-sign">≤</span>
+            <a-input-number v-model:value="g.tpotThreshold" :min="0" :precision="0" :parser="intParser" style="width: 110px" />
             <span class="threshold-unit">ms</span>
           </span>
         </div>
@@ -80,7 +90,7 @@
           <span class="cond-label">{{ t('outputThroughputLabel') }}</span>
           <span class="cond-field threshold-field">
             <span class="threshold-sign">≤</span>
-            <a-input-number v-model:value="g.outThroughput" :min="0" :precision="0" :parser="intParser" style="width: 120px" />
+            <a-input-number v-model:value="g.outThroughput" :min="0" :precision="0" :parser="intParser" style="width: 110px" />
             <span class="threshold-unit">tok/s</span>
           </span>
         </div>
@@ -105,6 +115,11 @@ const emit = defineEmits(['add', 'remove', 'update'])
 
 const simpleImage = Empty.PRESENTED_IMAGE_SIMPLE
 const datasetOptions = [{ value: 'Random', label: 'Random' }]
+const statOptions = [
+  { value: 'mean', label: t('mean') },
+  { value: 'median', label: t('median') },
+  { value: 'p99', label: t('p99') },
+]
 
 function setLen(idx, field, raw) {
   const num = parseInt(String(raw).replace(/\D/g, ''), 10)

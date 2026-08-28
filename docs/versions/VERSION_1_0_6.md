@@ -350,6 +350,124 @@
 - [x] 文档 — Software.md 依赖清单补齐 pyyaml + modelscope 可选依赖 + §6 维护约定
 - [x] 文档 — README 以仓库最新版为准（不再按历史版本修改）
 
+### 迭代 19（2026-08-28 11:35:00）：Performance 阈值模式创建 — TTFT/TPOT 统计量选择阈值 + 三者非全零校验
+
+**功能概述**：
+- **创建页阈值条件升级**（`ConditionPanel.vue` / `PerfCreateView.vue`）：阈值模式每组显示三行阈值配置——
+  - `TTFT`：统计量选择（**Mean / Median / P99**，默认 Mean）+ 阈值 ≤ X ms（**默认 0**）
+  - `TPOT`：统计量选择（**Mean / Median / P99**，默认 Mean）+ 阈值 ≤ X ms（**默认 100**）
+  - `Output token throughput (tok/s)`：阈值 ≤ Y tok/s（**默认 0**，保留）
+- **校验（每组独立）**：TTFT / TPOT / Output 三个阈值值均须为 ≥ 0 整数；**三者不能同时为 0**，否则 `message.warning` 提醒「TTFT / TPOT / Output token throughput 阈值不能同时为 0，请至少设置一项」且**不能进入下一步**；多组条件逐组校验
+- **数据链路**：`buildPayload` 新增 `ttft_threshold_ms` / `ttft_statistic` / `tpot_statistic`；后端 `CreateTaskRequest` 新增同名字段（默认 0 / mean），`Task.snapshot()` 透传持久化（run.json 保留）
+- **后端执行判定**（`task_manager._execute_case_threshold`）：TTFT / TPOT 按所选统计量取值（`ttft_{mean|median|p99}` / `tpot_{mean|median|p99}`）与阈值比较，任一非 0 阈值超标即违规；Output 判定不变（0 不参与）
+- **i18n**：新增 `p99`、`ttftThresholdLabel`、`tpotThresholdLabel`、`thresholdAllZeroWarning`；`thresholdRequired` 语义改为「非负整数」
+- **预览**（Step 3）：阈值条件按统计量展示，如 `TTFT (Median): ≤ 50 ms`
+
+**验证**：`./tests/run_tests.sh` 全量通过——API **46/46**（新增 `test_create_task_threshold_ttft_fields`：阈值模式创建字段透传 + 持久化）、WebUI **15/15**（新增 `test_perf_create_threshold_mode`：三行阈值/默认值 Mean-0、Mean-100、0 + 三者全 0 不能下一步并提醒）。
+
+**TODO 状态**：
+- [x] 前端 — 阈值模式三行阈值（TTFT/TPOT 统计量 select + Output）+ 默认值（0/100/0）
+- [x] 前端 — 三者不能同时为 0 的每组校验（不能下一步 + 提醒）
+- [x] 后端 — CreateTaskRequest/snapshot 支持 ttft_threshold_ms/ttft_statistic/tpot_statistic
+- [x] 后端 — 阈值执行判定按所选统计量取值 + TTFT 判定
+- [x] 测试 — API 字段透传持久化 + WebUI 阈值模式校验（46/46 + 15/15）
+- [x] 文档 — Performance-Create.md / Performance.md 同步阈值三行与校验规则
+
+### 迭代 20（2026-08-28 13:45:10）：阈值信息并入 case 分组标记右侧（不再单独显示）
+
+**功能概述**：
+- **Performance 任务执行页 Cases 面板**：删除独立 `.threshold-conds` 区块；阈值条件文本**并入每个 case 分组标记（case-head）右侧**（新增 `.case-threshold`，位于 label / g{case_id} / 输入输出长度之后），完整显示三项非 0 阈值（如 `TTFT ≤ 50ms · TPOT ≤ 100ms · Output ≤ 200 tok/s`）
+- **Datas/Perfs Cases Info 面板**：删除独立阈值 info-row；同样**并入 case-group-item 分组标记右侧**（case-meta 与 case-req 之间）
+- **伪隐藏**：宽度不够时伪隐藏（`overflow:hidden` + `text-overflow:ellipsis` + `white-space:nowrap` + `max-width` + `flex-shrink`，hover `title` 显示完整）；阈值为 0（未配置）的项不显示（TTFT 默认 0、TPOT 默认 100、Output 默认 0）
+- **i18n**：新增 `condTpotLabel`（TPOT）/ `condOutputLabel`（Output）紧凑标签；TTFT 复用 `ttftThresholdLabel`
+- **数据来源**：`thresholdCondText` 计算属性（Performance 读 `theTask`、Datas 读 `current.run` 的 `mode/ttft_threshold_ms/tpot_threshold_ms/output_throughput_threshold`）
+
+**验证**：`./tests/run_tests.sh` 全量通过——API **46/46**、WebUI **16/16**（新增 `test_threshold_cond_in_case_group`：创建阈值任务 → Performance 页 `.case-threshold` 文本含三项阈值且无 `.threshold-conds` → Datas/Perfs Cases Info 卡内 `.case-threshold` 存在且无独立 info-row）。
+
+**TODO 状态**：
+- [x] 前端 — Performance 执行页：阈值并入 case-head 右侧 + 伪隐藏（删 .threshold-conds）
+- [x] 前端 — Datas/Perfs Cases Info：阈值并入 case-group-item 右侧（删独立 info-row）
+- [x] 测试 — test_threshold_cond_in_case_group（Performance + Datas/Perfs 双页验证）
+- [x] 文档 — Performance.md / Datas.md 同步（阈值并入分组标记右侧 + 伪隐藏规则）
+
+### 迭代 21（2026-08-28 14:23:28）：阈值信息移到每组请求配置（TTFT/TPOT-Mean/Median/P99 标识 + BestPerf 跟随 Groups）
+
+**功能概述**：
+- **创建页（PerfCreateView + ConditionPanel）**：阈值信息**移到每组请求配置，不跟随主任务**——`buildPayload` 的 `length_pairs` 每项新增第 5 元素为该组阈值 dict `{ ttft_statistic, ttft_threshold_ms, tpot_statistic, tpot_threshold_ms, output_throughput_threshold }`（阈值模式取每组各自的统计量与阈值，并发模式全 0 / mean）；任务级同名字段保留（取第一组，向后兼容旧逻辑/旧数据回退）；**TPOT 阈值标签改为 TPOT**（i18n `tpotThresholdLabel`：`TPOT Threshold` → `TPOT`）
+- **后端（task_manager.py）**：`build_cases` 从 `length_pairs` 第 5 元素解析每组阈值写入每个 case（`ttft_threshold_ms/ttft_statistic/tpot_threshold_ms/tpot_statistic/output_throughput_threshold`，新增 `_num` 安全转换）；`_execute_case_threshold` **从 case 读取每组阈值与统计量**（旧数据回退任务级 payload），`violated()` 用 `ttft_{stat}` / `tpot_{stat}` / `output` 键判定；`_annotate_best`（xlsx）改按每组 case 的 `tpot_threshold_ms + tpot_statistic` 标注
+- **Performance 执行页（PerformanceView.vue）**：修复文件头部误粘贴文本（SFC 编译）；Cases 面板阈值文本改按**每组 case** 生成（`caseThresholdText(case)`，标识含统计量：`TTFT-Mean/Median/P99`、`TPOT-Mean/Median/P99`、`Output`，如 `TTFT-Mean ≤ 50ms · TPOT-Median ≤ 100ms · Output ≤ 200 tok/s`）；Realtime Data `markBestRow` **按每组 case 的阈值全条件判断**（`ttft_{stat}` / `tpot_{stat}` / `output_mean`，值 > 0 才参与、所有配置条件均满足才候选），每组唯一标记 `BestPerf`（`caseByKey` 由 `theTask.cases` 构建，跟随 Groups 不跟随主任务）；本地面板 Best 逻辑不变
+- **Datas/Perfs（DatasPerfsView.vue）**：Cases Info 阈值文本改按每组（`caseThresholdText(cg)`）；`caseGroupRows` seed 并入每组阈值字段；`markBestPerf` 改按每组 case 全条件判断（跟随 Groups 不跟随主任务）
+- **数据链路**：创建页 `length_pairs` 第 5 元素 → `build_cases` 写入 case → 任务快照 `cases` 透传（前端 `theTask.cases` / `run.cases` 读取）
+- **文档**：Performance.md / Performance-Create.md / Datas.md 同步（阈值跟随每组、统计量标识、BestPerf 每组全条件）
+
+**验证**：前端 lint 通过（PerformanceView / DatasPerfsView / PerfCreateView / i18n zh-en / task_manager.py 0 错误）；i18n `tpotThresholdLabel` zh/en 同步为 `TPOT`。
+
+**TODO 状态**：
+- [x] 前端 — 创建页每组 length_pairs 携带阈值 dict + TPOT 标签改 TPOT
+- [x] 后端 — build_cases 解析每组阈值 + 执行判定/annotate 按每组（旧数据回退任务级）
+- [x] 前端 — Performance Cases 阈值按每组（统计量标识）+ Realtime Data BestPerf 每组全条件（跟随 Groups）
+- [x] 前端 — Datas/Perfs Cases 阈值按每组 + BestPerf 每组全条件
+- [x] 修复 — PerformanceView 文件头部误粘贴文本清理
+- [x] 文档 — Performance.md / Performance-Create.md / Datas.md 同步 + 本版本记录
+
+### 迭代 22（2026-08-28 14:35:07）：后端阈值随 groups 存储与判断收口（TTFT/TPOT 标识 + Output 键修复 + Realtime Data 全条件 BestPerf）
+
+**功能概述**：
+- **后端（task_manager.py）**：`_execute_case_threshold.violated()` 修复 Output 键——实际 metrics 吞吐键为 `output_mean`（`parse_metrics` 输出 `metric_{kind}` 拼接），原 `m.get("output")` 导致 Output 条件**永不生效**；改为 `output_mean` 优先、兼容旧数据 `output`；TTFT/TPOT 已按每组 case 的 statistic 键（`ttft_{stat}` / `tpot_{stat}`）判定（迭代 21 引入）
+- **后端（api_tasks.py）**：`CreateTaskRequest` 新增 `max_concurrency_search: int = 4096`（阈值模式单组搜索上限，之前被 pydantic 字段白名单丢弃 → 恒为默认 4096）
+- **后端（parser.py）**：docstring 修正吞吐键 `output` → `output_mean`（与实现一致）
+- **前端数据链路一致性（PerformanceView / DatasPerfsView / MetricsTable）**：Output 值读取兼容 `output_mean ?? output`（后端原始 row 键 `output_mean`、api_logs 转换 records 键 `output_mean`，均兼容），确保 Realtime Data 全条件 BestPerf 判断（含 Output 条件）不失效
+- **阈值随 groups 存储闭环**：创建页 `length_pairs` 第 5 元素 → `build_cases` 每组 case → snapshot `cases` 透传（tasks JSON / run.json 持久化 + 恢复）→ 执行期 `_execute_case_threshold` 按每组独立判定 → 前端 `theTask.cases` / `run.cases` 读取
+- **测试（tests/api/test_tasks.py +3）**：
+  - `test_build_cases_parses_per_group_thresholds`：多组不同阈值解析 + 旧格式（无第 5 元素）默认 0/mean
+  - `test_annotate_best_per_group_statistic`：`_annotate_best` 按每组 case 的 tpot 阈值与 statistic（median/p99）独立标注
+  - `test_threshold_per_group_execution`：API 集成——两组独立阈值（组 A 阈值极高 → 搜索到 `max_concurrency_search=8`；组 B 阈值极低 → 1 并发即违规），验证每组独立判定 + metrics 键完整（`ttft_mean`/`tpot_mean`/`output_mean`）+ 阈值随存储保留
+- **文档**：Performance.md（阈值执行判定 Output 键说明）、本版本记录
+
+**验证**：`./tests/run_tests.sh` 全量通过（**API 49/49、WebUI 16/16**）
+
+**TODO 状态**：
+- [x] 后端 — violated() Output 键修复（output_mean 兼容 output）+ TTFT/TPOT statistic 键判定验证
+- [x] 后端 — CreateTaskRequest 透传 max_concurrency_search
+- [x] 数据链路 — 前端 Output 值读取兼容（Realtime Data 全条件 BestPerf 含 Output 不失效）
+- [x] 测试 — build_cases 多组解析 / _annotate_best 每组 statistic / 阈值每组独立执行（API 集成）
+- [x] 文档 — Performance.md 同步 + 本版本记录
+
+### 迭代 23（2026-08-28 15:00:34）：执行页 Cases 面板与 Datas/Perfs 展示分组阈值信息（Realtime 分组标题行 + Perf Datas 阈值条 + WS rows 覆盖修复）
+
+**功能概述**：
+- **前端（MetricsTable.vue）**：新增 `groupThresholds` prop（分组 label → 阈值条件文本），**分组标题行在 label/行数右侧追加该组阈值**（`.group-threshold`，小字灰色、宽度不够伪隐藏 ellipsis + title 完整文本；仅阈值模式非空，0 值项不显示）
+- **执行页（PerformanceView.vue）**：新增 `groupThresholdTexts`（`theTask.cases` → `caseKeyOf(case)` → `caseThresholdText(case)`，与 Cases 面板同一口径），Realtime Data 分组标题行展示每组阈值（如 `TTFT-Mean ≤ 50ms · TPOT-Median ≤ 100ms · Output ≤ 200 tok/s`，跟随 Groups 不跟随主任务）
+- **Datas/Perfs（DatasPerfsView.vue）**：新增 `groupThresholdTexts`（`caseGroupRows` → 分组 key → `caseThresholdText(cg)`），Perf Datas 每个分组 Tab 顶部展示**该组阈值条**（`.group-threshold-bar`，绿色虚线信息条、省略 + title 完整文本）
+- **修复（web/src/store/test.js）**：WS 连接时后端推送 `list_tasks()` 快照**不含 rows**，`task_snapshot` 直接覆盖导致页面刷新后已加载的 Realtime 数据 rows 被清空（执行页表格空数据）——改为本地已有完整 rows 时保留（合并），不覆盖清空
+- **测试（tests/webui/test_ui.py +1）**：`test_group_threshold_in_data_tables`——执行页 Realtime Data 分组标题行 `.group-threshold` + Datas/Perfs Perf Datas `.group-threshold-bar` 均展示该组阈值（含统计量标识）
+- **文档**：Performance.md（Realtime 分组标题行阈值 + 联动表）、Datas.md（Perf Datas 阈值条）、本版本记录
+
+**TODO 状态**：
+- [x] 前端 — MetricsTable 分组标题行展示分组阈值（groupThresholds prop）
+- [x] 前端 — 执行页 Realtime Data 分组标题行展示每组阈值（跟随 Groups）
+- [x] 前端 — Datas/Perfs Perf Datas 分组 tab 内展示阈值条
+- [x] 修复 — WS task_snapshot 覆盖清空 rows（保留本地完整 rows）
+- [x] 测试 — WebUI 分组阈值展示（执行页 + Datas/Perfs）
+- [x] 文档 — Performance.md / Datas.md 同步 + 本版本记录
+
+### 迭代 24（2026-08-28 15:22:42）：修复旧格式任务阈值信息不显示（任务级阈值回退兼容）
+
+**问题**：阈值模式**旧格式任务**（Task 2 之前创建，阈值在任务级 `tpot_threshold_ms` 等，cases 无 per-group 阈值、全 0）在 Performance Cases 面板、Realtime Data 分组标题行、Datas/Perfs Cases Info、Perf Datas 阈值条均不显示阈值。
+
+**修复**（PerformanceView.vue / DatasPerfsView.vue）：
+- `caseThresholdText()` 增加**旧格式任务回退**：`legacy` 判断（`cases` 全部 per-group 阈值均为 0）→ 回退任务级同名字段（`ttft_threshold_ms` / `tpot_threshold_ms` / `output_throughput_threshold` 及对应 `ttft_statistic` / `tpot_statistic`，取第一组口径）
+- 新格式任务不受影响（case 级阈值 >0 优先；显式 0 仍不显示/不参与判定），与 Task 3「任务级同名字段保留（取第一组）」约定闭环
+
+**测试（tests/webui/test_ui.py +1）**：`test_legacy_task_threshold_fallback`——旧格式任务（任务级 `tpot_threshold_ms=80`）在 Performance `.case-threshold` 与 Datas/Perfs `.case-threshold` 均显示 `TPOT-Mean ≤ 80ms`
+
+**文档**：Performance.md / Datas.md 补充旧格式任务回退说明 + 本版本记录
+
+**TODO 状态**：
+- [x] 修复 — 旧格式任务 cases 无 per-group 阈值时回退任务级阈值展示（执行页 + Datas/Perfs）
+- [x] 测试 — WebUI 旧格式任务回退（Performance + Datas/Perfs）
+- [x] 文档 — Performance.md / Datas.md 同步 + 本版本记录
+
 ## 3. TODO 清单
 
 - [x] **设置/数据集 — 内置数据集模块**：配置文件 `configs/datasets.yaml`，可点击下载，缓存到 `~/.benchscope/datasets`（2026-08-27 完成）
@@ -381,6 +499,16 @@
 - [x] **主导航/Datas — 详情五次优化**：删除确认 prompt 改为 record 语义（i18n `deleteRunTitle/deleteRunConfirm` + 新增 `delete` 键）、分享全页（`doShare` 临时放开滚动 + html2canvas scrollHeight/Width）、Perf Datas 各模式列集对齐 Performance（mean/median/p99 补齐 label/requests/concurrency/successful）（2026-08-27 完成）
 - [x] **测试体系重构**：mock 唯一归属 mocks/；tests 全覆盖（api 6 模块 + webui）；统一入口 run_tests.sh + 临时数据目录隔离；/api/test* 与 state.tests 修复；**约定：每次开发新功能生成并执行 tests**（2026-08-28 完成）
 - [x] **文档约定升级**：软件依赖与架构更新均需同步 docs（rules/Software.md 依赖清单 / Architecture.md）；README 以仓库最新版为准（2026-08-28 完成）
+- [x] **阈值模式创建升级**：TTFT/TPOT 统计量选择（Mean/Median/P99，默认 Mean）+ 阈值（默认 0/100）+ Output（默认 0）；三者不能同时为 0 每组校验；后端字段透传与统计量判定（2026-08-28 完成）
+- [x] **阈值信息并入分组标记右侧**：Performance 执行页 + Datas/Perfs Cases Info 不再单独显示阈值块，并入 case 分组标记右侧、宽度不够伪隐藏（2026-08-28 完成）
+- [x] **阈值移到每组请求配置**：创建页每组 `length_pairs` 携带阈值 dict（TTFT/TPOT 统计量标识 + Output），后端 case 级透传与执行判定，Cases 面板阈值与 BestPerf 均跟随 Groups（不跟随主任务）；TPOT 阈值标签改为 TPOT（2026-08-28 完成）
+- [x] **阈值随 groups 存储与判断收口**：violated() Output 键修复（output_mean 兼容 output）、CreateTaskRequest 透传 max_concurrency_search、前端 Output 值读取兼容，阈值每组独立执行判定闭环（2026-08-28 完成）
+- [x] **执行页 Cases 面板与 Datas/Perfs 展示分组阈值信息**：Realtime Data 分组标题行展示每组阈值（.group-threshold）+ Datas/Perfs Perf Datas 分组 tab 内阈值条（.group-threshold-bar），均跟随 Groups；修复 WS task_snapshot 覆盖清空 rows（2026-08-28 完成）
+- [x] **旧格式任务阈值回退兼容**：cases 无 per-group 阈值（全 0）时回退任务级阈值字段展示（TPOT-Mean ≤ 80ms 等），执行页 + Datas/Perfs 一致（2026-08-28 完成）
+- [x] **旧格式任务 BestPerf 高亮行恢复**：`markBestPerf`/`markBestRow('bestPerf')` 旧格式任务回退任务级阈值判断修复——cases 阈值字段为 `0`（非 null/undefined）时 `!= null` 判断误判为「已配置」直接取 0，导致未走回退分支、BestPerf 高亮行消失；改为「caseObj 阈值为有效正值时以每组为准，否则旧格式任务回退任务级阈值（含 statistic）」——Performance Realtime Data 与 Datas/Perfs Perf Datas 均恢复 BestPerf 金色高亮行；PerfCreateView `buildPayload` 任务级阈值 NaN 防御（`Number(x) || 0`）；WebUI 测试 `test_legacy_task_threshold_fallback` 增加两页 `.row-bestperf` 高亮断言（2026-08-28 16:19 完成）
+- [x] **dev.sh Python 环境探测修复**：`.venv`（指向系统 python3.12 的残缺 venv）缺 `fastapi`/`uvicorn` 导致 mock/后端启动失败；`scripts/dev.sh` 改为优先 `.venv` 但校验 `import fastapi, uvicorn` 成功，否则回退 `${PYTHON:-python3}`（系统 miniconda python3），开发环境一键启动恢复（2026-08-28 16:24 完成）
+- [x] **阈值信息字体减小**：`PerformanceView` Cases 请求 groups、`DatasPerfsView` Cases Info、`RunDataPanel` Perf Datas 分组阈值条的阈值条件文本由 11px 统一减至 10px（与 `.case-req` 请求数基准一致）（2026-08-28 16:45 完成）
+- [x] **移除 Output 达标金色文字**：`MetricsTable` Output 列不再按 `output_mean ≤ output_throughput_threshold` 渲染金色 `pass-val`（#faad14 加粗），Output 列始终黑色默认样式；同步删除 `outputThreshold` prop 及 Performance / Datas/Perfs / Realtime 三个调用方传参（Best 标签与 BestPerf 行背景金色保留）；WebUI 测试 18 个全量通过（2026-08-28 16:56 完成）
 
 ---
 

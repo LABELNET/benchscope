@@ -1,7 +1,7 @@
 # Datas 页面 — 功能与约束说明
 
 > **版本**：1.0.6（开发中）  
-> **最后更新**：2026-08-27  
+> **最后更新**：2026-08-28 15:00  
 > **文档状态**：Datas（记录管理）页面的功能逻辑与约束条件说明  
 > **关联文档**：[Performance.md](./Performance.md)（任务执行）· [Dashboard.md](./Dashboard.md)（记录入口联动）· [Performance-Create.md](./Performance-Create.md)（任务创建）
 
@@ -45,10 +45,10 @@ Datas 为 1.0.6 新增的主导航页（位于 Sessions 之后），采用**副�
 
 #### 行 2 — 三等分面板（Perf / Cases / Logs），**各占 1/3 固定宽度**（**flex** `flex:1 1 0` + `min-width:0` + `align-items:stretch`，与 Performance 第一行同构），**高度 = Perf Info 自然高度**（**`sideCardStyle`**：测量 Perf 卡片 `$el` 的 `offsetHeight`，**测量前临时 `align-self:flex-start` 防拉伸**——否则首次进入多组任务时 Perf 被 Cases 撑高、测到拉伸高度并固化，切换少组任务高度不变；`ResizeObserver` 重测 → 应用为 Cases / Logs 卡片 `height`）；内容高度不够时**面板内部滚动**（`.ant-card-body` `overflow:hidden`，内部容器各自滚动）；行内容宽度不足时**伪隐藏**（`.info-value` 省略号、`max-width: 65%`）
 - **Perf**：model / framework / mode / dataset / concurrency / requests / created_at
-- **Cases**：**分组 + 对应请求信息按行显示**——每行：case 组（label + g{case_id} + input_len/output_len）+ 组内并发档位（`reqsText`，来自 rows 的 concurrency 去重升序，如 `1 / 2 / 4`，右对齐；**请求数过长时自动换行完整显示**，`white-space: normal` + `word-break: break-all`，不再单行省略）；**阈值条件固定不滚动，仅分组列表（`.case-groups`）超出 Perf Info 高度时内部滚动**（`flex:1; min-height:0; overflow-y:auto`；卡片 body `overflow:hidden`）
+- **Cases**：**分组 + 对应请求信息按行显示**——每行：case 组（label + g{case_id} + input_len/output_len）+ 组内并发档位（`reqsText`，来自 rows 的 concurrency 去重升序，如 `1 / 2 / 4`，右对齐；**请求数过长时自动换行完整显示**，`white-space: normal` + `word-break: break-all`，不再单行省略）；**每组阈值条件并入 case 组标记右侧**（`.case-threshold`，不单独显示；按每组 case 自带阈值生成（`caseThresholdText(cg)`，跟随 Groups 不跟随主任务），标识含统计量：TTFT-Mean/Median/P99、TPOT-Mean/Median/P99、Output；宽度不够伪隐藏：ellipsis + max-width，hover 显示完整；0 值项不显示），**仅分组列表（`.case-groups`）超出 Perf Info 高度时内部滚动**（`flex:1; min-height:0; overflow-y:auto`；卡片 body `overflow:hidden`）
   - 无 `cases` 元数据的历史任务：直接用 rows 生成分组（label 兜底），input/output 长度从 rows 补齐
   - concurrency 模式：case 组列表 + 并发档位
-  - threshold 模式：阈值信息（tpot_threshold_ms）+ case 组列表 + 并发档位
+  - threshold 模式：case 组列表（每组阈值条件并入组标记右侧，含统计量标识，如 `TTFT-Mean ≤ 50ms · TPOT-Median ≤ 100ms · Output ≤ 200 tok/s`；**旧格式任务** cases 无 per-group 阈值、全 0 时**回退任务级阈值字段**展示，如 `TPOT-Mean ≤ 80ms`）+ 并发档位
 - **Logs**：run_dir 文本（**右对齐小字单行，`direction: rtl` 伪隐藏开头路径、最少保留末尾文件名**，hover 显示完整路径）+ 复制图标；summary 文件名（**右对齐小字单行**）+ **仅下载小图标**（无文字）；日志文件列表**按行显示（非表格）**，整体包裹为**灰色面板容器**（`#f5f5f5` 背景 + 1px 边框 + 圆角，最大高度 140px 超出滚动）：文件名（等宽 **8px** 小字，省略号）/ 大小（8px）/ Preview / Download **小图标**（20px），字体与图标紧凑缩小，内容随面板自适应完整显示
 
 #### 行 3 — 数据面板 **Perf Datas**（按 case 分组 Tabs）
@@ -56,9 +56,10 @@ Datas 为 1.0.6 新增的主导航页（位于 Sessions 之后），采用**副�
   - 默认：恢复**默认数据列**——**默认隐藏 Case / Concurrency / Successful 列**（放入列控制，可重新开启）；**Requests 列固定左侧**（Case 列隐藏时自动固定首个可见任务列）
   - Mean/Median/P99：同样默认隐藏 Case / Concurrency / Successful，显示 Output / Peak / Total + 对应的 TTFT / TPOT / ITL + Status 列（复用 `MetricsTable` 的 `preset` + `defaultHidden` 属性；点击「默认」时重置为默认列集）
 - 数据按 case 组切 Tabs，每个 Tab 一组 rows（分组键 `label#g{case_id}`，case_id 优先、label 兜底，与 Performance 实时数据一致）
+- **每个分组 Tab 顶部展示该组阈值条**（`.group-threshold-bar`，**仅阈值模式**）：按每组 case 生成（`groupThresholdTexts`，由 `caseGroupRows` → 分组 key → `caseThresholdText(cg)`，与 Cases Info 面板同一口径，跟随 Groups 不跟随主任务），如 `TTFT-Mean ≤ 50ms · TPOT-Median ≤ 100ms · Output ≤ 200 tok/s`；绿色虚线信息条（`#f6ffed` 底 + `#b7eb8f` 虚线边框），宽度不够伪隐藏（ellipsis + title 完整文本）；0 值项不显示
 - **分组 Tab 过多时横向可滚动**（`.ant-tabs-nav-wrap` `overflow-x:auto` + `nav-list` nowrap，不换行不溢出）
 - **Status 列默认隐藏**（`defaultHidden` 含 `status`，阈值/并发/mean/median/p99 均不显示 Status 列）→ **右侧无固定列**（Status 原为右固定列）；阈值模式仅保留 **BestPerf 行颜色标记**（金色行背景，Status 列内 tag 不显示）
-- **阈值模式标记 BestPerf、不标记 Best**：`annotatedRows` 按 case 分组、组内并发升序；阈值模式用任务阈值（tpot/output）每组唯一标记 `bestPerf`（满足阈值的最大并发行）；`best` 不标记（Best 只在 Performance 界面）
+- **阈值模式标记 BestPerf、不标记 Best**：`annotatedRows` 按 case 分组、组内并发升序；阈值模式**按每组 case 自己的阈值全条件判断**（TTFT/TPOT 的 statistic + Output，跟随 Groups 数据不跟随主任务）每组唯一标记 `bestPerf`（满足所有配置阈值的最大并发行）；**case 阈值非有效正值（`0`/未配置）时旧格式任务回退任务级阈值字段**（含对应 statistic，与 Cases Info `caseThresholdText` 口径一致，旧格式任务同样恢复 BestPerf 金色高亮行）；`best` 不标记（Best 只在 Performance 界面）
 - 底部「列选择」按钮（自定义显示列）
 
 #### 行 4 — 分析面板（统计图）
@@ -94,7 +95,8 @@ Datas 为 1.0.6 新增的主导航页（位于 Sessions 之后），采用**副�
 | 项 | 约束 |
 | --- | --- |
 | 分组键 | `label#g{case_id}`（case_id 优先，label 兜底），支持同条件重复组 |
-| 表格预设 | 默认隐藏 Case/Concurrency/Successful（列控制可开启）；Requests 固定左；Mean/Median/P99 仅切换列显示，不改数据；**阈值模式标记 BestPerf，不标记 Best（Best 只在 Performance 界面）** |
+| 分组阈值条 | 阈值模式 Perf Datas 每个分组 Tab 顶部展示该组阈值（`.group-threshold-bar`，跟随 Groups；0 值项不显示；宽度不够省略 + title） |
+| 表格预设 | 默认隐藏 Case/Concurrency/Successful（列控制可开启）；Requests 固定左；Mean/Median/P99 仅切换列显示，不改数据；**阈值模式按每组 case 阈值全条件标记 BestPerf，不标记 Best（Best 只在 Performance 界面）** |
 | 分享截图 | 依赖 `html2canvas@1.4.1`；**按当前界面状态生成**；`sharing` 类（`:deep`）展开表格滚动区，完整输出（含 Perf Datas 数据 + 行 4 图表） |
 | 备份压缩包 | 含 run.json / 数据文件 / 终端日志，重名文件去重（保留 run 目录文件优先） |
 | 导入压缩包 | 校验任务 ID 一致性：已存在不重复导入；`perf_|eval_` 前缀日志归入 logs 根目录；zip-slip 防护（仅扁平文件名） |

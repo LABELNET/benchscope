@@ -27,23 +27,49 @@ def sanitize_name(name: str) -> str:
 
 
 def build_cases(dataset: dict, model: str) -> list[dict]:
+    """由数据集构建 case 列表。每组（case）自带阈值信息（TTFT/TPOT 的 statistic 与阈值、Output 阈值），
+    不跟随主任务；length_pairs 每项格式：\n
+    [input_len, output_len, label, case_id, {ttft_statistic, ttft_threshold_ms, tpot_statistic, tpot_threshold_ms, output_throughput_threshold}]
+    """
     ds_type = dataset.get("type", DATASET_RANDOM)
     cases: list[dict] = []
     if ds_type == DATASET_RANDOM:
         pairs = dataset.get("length_pairs") or []
         for item in pairs:
             il, ol, label, *rest = item
+            # 兼容旧数据：[il, ol, label, case_id]；新数据第 5 个元素为该组阈值 dict
+            case_id = rest[0] if rest else None
+            thr = rest[1] if len(rest) > 1 and isinstance(rest[1], dict) else {}
             cases.append({
                 "label": label,
-                "case_id": rest[0] if rest else None,  # 唯一组 id，区分相同条件的多组
+                "case_id": case_id,  # 唯一组 id，区分相同条件的多组
                 "input_len": il, "output_len": ol, "path": None,
+                # 每组阈值信息（0/None 表示该指标不参与判定）
+                "ttft_threshold_ms": _num(thr.get("ttft_threshold_ms"), 0),
+                "ttft_statistic": thr.get("ttft_statistic") or "mean",
+                "tpot_threshold_ms": _num(thr.get("tpot_threshold_ms"), 0),
+                "tpot_statistic": thr.get("tpot_statistic") or "mean",
+                "output_throughput_threshold": _num(thr.get("output_throughput_threshold"), 0),
             })
     else:
         label = "ShareGPT" if ds_type == DATASET_SHAREGPT else "Custom"
         if ds_type == DATASET_SHAREGPT and dataset.get("label"):
             label = dataset["label"]
-        cases.append({"label": label, "case_id": None, "input_len": None, "output_len": None, "path": dataset.get("path")})
+        cases.append({"label": label, "case_id": None, "input_len": None, "output_len": None, "path": dataset.get("path"),
+                      "ttft_threshold_ms": 0, "ttft_statistic": "mean",
+                      "tpot_threshold_ms": 0, "tpot_statistic": "mean",
+                      "output_throughput_threshold": 0})
     return cases
+
+
+def _num(v, default=0.0) -> float:
+    """安全转换为 float，None/空串/非法值返回 default。"""
+    if v in (None, ""):
+        return default
+    try:
+        return float(v)
+    except (TypeError, ValueError):
+        return default
 
 
 def build_single_command(framework, model, tokenizer, api, dataset, concurrency, request_rate, curated, extra_args):
@@ -100,6 +126,9 @@ class Task:
             "concurrency_list": self.payload.get("concurrency_list", []),
             "request_rate": self.payload.get("request_rate", "inf"),
             "tpot_threshold_ms": self.payload.get("tpot_threshold_ms"),
+            "ttft_threshold_ms": self.payload.get("ttft_threshold_ms", 0),
+            "ttft_statistic": self.payload.get("ttft_statistic", "mean"),
+            "tpot_statistic": self.payload.get("tpot_statistic", "mean"),
             "mode": self.payload.get("mode", "concurrency"),
             "output_throughput_threshold": self.payload.get("output_throughput_threshold", 0),
             "dataset": self.payload.get("dataset", {}),
@@ -340,7 +369,7 @@ class TaskManager:
             if task.rows:
                 rows_for_xlsx = [r for r in task.rows if "metrics" in r]
                 if rows_for_xlsx:
-                    annotated = self._annotate_best(rows_for_xlsx, task.payload.get("tpot_threshold_ms"))
+                    annotated = self._annotate_best(rows_for_xlsx, task)
                     xlsx_path = task.run_dir / f"benchmark-{datetime.now().strftime('%d%m%y')}.xlsx"
                     write_xlsx(xlsx_path, annotated, meta)
                     task.summary = {"xlsx": str(xlsx_path), "rows": len(rows_for_xlsx)}
@@ -418,28 +447,43 @@ class TaskManager:
         前端进度（done/total）随执行实时增长。
         """
         payload = task.payload
-        try:
-            tpot_thr = float(payload.get("tpot_threshold_ms")) if payload.get("tpot_threshold_ms") not in (None, "") else 0.0
-        except (TypeError, ValueError):
-            tpot_thr = 0.0
-        try:
-            out_thr = float(payload.get("output_throughput_threshold") or 0)
-        except (TypeError, ValueError):
-            out_thr = 0.0
+        # 每组（case）自带阈值：case 优先，兼容旧数据回退任务级 payload
+        def _case_thr(key, default=0.0):
+            v = case.get(key) if case.get(key) not in (None, "") else payload.get(key)
+            if v in (None, ""):
+                return default
+            try:
+                return float(v)
+            except (TypeError, ValueError):
+                return default
+        tpot_thr = _case_thr("tpot_threshold_ms", 0.0)
+        ttft_thr = _case_thr("ttft_threshold_ms", 0.0)
+        out_thr = _case_thr("output_throughput_threshold", 0.0)
         max_conc = int(payload.get("max_concurrency_search") or 4096)
+        # 阈值统计量：mean / median / p99（每组独立选择，默认 mean）
+        ttft_key = f"ttft_{case.get('ttft_statistic') or payload.get('ttft_statistic') or 'mean'}"
+        tpot_key = f"tpot_{case.get('tpot_statistic') or payload.get('tpot_statistic') or 'mean'}"
         rows_in_case = 0
 
         def violated(row) -> bool:
             m = row.get("metrics") or {}
-            if tpot_thr > 0 and m.get("tpot_mean") is not None:
+            if ttft_thr > 0 and m.get(ttft_key) is not None:
                 try:
-                    if float(m["tpot_mean"]) > tpot_thr:
+                    if float(m[ttft_key]) > ttft_thr:
                         return True
                 except (TypeError, ValueError):
                     pass
-            if out_thr > 0 and m.get("output") is not None:
+            if tpot_thr > 0 and m.get(tpot_key) is not None:
                 try:
-                    if float(m["output"]) > out_thr:
+                    if float(m[tpot_key]) > tpot_thr:
+                        return True
+                except (TypeError, ValueError):
+                    pass
+            # 吞吐键：parse_metrics 输出为 output_mean（旧数据可能为 output，兼容）
+            out_v = m.get("output_mean", m.get("output"))
+            if out_thr > 0 and out_v is not None:
+                try:
+                    if float(out_v) > out_thr:
                         return True
                 except (TypeError, ValueError):
                     pass
@@ -496,21 +540,31 @@ class TaskManager:
             lo = hi
         # 到达上限仍满足 → 上限为最佳
 
-    def _annotate_best(self, rows, threshold):
-        if threshold is None:
-            return rows
-        try:
-            threshold = float(threshold)
-        except (TypeError, ValueError):
-            return rows
+    def _annotate_best(self, rows, task):
+        """按每组（case）自己的阈值与 statistic 标注最佳并发（xlsx 导出用）。
+
+        case 自带 tpot_threshold_ms/tpot_statistic；兼容旧数据回退任务级 payload。
+        """
+        payload = task.payload
+        cases = {c.get("case_id") or c.get("label"): c for c in task.cases}
         by_case: dict = {}
         for r in rows:
             by_case.setdefault(r.get("case_id") or r.get("label"), []).append(r)
-        for label, items in by_case.items():
+        for key, items in by_case.items():
+            case = cases.get(key, {})
+            thr_v = case.get("tpot_threshold_ms") if case.get("tpot_threshold_ms") not in (None, "") else payload.get("tpot_threshold_ms")
+            if thr_v in (None, ""):
+                continue
+            try:
+                threshold = float(thr_v)
+            except (TypeError, ValueError):
+                continue
+            stat = case.get("tpot_statistic") or payload.get("tpot_statistic") or "mean"
+            mkey = f"tpot_{stat}"
             valid = []
             for r in items:
                 m = r.get("metrics", {})
-                tpot = m.get("tpot_mean")
+                tpot = m.get(mkey)
                 if tpot is not None:
                     valid.append((float(tpot), r))
             if not valid:

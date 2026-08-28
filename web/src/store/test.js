@@ -47,9 +47,17 @@ export const useTestStore = defineStore('test', {
           useConfigStore().applyStatus(msg)
           break
         case 'task_snapshot':
-        case 'task_started':
-          if (msg.task) this.tasks[msg.task_id] = msg.task
+        case 'task_started': {
+          if (msg.task) {
+            // WS 连接时推送的列表快照不带 rows：本地已有完整 rows 时保留，避免覆盖清空实时数据
+            const cur = this.tasks[msg.task_id]
+            if (cur && (cur.rows || []).length && !(msg.task.rows || []).length) {
+              msg.task.rows = cur.rows
+            }
+            this.tasks[msg.task_id] = msg.task
+          }
           break
+        }
         case 'task_result': {
           const task = this.tasks[msg.task_id]
           if (!task) break

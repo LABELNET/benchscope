@@ -3,11 +3,13 @@
     <!-- 按 cases 分组信息分 tab，tab 标题为分组标识；默认/Mean/Median/P99 由父级 header 控制 -->
     <a-tabs v-model:activeKey="activeGroup" class="data-tabs" size="small">
       <a-tab-pane v-for="g in groups" :key="g.key" :tab="g.label">
+        <!-- 每组阈值条件信息（跟随 Groups 独立配置；0 表示未配置不显示；完整文本 hover title） -->
+        <div v-if="groupThresholds[g.key]" class="group-threshold-bar" :title="groupThresholds[g.key]">{{ groupThresholds[g.key] }}</div>
         <MetricsTable
           :rows="groupRows(g.key)"
           :threshold="threshold"
           :request-rate="requestRate"
-          :output-threshold="outputThreshold"
+          :group-thresholds="groupThresholds"
           :preset="mode"
           :max-rows="100"
           :default-hidden="['label', 'concurrency', 'successful', 'status']"
@@ -25,8 +27,9 @@ const props = defineProps({
   rows: { type: Array, default: () => [] },
   threshold: { type: Number, default: null },
   requestRate: { type: [String, Number], default: 'inf' },
-  outputThreshold: { type: Number, default: null },
   mode: { type: String, default: 'default' },
+  // 分组阈值信息：分组 key → 阈值条件文本（跟随 Groups 每组独立配置；0 表示未配置不显示）
+  groupThresholds: { type: Object, default: () => ({}) },
 })
 const emit = defineEmits(['update:mode'])
 
@@ -78,6 +81,19 @@ function groupRows(key) {
 }
 .data-tabs :deep(.ant-tabs-nav-list) {
   flex-wrap: nowrap;
+  white-space: nowrap;
+}
+/* 分组阈值条：每组独立配置，宽度不够伪隐藏（省略号 + title 完整文本） */
+.group-threshold-bar {
+  font-size: 10px;
+  color: var(--ant-color-text-tertiary, #999);
+  background: #f6ffed;
+  border: 1px dashed #b7eb8f;
+  border-radius: 4px;
+  padding: 2px 8px;
+  margin-bottom: 6px;
+  overflow: hidden;
+  text-overflow: ellipsis;
   white-space: nowrap;
 }
 </style>

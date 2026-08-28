@@ -73,7 +73,7 @@ def parse_metrics(output: str) -> dict:
     返回结构:
     {
       "concurrency": int,
-      "output": float, "peakoutput": float, "total": float,
+      "output_mean": float, "peakoutput_mean": float, "total_mean": float,
       "ttft_mean": float, "tpot_mean": float, "itl_mean": float,
       "ttft_p99": float, "tpot_p99": float, "itl_p99": float,
       "req_per_s": float, "raw": str(完整原始输出)

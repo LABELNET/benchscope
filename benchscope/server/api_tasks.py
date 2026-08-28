@@ -27,8 +27,14 @@ class CreateTaskRequest(BaseModel):
     tpot_threshold_ms: float | None = None
     # 性能测试模式：concurrency（并发模式）/ threshold（阈值模式）
     mode: str = "concurrency"
+    # 阈值模式：TTFT / TPOT 阈值（ms）与统计量（mean/median/p99），0 表示该指标不参与判定
+    ttft_threshold_ms: float = 0
+    ttft_statistic: str = "mean"
+    tpot_statistic: str = "mean"
     # 阈值模式：Output token throughput 上限（tok/s），0 表示不参与核心逻辑
     output_throughput_threshold: float = 0
+    # 阈值模式：单组最大并发搜索上限（默认 4096）
+    max_concurrency_search: int = 4096
     # Step2「性能参数」编辑后的框架默认参数 yaml 内容（跟随进入命令）
     params_yaml: dict = {}
 
