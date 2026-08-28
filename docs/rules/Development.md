@@ -52,7 +52,7 @@ python -m benchscope.cli --port 8081 --no-browser                            # �
 1. 修改代码（后端 `benchscope/` / 前端 `web/` / 脚本 `scripts/` / mock `mocks/` / 依赖 `pyproject.toml`、`web/package.json`）。
 2. **文档同步（强制）**：设计/界面修改、逻辑与策略调整、UI 调整、依赖与架构变更，**必须同步更新**对应文档：
    - 页面功能与约束 → `docs/prds/`（Performance / Performance-Create / Dashboard / Accuracy / Sessions / Settings / Datas / TopBar）
-   - 版本修订与 todo → `docs/versions/VERSION_1_0_6.md`（新版本另建 `VERSION_x_y_z.md`）
+   - 版本修订与 todo → `docs/versions/VERSION_1_0_7.md`（当前开发版本；新版本另建 `VERSION_x_y_z.md`）
    - 架构 / 方案 / 设计 / 开发规范 → `docs/rules/`（Architecture / Software / Design / Development）
    - **软件依赖变更（新增/升级/移除）** → 同步 `docs/rules/Software.md` §2 技术栈与 §3 依赖清单
 3. **测试（强制）**：生成/更新对应 tests（API → `tests/api/`，WebUI → `tests/webui/`），运行 `check-i18n` + 构建 + `./tests/run_tests.sh` 全量通过。

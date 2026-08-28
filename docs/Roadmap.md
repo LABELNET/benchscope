@@ -4,18 +4,34 @@ benchscope 按版本迭代推进，**倒序**列出各版本（最新在前）�
 
 ---
 
-## 1.0.6（开发中 / In Development）
+## 1.0.7（开发中 / In Development）
 
 - **发布时间**：待定
-- **TODO**（后续开发内容均迭代在此版本，按时间顺序追加，详见 [docs/versions/VERSION_1_0_6.md](versions/VERSION_1_0_6.md)）：
+- **TODO**（后续开发内容均迭代在此版本，按时间顺序追加，详见 [docs/versions/VERSION_1_0_7.md](versions/VERSION_1_0_7.md)）：
 
-规划功能：
-- 设置/数据集，增加内置数据集模块，配置文件存在 configs/datasets.yaml，数据集名称/描述/访问链接/下载命令，可点击下载，缓存到 .benchscope 目录；
-- 设置/通用//缓存路径 ，增加模型和数据路径 默认全部数据在.benchscope目录下∶
-- 主导航：添加 Datas主导航，放到 Sessions 后面
-- 主导航/Datas，实现 Perfs 分页记录，显示最佳测试记录和 Evals 分页记录，显示误差情况，暂时占位；重点 性能数据详情页面， 重新规划 如 mean/meduie/p99值，精度数据详情页面，暂不实现；
-- 主导航/Datas 联动 Dashboard 表格，更多/详情
-- 主导航/Datas 还有记录对比分析界面
+规划功能（候选，优先级待确认）：
+- **Dashboard 指标补全**：Overview 六宫格 `Max Perf Records (RUN ID)` / `Max Acc Records (RUN ID)` 当前显示 `—`（逻辑待实现）→ 接入实际最优记录与跳转
+- **Datas/Analysis 记录对比分析页落地**：当前占位页 → 多选 perf 记录逐指标（mean/median/p99）对比表 + 对比图
+- **Datas/Evals 精度记录页落地**：精度记录列表 + 详情骨架（为 v5.0 精度测试铺路）
+- **Settings → Models 部署能力**：内置模型一键下载到 `models_dir` + 下载进度（7.0 前置）
+- **Settings → Plugins 插件机制**：占位 → 插件管理（列表 / 启用 / 禁用 / 上传）
+- **任务管理与导出增强**：任务搜索筛选、报告导出（HTML / PDF）
+
+---
+
+## 1.0.6（已发布 / Released）
+
+- **发布时间**：2026-08-28
+- **主要功能点**：
+  - **Datas 主导航**（Sessions 之后）：Perfs / Evals / Analysis 副导航，Perfs 记录面板（导入/刷新/删除/备份/分享）+ 详情 5 行布局（元信息、Perf/Cases/Logs 三面板、Perf Datas 表格、分析图表）、记录对比分析
+  - **内置数据集模块**：`configs/datasets.yaml` 定义（名称/描述/访问链接/下载命令），一键下载缓存到 `~/.benchscope/datasets`，分类筛选
+  - **9 目录配置体系**：`data_dir` + 8 子目录，`settings.json` 持久化（旧版 `config.json` 迁移），行内编辑 + 锁定 + 重启迁移
+  - **Settings 重构**：Models 厂商目录（41 厂商国内/国外分组）、Datasets 分类、缓存路径双语、布局收窄 + 滚动条贴右
+  - **阈值模式升级**：TTFT/TPOT 统计量选择（Mean/Median/P99）、阈值随 groups 存储与每组独立执行判定、旧格式任务回退兼容、Cases/Realtime/Perf Datas 分组阈值展示
+  - **Dashboard 改版**：Logo 放大 48px、Service 状态仅图标、Records 表格去删除 + 详情跳转 Datas 自动选中、footer 提示
+  - **测试体系重构**：mock 唯一归属 `mocks/`、tests 全覆盖（API 49 + WebUI 18）、`./tests/run_tests.sh` 统一入口 + 临时数据目录隔离
+  - **文档体系升级**：`docs/prds/TopBar.md`、迭代记录精确到秒、依赖/架构变更同步 docs 约定
+  - **版本与发布**：`__version__` 单一来源 + TopBar 动态版本标签；发布 = PyPI + GitHub Release 总结 + tag（`scripts/release.sh` 一键）
 
 ---
 

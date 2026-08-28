@@ -1,7 +1,7 @@
 # docs 文档目录
 
 > **文档状态**：benchscope 文档体系说明与维护约定  
-> **最后更新**：2026-08-28 17:34:55
+> **最后更新**：2026-08-28 17:38:03
 
 本目录组织项目全部技术文档。**开发更新功能时，必须同步更新对应文档**（见文末「维护约定」）。
 
@@ -30,7 +30,8 @@
 
 | 文档 | 内容 |
 | --- | --- |
-| [versions/VERSION_1_0_6.md](versions/VERSION_1_0_6.md) | **1.0.6（已发布 2026-08-28）**：PyPI `benchscope==1.0.6`，后续迭代进入下一版本 |
+| [versions/VERSION_1_0_7.md](versions/VERSION_1_0_7.md) | **1.0.7（开发中）**：当前迭代版本，后续开发内容按时间顺序追加 |
+| [versions/VERSION_1_0_6.md](versions/VERSION_1_0_6.md) | **1.0.6（已发布 2026-08-28）**：PyPI `benchscope==1.0.6` |
 | [versions/VERSION_1_0_4.md](versions/VERSION_1_0_4.md) | 1.0.4 规划与 1.0.5 范围定义/收口期文档归档（原 `.trae/` 内容，按时间顺序） |
 | [versions/VERSION_1_0_5.md](versions/VERSION_1_0_5.md) | 1.0.5 版本概述 + 各迭代 PRD 汇总（260824 → 260825 → 260826-1 → 260826-2，按时间顺序）+ TODO |
 
@@ -62,7 +63,7 @@
 > 3. **架构/方案/设计/开发规范/软件依赖变更** → 更新 `rules/` 对应文档；**软件依赖**（Python `pyproject.toml` / 前端 `web/package.json` 的新增、升级、移除）必须同步 `rules/Software.md` §2 技术栈与 §3 依赖清单；
 > 4. 文档间引用使用相对链接，移动/改名后需同步修正引用。
 >
-> **版本迭代规则**：未特别说明版本号时，项目内容所有变更默认归属当前版本 **v1.0.6**（已发布，后续迭代进入下一版本），全部迭代到 `versions/VERSION_1_0_6.md`；**除非用户明确说「迭代下一个版本」**，才创建 `VERSION_x_y_z.md` 并同步升级版本号（`__init__.py` / `pyproject.toml`），否则不得擅自变更版本号。
+> **版本迭代规则**：未特别说明版本号时，项目内容所有变更默认归属当前版本 **v1.0.7**（开发中显示 `v1.0.7-dev`），全部迭代到 `versions/VERSION_1_0_7.md`；**除非用户明确说「迭代下一个版本」**，才创建 `VERSION_x_y_z.md` 并同步升级版本号（`__init__.py` / `pyproject.toml`），否则不得擅自变更版本号。
 >
 > **发布规则（强制）**：**发布 = 打包推送 PyPI + 推送 GitHub Release 总结 + 推送版本 tag**（三者缺一不算完整发布）。执行 `./scripts/release.sh X.Y.Z`（自动升版本 → 构建 → `twine upload` → 创建 GitHub Release（`gh` 或 `GITHUB_TOKEN`，说明默认取自 `VERSION_x_y_z.md` 迭代摘要，可 `--notes <file>` 覆盖）→ `git tag` + push）；发布后须将 `VERSION_x_y_z.md` 状态置为「已发布（Released）」并刷新本文件「最后更新」日期。详见 `rules/Development.md` §5。
 >
