@@ -14,6 +14,8 @@ from typing import Optional
 from benchscope.benches.base import BenchOptions, merge_extra_args
 from benchscope.benches.runner import BenchRunner, StopRequested
 from benchscope.benches import sglang_bench, vllm_bench
+from benchscope.benches.builtin_bench import BuiltinOptions, run_builtin_bench
+from benchscope.benchs import get_engine
 from benchscope.constants import DATASET_RANDOM, DATASET_SHAREGPT, FRAMEWORK_NAMES
 from benchscope.summary import write_summary_csv, write_xlsx
 
@@ -70,6 +72,46 @@ def _num(v, default=0.0) -> float:
         return float(v)
     except (TypeError, ValueError):
         return default
+
+
+def _builtin_engine(task) -> bool:
+    """任务是否使用自研引擎（kind=builtin）。
+
+    判定：payload.engine_id 对应引擎的 kind 为 builtin；未指定时按 framework 回退（保持旧任务兼容）。
+    """
+    engine_id = (task.payload or {}).get("engine_id") or ""
+    if engine_id:
+        engine = get_engine(engine_id)
+        if engine:
+            return engine.get("kind") == "builtin"
+        return engine_id == "benchscope"
+    return False
+
+
+def _builtin_options(task, ds: dict, concurrency: int, api: dict) -> BuiltinOptions:
+    """由任务 payload 与配置 api 构造自研引擎选项。"""
+    payload = task.payload or {}
+    base_url = api.get("base_url") or ""
+    endpoint = api.get("endpoint") or "/v1/chat/completions"
+    rate = payload.get("request_rate", "inf")
+    try:
+        rate = float(rate) if rate not in ("inf", "", None) else float("inf")
+    except (TypeError, ValueError):
+        rate = float("inf")
+    curated = payload.get("curated") or {}
+    return BuiltinOptions(
+        base_url=base_url,
+        api_key=api.get("api_key") or "",
+        model=task.model,
+        endpoint=endpoint,
+        backend=curated.get("backend") or "openai-chat",
+        dataset=ds,
+        concurrency=int(concurrency),
+        num_prompts=int(payload.get("num_prompts") or concurrency),
+        request_rate=rate,
+        warmups=int(curated.get("num_warmups") or 0),
+        extra_headers=api.get("extra_headers") or {},
+    )
 
 
 def build_single_command(framework, model, tokenizer, api, dataset, concurrency, request_rate, curated, extra_args):
@@ -404,19 +446,33 @@ class TaskManager:
     def _run_one(self, runner, task, case, concurrency, detail_fp, full_log_fp, meta):
         ds = dict(task.payload.get("dataset", {}))
         ds.update({"input_len": case.get("input_len"), "output_len": case.get("output_len"), "path": case.get("path")})
-        cmd = build_single_command(
-            task.framework, task.model, task.payload.get("tokenizer", ""),
-            dict(self.config.api), ds, concurrency,
-            task.payload.get("request_rate", "inf"),
-            task.payload.get("curated", {}),
-            merge_extra_args(task.payload, task.payload.get("extra_args", [])),
-        )
+        api = dict(self.config.api)
 
         def stream(line: str):
             detail_fp.write(line)
             full_log_fp.write(line)
             full_log_fp.flush()
             self.hub.broadcast({"type": "task_log", "task_id": task.task_id, "case": case["label"], "case_id": case.get("case_id"), "concurrency": concurrency, "line": line})
+
+        # 自研引擎（kind=builtin）：进程内异步压测，不经子进程 / 命令构建 / 输出解析
+        if _builtin_engine(task):
+            opts = _builtin_options(task, ds, concurrency, api)
+            metrics = run_builtin_bench(opts, stream_cb=stream, stop_flag=runner._stop_flag)
+            return {
+                "case": case["label"], "label": case["label"], "case_id": case.get("case_id"),
+                "input_len": case.get("input_len"), "output_len": case.get("output_len"),
+                "concurrency": concurrency,
+                "cmd": f"benchscope bench (builtin) --base-url={opts.base_url} --concurrency={concurrency}",
+                "metrics": metrics,
+            }
+
+        cmd = build_single_command(
+            task.framework, task.model, task.payload.get("tokenizer", ""),
+            api, ds, concurrency,
+            task.payload.get("request_rate", "inf"),
+            task.payload.get("curated", {}),
+            merge_extra_args(task.payload, task.payload.get("extra_args", [])),
+        )
 
         shell_init = (self.config.get("bench_shell_init") or "").strip()
         metrics = runner.run(cmd, stream_cb=stream, shell_init=shell_init)

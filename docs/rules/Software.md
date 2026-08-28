@@ -8,7 +8,10 @@
 ## 1. 总体方案
 
 - **形态**：单进程、pip 可安装的 Web 性能测试工具（类 tensorflow-dashboard）。
-- **执行方式**：bench 工具（`vllm bench serve` / `sglang.bench_serving`）以**子进程**方式在本机执行；推理服务只需暴露 OpenAI 兼容 API，**无需安装服务端插件**。
+- **执行方式**：
+  - 原生引擎（vLLM / SGLang）：bench 工具（`vllm bench serve` / `sglang.bench_serving`）以**子进程**方式在本机执行，需本地安装 `torch` + 对应框架；
+  - **自研引擎（benchscope，1.0.7）**：进程内异步压测（aiohttp + SSE），**不依赖本地框架环境**，pip 安装后即可远程测试任意 OpenAI 兼容服务；
+  - 推理服务只需暴露 OpenAI 兼容 API，**无需安装服务端插件**。
 - **联调**：无真实 vLLM/SGLang 环境时，`mocks/` 提供仿真 bench 输出 + mock OpenAI 兼容服务（含 SSE 流式）。
 
 ## 2. 技术栈
@@ -23,13 +26,14 @@
 | 路由 | Vue Router 4 | 6 栏主导航（TopBar 详见 [prds/TopBar.md](../prds/TopBar.md)） |
 | 图表 | ECharts 5 | 12 图网格 + 联动 tooltip |
 | 数据请求 | axios | 拦截器统一取 `data` / 错误 `detail` |
+| 异步压测（自研引擎） | aiohttp（1.0.7） | SSE 流式采集 TTFT/ITL，高并发负载生成 |
 | 构建 | Vite build → `benchscope/webui/` | 后端静态托管 |
 
 ## 3. 依赖清单
 
 ### Python（`pyproject.toml`）
 
-`fastapi>=0.110` · `uvicorn[standard]>=0.29` · `requests>=2.31` · `openpyxl>=3.1`（Excel 导出）· `pydantic>=2` · `python-multipart>=0.0.9`（数据集上传）· `pyyaml>=6.0`（1.0.6：内置数据集 / 模型厂商目录 yaml 定义解析）
+`fastapi>=0.110` · `uvicorn[standard]>=0.29` · `requests>=2.31` · `openpyxl>=3.1`（Excel 导出）· `pydantic>=2` · `python-multipart>=0.0.9`（数据集上传）· `pyyaml>=6.0`（1.0.6：内置数据集 / 模型厂商目录 yaml 定义解析）· `aiohttp>=3.9`（**1.0.7：自研 bench 引擎异步 SSE 压测**）
 
 可选：`modelscope>=1.15`（`pip install benchscope[modelscope]`，1.0.6：数据集 modelscope 源下载）
 
@@ -49,6 +53,9 @@
 | bench 输出解析 | 正则双套（mean + P99），vLLM/SGLang 兼容 | 统一指标键（output/ttft/itl/tpot…） |
 | 思考标签 | 通用标签对解析（ASCII + 全角） | 兼容多推理模型输出 |
 | 环境信息 | `importlib.metadata` + 系统探测，缺失显示 `—` | 不强依赖 nvidia-smi 等 |
+| **测试引擎（1.0.7）** | yaml 驱动注册表（`configs/benchs.yaml`）：`benchscope`（自研）/ `vllm-<ver>` / `sglang-<ver>` | 引擎与版本解耦，用户可扩展；原生引擎需环境校验 |
+| **自研引擎口径（1.0.7）** | 严格对齐 vLLM bench（TPOT=(E2E-TTFT)/(tokens-1)、throughput=tokens/duration） | 自研与原生引擎结果可直接对比 |
+| **输出 token 计数（1.0.7）** | 服务端 `usage.completion_tokens`（`stream_options.include_usage`），缺失回退 chunk 数 | 精确且不引入分词依赖 |
 
 ## 5. 数据流约定
 

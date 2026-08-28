@@ -160,6 +160,12 @@ def test_perf_create_engine_select_and_env_block(page):
     _visible(page, ".perf-create-page")
     _visible(page, ".bench-picker", timeout=15000)
 
+    # 等待环境校验完成（校验中为 spin，无状态标签）
+    page.wait_for_function(
+        "() => { const t = document.querySelector('.bench-picker .ant-tag');"
+        " return t && /Ready|Not Satisfied/.test(t.textContent); }",
+        timeout=15000,
+    )
     # 默认引擎为自研 bench（无框架环境依赖，标签显示 Ready）
     tags = page.locator(".bench-picker .ant-tag").all_inner_texts()
     assert any("Ready" in x for x in tags), f"默认引擎环境应可用: {tags}"

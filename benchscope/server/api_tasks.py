@@ -37,6 +37,9 @@ class CreateTaskRequest(BaseModel):
     max_concurrency_search: int = 4096
     # Step2「性能参数」编辑后的框架默认参数 yaml 内容（跟随进入命令）
     params_yaml: dict = {}
+    # 测试引擎 id（benchscope 自研 / vllm-0.23 / sglang-0.5.10，见 configs/benchs.yaml）
+    # 空值表示未指定 → 回退原生引擎链路（旧任务兼容）
+    engine_id: str = ""
 
 
 class UpdateThresholdRequest(BaseModel):

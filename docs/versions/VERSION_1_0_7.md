@@ -106,6 +106,46 @@
 - [ ] P5 — Settings Bench 栏增强（如用户自定义引擎编辑，随 P1 已落地基础版）
 - [ ] P6 — 测试与文档收口（Architecture.md / Software.md 依赖同步）
 
+### 迭代 4（2026-08-28 21:45:04）：P4 自研 bench 引擎落地（aiohttp 流式压测 + 口径对齐 vLLM）
+
+> **完成时间**：2026-08-28 21:45:04
+
+**功能概述**：
+- **自研引擎** `benchscope/benches/builtin_bench.py`（约 500 行）：基于 **aiohttp** 的 OpenAI 兼容 API 异步流式负载生成器
+  - **`Requester`**：SSE 流式执行，采集单请求时间线 `t0 → t_first → t_i → t_end`（TTFT / ITL 精确测量的前提）；输出 token 取服务端 `usage.completion_tokens`（`stream_options.include_usage`），缺失时回退 chunk 数估算
+  - **`LoadGenerator`**：`concurrency` 个 worker 持续发请求直到完成 `num_prompts`（vLLM bench 同语义）；`request_rate` 泊松到达控制；支持 `num_warmups` 预热（不计入指标）；`threading.Event` → `asyncio.Event` 停止信号桥接
+  - **`MetricsCollector`**：**口径严格对齐 vLLM bench**——`TPOT=(E2E-TTFT)/(completion_tokens-1)`、`output throughput=总 completion_tokens/duration`、`total throughput=(prompt+completion)/duration`、`req/s`；各指标 mean/median/p99（最近秩分位数，单样本不抛错）；新增 `peakoutput_mean`（1 秒滑窗峰值吞吐）、`single_user`（用户 QPS）
+  - 输出 vLLM 风格文本（`Serving Benchmark Result`）便于日志查看与人工比对
+- **任务集成** `task_manager.py`：新增 `_builtin_engine()` / `_builtin_options()`；`_run_one` 按 `engine_id` 分支——**自研引擎进程内执行**（跳过命令构建 / 子进程 / 输出解析），其余回退原生链路（旧任务兼容）
+- **`api_tasks.py`**：`CreateTaskRequest` 新增 `engine_id` 字段（**关键**：pydantic 白名单，不声明会被丢弃，与 `max_concurrency_search` 同坑）
+- **mock 服务** `mocks/openai_server.py`：支持 `stream_options.include_usage`（usage 独立 chunk）、按 `max_tokens` 补齐输出长度、粗略 token 计数（自研引擎依赖服务端 usage）
+- **依赖**：新增 `aiohttp>=3.9`（`pyproject.toml` + `Software.md` 同步）
+
+**实现策略**：全部请求失败时**抛错**而非返回全 0 指标（避免误判为测试成功）；分位数用最近秩（numpy/vLLM 语义）且单样本不抛错；自研引擎不经子进程，天然支持跨平台与远程服务。
+
+**实测（对 mock 服务 :8001）**：
+```
+conc= 1  out_tps=  64.9  req/s= 2.03  ttft=2.43ms  tpot=15.83ms  ok=1
+conc= 2  out_tps= 130.5  req/s= 4.08  ttft=2.17ms  tpot=15.73ms  ok=2
+conc= 4  out_tps= 260.2  req/s= 8.13  ttft=2.06ms  tpot=15.79ms  ok=4
+conc= 8  out_tps= 517.8  req/s=16.18  ttft=2.92ms  tpot=15.83ms  ok=8
+```
+吞吐随并发线性增长、延迟稳定，usage 精确计数生效（32 token/请求）。
+
+**验证**：`./tests/run_tests.sh` 全量通过——**API 74/74**（新增 `tests/api/test_builtin_bench.py` 12 项：分位数边界、TPOT 口径、吞吐/失败计数、prompt 构造、mock 发压、并发扩展、不可达端点、任务级集成自研+原生双链路）、**WebUI 20/20**。
+
+**修复记录**：
+- `builtin_bench.py` 缺 `import aiohttp`（仅类型注解引用）→ 补显式导入
+- `_percentile` 单样本时 `statistics.quantiles` 抛错 → 改为最近秩实现
+- `engine_id` 被 `CreateTaskRequest` 白名单丢弃 → 补字段声明
+- WebUI 测试在环境校验中（spin 状态）断言标签 → 改为等待标签出现
+
+**TODO 状态**：
+- [x] P4 — 自研引擎（aiohttp + 流式采集 + 口径对齐 + task_manager 集成 + mock 支持 usage）
+- [ ] P3 — 参数体系（ParamSpec + 选项级描述 + 前端下拉描述面板）
+- [ ] P5 — Settings Bench 栏增强（用户自定义引擎编辑）
+- [ ] P6 — 测试与文档收口（Architecture.md 同步）
+
 ## 4. TODO 清单
 
 - [x] **版本初始化**：VERSION_1_0_7.md + 版本号 `1.0.7.dev0` + Roadmap/Readme 同步 + 开发模式启动（2026-08-28 完成）

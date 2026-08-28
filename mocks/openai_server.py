@@ -57,6 +57,29 @@ def _mock_reply(question: str, model: str, max_tokens: int) -> str:
     return reply
 
 
+def _count_tokens(text: str) -> int:
+    """粗略 token 计数（≈4 字符 1 token），用于 usage 统计。"""
+    return max(1, len(text) // 4)
+
+
+def _fill_to_tokens(seed: str, target_tokens: int) -> str:
+    """把文本扩展到目标 token 数（≈4 字符 1 token），模拟定长输出。"""
+    target_chars = max(4, target_tokens * 4)
+    if len(seed) >= target_chars:
+        return seed[:target_chars]
+    words = ("benchscope mock streaming output token filler content sample text data "
+             "inference serving latency throughput benchmark model response").split()
+    out = [seed]
+    total = len(seed)
+    i = 0
+    while total < target_chars:
+        w = words[i % len(words)]
+        out.append(w)
+        total += len(w) + 1
+        i += 1
+    return " ".join(out)[:target_chars]
+
+
 @app.get("/v1/models")
 def list_models():
     return {"object": "list", "data": MODELS}
@@ -71,12 +94,16 @@ async def chat(req: Request):
     max_tokens = int(body.get("max_tokens", 64) or 64)
     stream = bool(body.get("stream", False))
 
-    reply = _mock_reply(prompt, model, max_tokens)
+    # 自研 bench（builtin 引擎）会传较大 max_tokens 并按目标输出长度压测 —— 补齐到目标 token 数
+    reply = _fill_to_tokens(_mock_reply(prompt, model, max_tokens), max_tokens)
     thinking = _THINKING.format(question=prompt[:80])
+    include_usage = bool((body.get("stream_options") or {}).get("include_usage"))
+    prompt_tokens = _count_tokens(prompt)
+    completion_tokens = _count_tokens(reply)
 
     if stream:
         return StreamingResponse(
-            _sse_stream(model, reply, thinking),
+            _sse_stream(model, reply, thinking, include_usage, prompt_tokens, completion_tokens),
             media_type="text/event-stream",
             headers={
                 "Cache-Control": "no-cache",
@@ -96,15 +123,26 @@ async def chat(req: Request):
             "finish_reason": "length",
         }],
         "usage": {
-            "prompt_tokens": len(prompt.split()),
-            "completion_tokens": len(reply.split()),
-            "total_tokens": len(prompt.split()) + len(reply.split()),
+            "prompt_tokens": prompt_tokens,
+            "completion_tokens": completion_tokens,
+            "total_tokens": prompt_tokens + completion_tokens,
         },
     })
 
 
-async def _sse_stream(model: str, reply: str, thinking: str) -> AsyncGenerator[str, None]:
-    """按字产出 SSE 增量块：先 reasoning_content（思考），再 content。"""
+async def _sse_stream(
+    model: str,
+    reply: str,
+    thinking: str,
+    include_usage: bool = False,
+    prompt_tokens: int = 0,
+    completion_tokens: int = 0,
+) -> AsyncGenerator[str, None]:
+    """按字产出 SSE 增量块：先 reasoning_content（思考），再 content。
+
+    include_usage=True 时在 [DONE] 前追加一个只含 usage 的 chunk，
+    供自研 bench 引擎（builtin）精确统计 token（对齐真实推理服务行为）。
+    """
     created = int(time.time())
     cid = "chatcmpl-" + uuid.uuid4().hex[:12]
 
@@ -115,6 +153,20 @@ async def _sse_stream(model: str, reply: str, thinking: str) -> AsyncGenerator[s
             "created": created,
             "model": model,
             "choices": [{"index": 0, "delta": delta, "finish_reason": finish}],
+        }, ensure_ascii=False)
+
+    def usage_chunk() -> str:
+        return json.dumps({
+            "id": cid,
+            "object": "chat.completion.chunk",
+            "created": created,
+            "model": model,
+            "choices": [],
+            "usage": {
+                "prompt_tokens": prompt_tokens,
+                "completion_tokens": completion_tokens,
+                "total_tokens": prompt_tokens + completion_tokens,
+            },
         }, ensure_ascii=False)
 
     # 模拟思考过程（reasoning_content 增量）
@@ -129,6 +181,9 @@ async def _sse_stream(model: str, reply: str, thinking: str) -> AsyncGenerator[s
         await asyncio.sleep(0.015)
 
     yield f"data: {chunk({}, finish='stop')}\n\n"
+    if include_usage:
+        # usage 单独一个 chunk（choices 为空），对齐 OpenAI stream_options.include_usage 行为
+        yield f"data: {usage_chunk()}\n\n"
     yield "data: [DONE]\n\n"
 
 

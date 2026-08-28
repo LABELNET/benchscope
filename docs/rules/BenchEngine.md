@@ -1,6 +1,7 @@
 # Bench 引擎架构 — BenchEngine（v1.0.7 规划）
 
-> **状态**：规划草案（待确认）  
+> **状态**：P1/P2/P4 已实施（自研引擎可用），P3/P5/P6 待实施  
+> **实施进度**：P1 引擎抽象 ✅ · P2 环境校验 ✅ · P3 参数描述 ⏳ · P4 自研引擎 ✅ · P5 Settings 栏 ✅（基础版）· P6 测试文档 🔄
 > **最后更新**：2026-08-28 18:14:58  
 > **目标**：性能测试核心引擎改造——引擎抽象 + 多版本原生 bench + 自研 bench + 环境校验 + 参数下拉描述  
 > **关联**：[Architecture.md](./Architecture.md) · [Software.md](./Software.md) · [../prds/Performance-Create.md](../prds/Performance-Create.md) · [../versions/VERSION_1_0_7.md](../versions/VERSION_1_0_7.md)
@@ -243,6 +244,24 @@ N         输出 token 数        → 服务端 usage.completion_tokens（stream
 | P4 自研引擎 | LoadGenerator / Requester / MetricsCollector / ResultSink + 集成 task_manager | Q1、Q2、Q3、Q4 |
 | P5 Settings Bench 栏 | 内置引擎列表 + 介绍 + 对比表 + 环境状态 | P1、P2 |
 | P6 测试与文档 | tests/api（引擎注册/环境校验/自研引擎指标）+ tests/webui（引擎选择/参数描述/阻断）+ prds/Architecture/Software 同步 | 全部 |
+
+---
+
+## 8.1 实施落地说明（2026-08-28）
+
+| 阶段 | 落地内容 | 关键文件 |
+| --- | --- | --- |
+| P1 | yaml 驱动注册表 + API + Settings Bench 栏 + 创建页引擎选择 | `configs/benchs.yaml`、`benchscope/benchs.py`、`server/api_benchs.py`、`SettingsView.vue`、`PerfCreateView.vue` |
+| P2 | 版本范围校验（`_match_spec`）+ CLI 探测 + 前端阻断「下一步」 | `benchs.py::check_env`、`PerfCreateView.vue::nextToParams` |
+| P4 | 自研引擎：aiohttp SSE 采集 + 指标口径对齐 vLLM + task_manager 集成 | `benches/builtin_bench.py`、`task_manager.py::_builtin_engine/_builtin_options` |
+
+**任务执行分支**（`task_manager._run_one`）：
+- `engine_id` 对应引擎 `kind=builtin` → **进程内执行**（`run_builtin_bench`），不经命令构建 / 子进程 / 输出解析；
+- 其余（含未指定 `engine_id` 的旧任务）→ 回退原生链路（`build_single_command` + `runner.run` + `parser`）。
+
+**注意**：`engine_id` 必须在 `CreateTaskRequest`（`api_tasks.py`）声明为 pydantic 字段，否则会被请求模型白名单丢弃（与 `max_concurrency_search` 曾遇到的坑一致）。
+
+**实测（对 mock 服务）**：并发 1/2/4/8 → 输出吞吐 64.9 / 130.5 / 260.2 / 517.8 tok/s（线性增长），TPOT 稳定 ≈15.8ms，usage 精确计数生效。
 
 ---
 
