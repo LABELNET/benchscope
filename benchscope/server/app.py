@@ -11,7 +11,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from benchscope import __version__
-from benchscope.server import api_config, api_logs, api_tasks, api_dashboard, api_sessions, api_test
+from benchscope.server import api_config, api_logs, api_tasks, api_dashboard, api_sessions, api_test, api_benchs
 from benchscope.server.state import state
 
 log = logging.getLogger("benchscope.app")
@@ -57,6 +57,8 @@ def create_app() -> FastAPI:
     app.include_router(api_sessions.router)
     # 精度测试（Accuracy）API：路由/模型已实现，统一随服务挂载（覆盖 /api/test*）
     app.include_router(api_test.router)
+    # 内置 bench 引擎 API（引擎清单 / 详情 / 环境校验）
+    app.include_router(api_benchs.router)
 
     @app.get("/api/version", include_in_schema=False)
     def version():

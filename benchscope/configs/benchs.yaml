@@ -1,0 +1,109 @@
+# 内置 bench 引擎定义
+#
+# 结构说明：
+#   id         引擎唯一 id（创建任务时选择，写入任务快照）
+#   kind       引擎类型：builtin（自研）/ vllm（原生 vLLM bench）/ sglang（原生 SGLang bench）
+#   framework  归属框架（builtin / vllm / sglang）
+#   version    引擎版本（builtin 为 benchscope 版本无关，记为 stable）
+#   params_key 参数集标识（用于按版本加载参数集；缺省取 kind）
+#   requires   环境要求（原生引擎必填，builtin 为空）
+#     - name: 包名（torch / vllm / sglang）
+#       spec: 版本范围（如 ">=0.23,<0.24"）
+#       hint: 未满足时的安装提示
+#   comparison 对比项（Settings 面板对比表：维度 → 各引擎取值）
+#
+# 用户可扩展：在此文件追加 engines 条目即可新增引擎/版本（yaml 驱动，无需改代码）。
+
+comparison:
+  - dimension: 引擎类型
+    values:
+      benchscope: 自研（内置实现）
+      vllm-0.23: vLLM 原生（vllm bench serve）
+      sglang-0.5.10: SGLang 原生（sglang.bench_serving）
+  - dimension: 本地环境依赖
+    values:
+      benchscope: 无（仅需 Python）
+      vllm-0.23: 需 torch + vllm 0.23.x
+      sglang-0.5.10: 需 torch + sglang 0.5.10
+  - dimension: 测试对象
+    values:
+      benchscope: 任意 OpenAI 兼容服务（本地 / 远程）
+      vllm-0.23: vLLM 服务（本地部署）
+      sglang-0.5.10: SGLang 服务（本地部署）
+  - dimension: 执行方式
+    values:
+      benchscope: 进程内异步压测（无子进程）
+      vllm-0.23: 子进程执行 CLI + 输出解析
+      sglang-0.5.10: 子进程执行 CLI + 输出解析
+  - dimension: 指标口径
+    values:
+      benchscope: 对齐 vLLM bench（可直接对比）
+      vllm-0.23: vLLM 原生口径
+      sglang-0.5.10: SGLang 原生口径
+  - dimension: 安装体积
+    values:
+      benchscope: 极小（pip 装 benchscope 即可）
+      vllm-0.23: 大（需完整 vLLM 环境）
+      sglang-0.5.10: 大（需完整 SGLang 环境）
+
+engines:
+  # ---------------- 自研引擎（无需本地框架环境） ----------------
+  - id: benchscope
+    kind: builtin
+    framework: builtin
+    version: stable
+    name: BenchScope Bench（自研）
+    description: >-
+      自研测试引擎，基于 OpenAI 兼容 API 的异步流式负载生成器。
+      不依赖本地 vLLM / SGLang 环境，pip 安装后即可对本地或远程的任意 OpenAI 兼容推理服务进行性能测试。
+      指标口径严格对齐 vLLM bench（TTFT / TPOT / ITL / 吞吐量），结果可与原生引擎直接对比。
+    highlights:
+      - 无需本地框架环境，安装即用
+      - 支持本地与远程 OpenAI 兼容服务
+      - 指标口径对齐 vLLM bench，可与原生引擎对比
+      - SSE 流式采集，TTFT / ITL 测量准确
+    requires: []
+
+  # ---------------- vLLM 原生引擎（按版本） ----------------
+  - id: vllm-0.23
+    kind: vllm
+    framework: vllm
+    version: "0.23"
+    params_key: vllm
+    name: vLLM Bench（原生 v0.23）
+    description: >-
+      vLLM 官方 bench 工具（vllm bench serve），由本地安装的 vLLM 0.23.x 提供。
+      需在本地完整安装 torch 与 vllm 0.23.x 环境，命令由 benchscope 构建后经子进程执行，输出经解析器提取指标。
+    highlights:
+      - vLLM 官方实现，与官方口径完全一致
+      - 支持 vLLM 全量 bench 参数
+      - 需本地安装 torch + vllm 0.23.x
+    requires:
+      - name: torch
+        spec: ">=2.0"
+        hint: "请安装 torch：pip install 'torch>=2.0'"
+      - name: vllm
+        spec: ">=0.23,<0.24"
+        hint: "请安装 vLLM 0.23.x：pip install 'vllm>=0.23,<0.24'"
+
+  # ---------------- SGLang 原生引擎（按版本） ----------------
+  - id: sglang-0.5.10
+    kind: sglang
+    framework: sglang
+    version: "0.5.10"
+    params_key: sglang
+    name: SGLang Bench（原生 v0.5.10）
+    description: >-
+      SGLang 官方 bench 工具（python -m sglang.bench_serving），由本地安装的 SGLang 0.5.10 提供。
+      需在本地完整安装 torch 与 sglang 0.5.10 环境，命令由 benchscope 构建后经子进程执行，输出经解析器提取指标。
+    highlights:
+      - SGLang 官方实现，与官方口径完全一致
+      - 支持 SGLang 全量 bench 参数
+      - 需本地安装 torch + sglang 0.5.10
+    requires:
+      - name: torch
+        spec: ">=2.0"
+        hint: "请安装 torch：pip install 'torch>=2.0'"
+      - name: sglang
+        spec: "==0.5.10"
+        hint: "请安装 SGLang 0.5.10：pip install 'sglang==0.5.10'"

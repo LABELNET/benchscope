@@ -199,16 +199,18 @@ N         输出 token 数        → 服务端 usage.completion_tokens（stream
 
 > `benchmark_duration` 定义需与 vLLM 一致（所有 worker 从开始到最后一个请求完成的墙钟时间），这是 throughput 可比的关键。
 
-### 6.5 技术选型（**待确认**）
+### 6.5 技术选型（**已确认**）
 
-| 维度 | 方案 A（推荐） | 方案 B | 方案 C |
-| --- | --- | --- | --- |
-| 异步 HTTP | **aiohttp**（成熟、高并发、SSE 友好） | httpx（async 支持好，API 更现代） | 标准库 `urllib` + `threading`（零新依赖，高并发开销大） |
-| 输出 token 计数 | **服务端 `usage.completion_tokens`**（`stream_options.include_usage: true`） | 本地 tokenizer 计数 | 两者结合（优先服务端，缺失回退本地） |
-| input 长度控制 | **近似**（按字符/token 比估算构造 prompt） | **精确**（可选依赖 `transformers` / `tiktoken` 分词到目标长度） | 服务端 `/tokenize` 端点（若支持） |
-| 分位数计算 | 纯 Python `statistics`（零依赖） | numpy（已是间接依赖？需确认） | — |
+| 维度 | 决策 | 说明 |
+| --- | --- | --- |
+| 异步 HTTP | **aiohttp** | 成熟高并发、SSE 流式支持好；新增依赖，实施时需同步 `docs/rules/Software.md` §2/§3 |
+| 输出 token 计数 | **服务端 `usage.completion_tokens`** | 请求带 `stream_options.include_usage: true`；服务端不返回时回退按 chunk 数估算 |
+| input 长度控制 | **近似构造** | 按字符/token 比（默认 ~4 字符≈1 token，可配）构造 prompt，零额外依赖 |
+| 分位数计算 | 纯 Python `statistics` | 零依赖 |
+| 指标口径 | **严格对齐 vLLM bench** | 保证自研引擎与原生引擎结果可直接对比 |
+| 引擎版本策略 | **内置 + 用户可扩展** | 内置 `bench` / `vllm-0.23` / `sglang-0.5.10`，yaml 驱动支持用户自定义新增引擎与版本 |
 
-**推荐组合**：aiohttp + 服务端 usage 计数 + 默认近似长度（可选开启精确 tokenizer）。引入 `aiohttp` 需同步 `docs/rules/Software.md` §2/§3（依赖变更约定）。
+**依赖变更（待实施）**：新增 `aiohttp`（建议 `>=3.9`），须同步 `docs/rules/Software.md` §2 技术栈与 §3 依赖清单（软件依赖变更约定）。
 
 ### 6.6 与现有链路的集成
 
@@ -218,16 +220,16 @@ N         输出 token 数        → 服务端 usage.completion_tokens（stream
 
 ---
 
-## 7. 待确认项（阻塞实施）
+## 7. 已确认决策（2026-08-28 用户确认）
 
-| # | 问题 | 候选答案 |
+| # | 决策项 | 结论 |
 | --- | --- | --- |
-| Q1 | 自研 bench 的异步 HTTP 技术栈？ | aiohttp（推荐）/ httpx / 标准库零依赖 |
-| Q2 | 输出 token 计数方式？ | 服务端 usage（推荐）/ 本地 tokenizer / 两者结合 |
-| Q3 | input token 长度是否需精确 tokenizer？ | 默认近似 + 可选精确（推荐）/ 必须精确 / 仅近似 |
-| Q4 | 指标口径严格对齐 vLLM 吗（尤其 TPOT 定义与 throughput 分母）？ | 严格对齐（推荐）/ 自定口径（不与原生对比） |
-| Q5 | 内置引擎版本是否仅 `vllm-0.23` / `sglang-0.5.10` 两个？是否需要支持用户自定义新增引擎/版本？ | 仅内置两个 / 内置 + 用户可扩展（推荐） |
-| Q6 | 旧任务（无引擎版本字段）如何兼容？ | 默认回退 `vllm`（当前参数集）/ 强制指定引擎（推荐：读取时回退默认引擎，新建任务必选） |
+| Q1 | 异步 HTTP 技术栈 | **aiohttp** |
+| Q2 | 输出 token 计数 | **服务端 usage.completion_tokens**（`stream_options.include_usage`） |
+| Q3 | input 长度控制 | **近似构造**（字符/token 比，零额外依赖） |
+| Q4 | 指标口径 | **严格对齐 vLLM bench**（可与原生引擎直接对比） |
+| Q5 | 引擎版本策略 | **内置 + 用户可扩展**（内置 `bench` / `vllm-0.23` / `sglang-0.5.10`，yaml 驱动扩展） |
+| Q6 | 旧任务兼容（无引擎字段） | **读取时回退默认引擎**（`vllm` 当前参数集），新建任务必须显式指定引擎 |
 
 ---
 
