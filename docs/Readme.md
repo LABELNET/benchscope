@@ -45,6 +45,7 @@
 | [rules/Software.md](rules/Software.md) | 软件架构/方案/选型/依赖 |
 | [rules/Design.md](rules/Design.md) | 设计规范：UI / 字体 / 颜色 |
 | [rules/Development.md](rules/Development.md) | 开发 / 验证 / 部署规范 |
+| [rules/BenchEngine.md](rules/BenchEngine.md) | **Bench 引擎架构（1.0.7）**：引擎抽象（自研 bench / vllm-<ver> / sglang-<ver>）+ 环境校验 + 参数描述 + 自研引擎核心设计 |
 
 ## 4. 顶层文档
 

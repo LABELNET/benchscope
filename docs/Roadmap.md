@@ -9,13 +9,16 @@ benchscope 按版本迭代推进，**倒序**列出各版本（最新在前）�
 - **发布时间**：待定
 - **TODO**（后续开发内容均迭代在此版本，按时间顺序追加，详见 [docs/versions/VERSION_1_0_7.md](versions/VERSION_1_0_7.md)）：
 
-规划功能（候选，优先级待确认）：
-- **Dashboard 指标补全**：Overview 六宫格 `Max Perf Records (RUN ID)` / `Max Acc Records (RUN ID)` 当前显示 `—`（逻辑待实现）→ 接入实际最优记录与跳转
-- **Datas/Analysis 记录对比分析页落地**：当前占位页 → 多选 perf 记录逐指标（mean/median/p99）对比表 + 对比图
-- **Datas/Evals 精度记录页落地**：精度记录列表 + 详情骨架（为 v5.0 精度测试铺路）
-- **Settings → Models 部署能力**：内置模型一键下载到 `models_dir` + 下载进度（7.0 前置）
-- **Settings → Plugins 插件机制**：占位 → 插件管理（列表 / 启用 / 禁用 / 上传）
-- **任务管理与导出增强**：任务搜索筛选、报告导出（HTML / PDF）
+**主目标：性能测试核心引擎改造**（详见 [docs/rules/BenchEngine.md](rules/BenchEngine.md)）
+
+- 自研 **bench（benchscope）**：基于 vLLM / SGLang bench 思路实现自研测试引擎，不依赖本地框架环境，pip 安装即可远程测 OpenAI 兼容服务
+- **vllm bench 版本化**：指定具体版本的原生 vLLM bench（如 `vllm-0.23`），可因版本存在多个
+- **sglang bench 版本化**：指定具体版本的原生 SGLang bench（如 `sglang-0.5.10`），可因版本存在多个
+- **参数下拉 + 描述**：各引擎各项参数独立设置，下拉选择后展示描述信息
+- **Settings → Bench 配置栏**：内置 `bench` / `vllm-0.23` / `sglang-0.5.10`，含介绍与对比情况
+- **环境校验**：原生引擎校验 `torch` + `vllm`/`sglang` 安装版本，不满足则禁止选择参数；自研 bench 无需上述环境
+
+次要候选（主目标后评估）：Dashboard 指标补全 · Datas/Analysis 对比分析页 · Datas/Evals 精度记录页 · Models 一键下载 · Plugins 机制 · 任务管理与导出增强
 
 ---
 
