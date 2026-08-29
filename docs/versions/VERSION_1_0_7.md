@@ -906,17 +906,31 @@ mocks 勾选放行、介绍卡片新文案）。
 
 ## 版本功能清单（Release Notes）
 
-以下为 v1.0.7 实现功能的总结清单（中英对照，按功能按条列举；用于 GitHub Release 说明，勿直接搬迭代记录）：
+以下为 v1.0.7 实现功能的总结清单（先英文清单、后中文清单；用于 GitHub Release 说明，勿直接搬迭代记录）。
 
-- **创建任务：参数中英双语随语言切换** / **Create task: bilingual parameters that switch with UI language**（默认英文，切换中文显示中文；label / help / options / 描述全量 `_zh` 双语）
-- **阈值模式 Max Requests 面板化** / **Threshold-mode Max Requests as a panel**（独立小字浅色描述 + 面板形式，与引擎选择一致）
-- **Settings 布局重构（全宽靠左 + 滚动条最右）** / **Settings layout rework (full-width left-aligned + right-side scrollbar)**（Models / Datasets / Bench Engines / Skills 内容靠左，滚动条在页面最右侧）
-- **移除 Settings/Debug，mock 环境与数据跟随引擎** / **Remove Settings/Debug; mock env & data follow the engine**（每个引擎独立 Mock 开关，默认关闭；`config.engine_mocks` 按 engine_id 判定，动态注册引擎同样支持）
-- **技能体系：bs-perfs 并发/阈值压测技能** / **Skills: bs-perfs-concurrency & bs-perfs-threshold**（`benchscope perf` 并发压测 + `--mode threshold` 阈值搜索，内置表单，生成可导入 Datas/perfs 的 zip；移除 bs-bench-vllm/sglang）
-- **技能版本约定 + 版本包下载** / **Skill versioning + version-package download**（技能有版本、更新自动递增、发版本包到本地；`GET /api/skills/{id}/download` 服务可下载）
-- **Skills 页可滚动 + 一个技能一个说明文档** / **Skills page scrollable + one-skill-one-doc**（滚动条最右、卡片靠左；docs/skills 每技能独立 `<BsXxxYyy>.md` 说明，内容与按钮随语言切换）
-- **Datas/perfs 记录 framework 标记** / **Perfs records show framework badge**（每条记录任务 ID 右侧显示蓝色小字 framework 标记）
-- **发布规则按版本号区分** / **Release rules by version number**（补丁 Z 更新不推 PyPI、只推 GitHub tag + release；主/次 X.Y 更新推 PyPI + tag + release；Release 说明为按功能总结的中英功能清单）
+### Feature Highlights
+
+- **Create task: bilingual parameters that switch with UI language** (English by default, switch to Chinese via UI language; label / help / options / description all have `_zh` bilingual)
+- **Threshold-mode Max Requests as a panel** (independent small-light description + panel style consistent with engine selector)
+- **Settings layout rework: full-width left-aligned + right-side scrollbar** (Models / Datasets / Bench Engines / Skills left-aligned, scrollbar on the far right)
+- **Remove Settings/Debug; mock env & data follow the engine** (per-engine Mock switch, default off; `config.engine_mocks` per engine_id, also supports dynamically-registered engines)
+- **Skills: bs-perfs-concurrency & bs-perfs-threshold** (`benchscope perf` concurrency + `--mode threshold` search, built-in form, produces zip importable in Datas/perfs; removed bs-bench-vllm/sglang)
+- **Skill versioning + version-package download** (skills are versioned, auto-increment on update, release to local; `GET /api/skills/{id}/download` downloads the package)
+- **Skills page scrollable + one-skill-one-doc** (scrollbar on far right, cards left-aligned; each skill has its own `<BsXxxYyy>.md` in docs/skills, content & buttons switch with language)
+- **Perfs records show framework badge** (each record shows a small blue framework badge right of the task ID)
+- **Release rules by version number** (patch Z: skip PyPI, only GitHub tag + release; minor/major X.Y: PyPI + tag + release; Release notes are a bilingual feature list)
+
+### 功能清单
+
+- **创建任务：参数中英双语随语言切换**（默认英文，切换中文显示中文；label / help / options / 描述全量 `_zh` 双语）
+- **阈值模式 Max Requests 面板化**（独立小字浅色描述 + 面板形式，与引擎选择一致）
+- **Settings 布局重构（全宽靠左 + 滚动条最右）**（Models / Datasets / Bench Engines / Skills 内容靠左，滚动条在页面最右侧）
+- **移除 Settings/Debug，mock 环境与数据跟随引擎**（每个引擎独立 Mock 开关，默认关闭；`config.engine_mocks` 按 engine_id 判定，动态注册引擎同样支持）
+- **技能体系：bs-perfs 并发/阈值压测技能**（`benchscope perf` 并发压测 + `--mode threshold` 阈值搜索，内置表单，生成可导入 Datas/perfs 的 zip；移除 bs-bench-vllm/sglang）
+- **技能版本约定 + 版本包下载**（技能有版本、更新自动递增、发版本包到本地；`GET /api/skills/{id}/download` 服务可下载）
+- **Skills 页可滚动 + 一个技能一个说明文档**（滚动条最右、卡片靠左；docs/skills 每技能独立 `<BsXxxYyy>.md` 说明，内容与按钮随语言切换）
+- **Datas/perfs 记录 framework 标记**（每条记录任务 ID 右侧显示蓝色小字 framework 标记）
+- **发布规则按版本号区分**（补丁 Z 更新不推 PyPI、只推 GitHub tag + release；主/次 X.Y 更新推 PyPI + tag + release；Release 说明为按功能总结的中英功能清单）
 
 ---
 

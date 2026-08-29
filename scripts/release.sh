@@ -160,11 +160,34 @@ src = open(sys.argv[1], encoding="utf-8").read()
 # 优先使用 VERSION 文档中的「版本功能清单（Release Notes）」双语区块（人工维护，中英按功能总结）
 m = re.search(r"(?ms)^##\s*版本功能清单（Release Notes）\s*\n(.*?)(?=^##\s|\Z)", src)
 if m:
-    # 只保留功能条目（- 开头），过滤说明段与分隔线；每条中英已内联（中文 / English）
-    lines = [l.rstrip() for l in m.group(1).splitlines()
-             if l.strip().startswith("- ")]
-    print("## 版本功能清单 / Feature Highlights\n")
-    print("\n".join(lines) if lines else "（未提取到功能条目，请补充）")
+    block = m.group(1)
+    # 新约定格式：先「### Feature Highlights」（英文），后「### 功能清单」（中文）
+    # 提取各子块下以 "- " 开头的功能条目；子块标题缺省时按内容识别
+    out = []
+    def sub_items(start):
+        seg = block[start:]
+        # 跳过子标题行（### Feature Highlights / ### 功能清单）
+        seg = seg.split("\n", 1)[1] if "\n" in seg else ""
+        # 截断到下一个 "### " 子标题
+        nxt = seg.find("### ")
+        if nxt != -1:
+            seg = seg[:nxt]
+        return [l.rstrip() for l in seg.splitlines() if l.strip().startswith("- ")]
+    en_i = block.find("### Feature Highlights")
+    zh_i = block.find("### 功能清单")
+    if en_i != -1 and zh_i != -1:
+        out.append("## Feature Highlights\n")
+        en = sub_items(en_i)
+        out.append("\n".join(en) if en else "（无英文条目）")
+        out.append("\n## 功能清单\n")
+        zh = sub_items(zh_i)
+        out.append("\n".join(zh) if zh else "（无中文条目）")
+    else:
+        # 回退：混合条目直接列出
+        lines = [l.rstrip() for l in block.splitlines() if l.strip().startswith("- ")]
+        out.append("## Feature Highlights\n")
+        out.append("\n".join(lines) if lines else "（未提取到功能条目，请补充）")
+    print("\n".join(out))
     print("\n---\n详细迭代记录见仓库 `docs/versions/`。")
     sys.exit(0)
 
