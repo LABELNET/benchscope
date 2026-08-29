@@ -74,9 +74,9 @@ TWINE_USERNAME=__token__ TWINE_PASSWORD=<pypi-token> ./scripts/release.sh 1.0.6
 - 完整发布（X.Y 变化时）= 打包推送 PyPI + 推送 GitHub Release 总结 + 推送版本 tag：
   1. **PyPI**：`python -m build` + `twine upload`（`TWINE_USERNAME=__token__` + PyPI API token）；
   2. **GitHub Release 总结（功能清单，强制规则）**：`scripts/release.sh` 自动创建（`gh release create` 或 `GITHUB_TOKEN` REST API 回退），说明默认从 `docs/versions/VERSION_x_y_z.md` 的 **「版本功能清单（Release Notes）」** 区块提取（中英双语，按功能按条总结）；**不能直接搬迭代记录**——不输出迭代标题、不带时间、不是逐迭代记录，而是**按功能归纳总结、中英文对照**。规则：
-     - 发布前须在 `VERSION_x_y_z.md` 维护「版本功能清单（Release Notes）」区块，**格式为先英文清单、后中文清单**：
+     - **功能清单由 AI 总结（release.sh 不做机械提取）**：发布前**由 AI 读取 `VERSION_x_y_z.md` 版本内容**，总结功能清单与核心功能变化，写入「版本功能清单（Release Notes）」区块，**格式为先英文清单、后中文清单**：
        `### Feature Highlights`（英文条目）+ `### 功能清单`（中文条目），每条 = `- **功能**（细节）`；
-     - release.sh 优先提取该区块（先英文后中文，仅 `- ` 功能条目）；无区块则回退汇总各迭代「变更内容」一级功能项（去重，无标题/时间）；
+     - release.sh 只**原样读取**该区块作为 Release 说明（不提取迭代记录、不做机械处理）；缺区块时提示用 AI 总结或 `--notes` 指定；
      - 可用 `--notes <file>` 覆盖；**补丁版本不推 PyPI，但 Release 仍带功能清单照常推送**；
   3. **版本 tag**：`git tag vX.Y.Z` + `git push origin main --tags`。
 - 前置：PyPI token（`TWINE_USERNAME/TWINE_PASSWORD` 或 `~/.pypirc`，仅 X.Y 变化时需要）+ GitHub 凭据（`gh auth` 或 `GITHUB_TOKEN`）。

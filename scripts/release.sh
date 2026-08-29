@@ -152,81 +152,29 @@ if [ -n "$NOTES_FILE" ]; then
   fi
   cp "$NOTES_FILE" "$NOTES_TMP"
 elif [ -f "$VER_DOC" ]; then
-  echo "==> 从 ${VER_DOC} 提取功能清单生成 Release 说明 ..."
-  python3 - "$VER_DOC" > "$NOTES_TMP" <<'PYEOF'
+  echo "==> 读取 ${VER_DOC} 中的「版本功能清单（Release Notes）」区块作为 Release 说明 ..."
+  echo "# benchscope v${NEW}" > "$NOTES_TMP"
+  echo "" >> "$NOTES_TMP"
+  # 不做机械提取：功能清单由 AI 读取版本内容后总结（先英文后中文）维护在 VERSION 文档该区块
+  if ! python3 - "$VER_DOC" >> "$NOTES_TMP" <<'PYEOF'
 import re, sys
 src = open(sys.argv[1], encoding="utf-8").read()
-
-# 优先使用 VERSION 文档中的「版本功能清单（Release Notes）」双语区块（人工维护，中英按功能总结）
 m = re.search(r"(?ms)^##\s*版本功能清单（Release Notes）\s*\n(.*?)(?=^##\s|\Z)", src)
 if m:
-    block = m.group(1)
-    # 新约定格式：先「### Feature Highlights」（英文），后「### 功能清单」（中文）
-    # 提取各子块下以 "- " 开头的功能条目；子块标题缺省时按内容识别
-    out = []
-    def sub_items(start):
-        seg = block[start:]
-        # 跳过子标题行（### Feature Highlights / ### 功能清单）
-        seg = seg.split("\n", 1)[1] if "\n" in seg else ""
-        # 截断到下一个 "### " 子标题
-        nxt = seg.find("### ")
-        if nxt != -1:
-            seg = seg[:nxt]
-        return [l.rstrip() for l in seg.splitlines() if l.strip().startswith("- ")]
-    en_i = block.find("### Feature Highlights")
-    zh_i = block.find("### 功能清单")
-    if en_i != -1 and zh_i != -1:
-        out.append("## Feature Highlights\n")
-        en = sub_items(en_i)
-        out.append("\n".join(en) if en else "（无英文条目）")
-        out.append("\n## 功能清单\n")
-        zh = sub_items(zh_i)
-        out.append("\n".join(zh) if zh else "（无中文条目）")
-    else:
-        # 回退：混合条目直接列出
-        lines = [l.rstrip() for l in block.splitlines() if l.strip().startswith("- ")]
-        out.append("## Feature Highlights\n")
-        out.append("\n".join(lines) if lines else "（未提取到功能条目，请补充）")
-    print("\n".join(out))
-    print("\n---\n详细迭代记录见仓库 `docs/versions/`。")
-    sys.exit(0)
-
-# 回退：汇总所有迭代「变更内容」的一级功能项，去重为纯功能清单（不带迭代标题/时间）
-blocks = re.split(r"(?m)^### ", src)
-seen = set()
-feats = []
-for b in blocks:
-    if not b.strip():
-        continue
-    body = b[b.find("**变更内容**"):]
-    cut = len(body)
-    for mark in ("**验证", "**TODO 状态**", "## 4."):
-        j = body.find(mark)
-        if j != -1 and j < cut:
-            cut = j
-    body = body[:cut]
-    for line in body.splitlines():
-        s = line.strip()
-        if not s:
-            continue
-        is_top = line.startswith(("1.", "2.", "3.", "4.", "5.", "6.", "7.", "8.", "9.", "- "))
-        if not is_top:
-            continue
-        s = re.sub(r"^\d+\.\s", "", s).strip()
-        if s and s not in seen:
-            seen.add(s)
-            feats.append(f"- {s}")
-
-print("## 版本功能清单 / Feature Highlights\n")
-if feats:
-    print("\n".join(feats))
+    # 原样输出 AI 总结的功能清单区块（先英文清单 Feature Highlights，后中文清单 功能清单）
+    print(m.group(1).rstrip())
 else:
-    print("（未提取到功能条目，请手动补充说明。）")
-print("\n---\n详细迭代记录见仓库 `docs/versions/`。")
+    print("（VERSION 文档缺少「版本功能清单（Release Notes）」区块，请用 AI 读取版本内容总结功能清单，"
+          "或通过 --notes 指定说明文件。）")
+    sys.exit(1)
 PYEOF
+  then
+    echo "⚠️  未生成功能清单：请先用 AI 读取 ${VER_DOC} 总结功能清单与核心功能变化（先英文后中文）"
+    echo "   填入「版本功能清单（Release Notes）」区块，或通过 --notes 提供说明文件。" >&2
+  fi
 else
   echo "# benchscope v${NEW}" > "$NOTES_TMP"
-  echo "（未提供 --notes，也无对应 VERSION 文档，请手动补充说明。）" >> "$NOTES_TMP"
+  echo "（未提供 --notes，也无对应 VERSION 文档，请用 AI 总结功能清单后通过 --notes 提供。）" >> "$NOTES_TMP"
 fi
 
 create_github_release() {
