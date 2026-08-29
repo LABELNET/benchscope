@@ -148,8 +148,13 @@ def yaml_params_to_args(content: str | None, defaults_map: dict[str, str] | None
 
 
 def merge_extra_args(payload: dict, extra_args: list | None = None) -> list:
-    """合并 payload.extra_args 与 Step2 编辑的 params_yaml[framework] 参数，
-    跳过核心参数与已存在的 flag，避免命令中出现重复参数。"""
+    """合并 payload.extra_args 与 Step2 编辑的引擎参数（engine_params_yaml），
+    跳过核心参数与已存在的 flag，避免命令中出现重复参数。
+
+    参数来源优先级：
+      1. `engine_params_yaml` —— 当前所选引擎的参数清单（1.0.7 起，随引擎切换）
+      2. `params_yaml[framework]` —— 旧版按框架保存的参数（向后兼容）
+    """
     framework = payload.get("framework", "vllm")
     extra = list(extra_args if extra_args is not None else (payload.get("extra_args") or []))
     used = set()
@@ -158,7 +163,7 @@ def merge_extra_args(payload: dict, extra_args: list | None = None) -> list:
             used.add(item.split("=", 1)[0])
         elif isinstance(item, dict):
             used.add(item.get("flag", ""))
-    py = (payload.get("params_yaml") or {}).get(framework)
+    py = payload.get("engine_params_yaml") or (payload.get("params_yaml") or {}).get(framework)
     if py:
         defaults_map = _parse_yaml_map(PARAM_YAML_DEFAULTS.get(framework))
         for a in yaml_params_to_args(py, defaults_map):

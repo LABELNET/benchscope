@@ -238,6 +238,12 @@ def test_bench_engine_authoring_doc():
     assert "params_key" in text and "description" in text, "应描述导入校验项"
     assert "Task: create a BenchScope custom bench engine" in text, "缺少可复制提示词"
 
+    # 界面入口（1.0.7）：Create Engine / Upload Engine 弹框
+    for kw in ("Create Engine", "Upload Engine", "Engine Comparison"):
+        assert kw in text, f"应说明界面入口 {kw}"
+    assert "/api/benchs/upload" in text, "应说明引擎包上传接口"
+    assert ".tar.gz" in text and ".yaml" in text, "应说明支持的引擎包格式"
+
 
 def test_bench_testing_doc():
     """docs/skills/BenchTesting.md：vLLM / SGLang 性能测试技能说明。"""
@@ -264,3 +270,30 @@ def test_docs_index_links_skills_section():
     text = (REPO_ROOT / "docs" / "Readme.md").read_text(encoding="utf-8")
     for f in ("skills/Readme.md", "skills/BenchEngineAuthoring.md", "skills/BenchTesting.md"):
         assert f in text, f"docs/Readme.md 未登记 {f}"
+
+
+def test_bench_engine_authoring_skill_upload_contract():
+    """技能包（package.sh 产物）必须能被 /api/benchs/upload 识别导入。
+
+    打包产物结构：技能目录原样打包（含 references/ templates/ 等），
+    上传接口递归查找含 engines 段的 yaml（引擎定义）与 bench-params.yaml（参数说明）。
+    """
+    skill_dir = SKILLS_DIR / "bench-engine-authoring"
+    script = skill_dir / "scripts" / "package.sh"
+    assert script.is_file(), "缺少 scripts/package.sh"
+
+    with tempfile.TemporaryDirectory() as tmp:
+        out = Path(tmp)
+        r = subprocess.run([str(script), str(out)], capture_output=True, text=True, timeout=120)
+        assert r.returncode == 0, f"打包失败: {r.stderr}"
+        archives = list(out.glob("*.tar.gz"))
+        assert len(archives) == 1, f"应产出 1 个 tar.gz: {archives}"
+
+        # 包内 yaml 文件应存在（引擎定义模板与参数模板）
+        with tarfile.open(archives[0], "r:gz") as tar:
+            names = tar.getnames()
+        yaml_names = [n for n in names if n.endswith((".yaml", ".yml"))]
+        assert yaml_names, f"技能包内应含 yaml 模板: {names[:10]}"
+
+        # 包内模板目录应提供引擎定义与参数段模板（供导入使用）
+        assert any("templates/" in n for n in yaml_names), f"缺少 templates 下的 yaml: {yaml_names}"

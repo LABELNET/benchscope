@@ -46,6 +46,126 @@ _FILLER_WORDS = (
 ).split()
 
 
+# ---------------------------------------------------------------------------
+# Bench CLI 参数清单（configs/benchscope-default.yaml）
+#
+# 说明与可选值见 configs/bench-params.yaml 的 benchscope 段；此处为缺省值，
+# 未出现在参数清单中的键回退这些默认值。
+# ---------------------------------------------------------------------------
+BUILTIN_PARAM_DEFAULTS = {
+    "backend": "openai-chat",
+    "endpoint": "/v1/chat/completions",
+    "request-rate": "inf",
+    "num-prompts": "0",
+    "num-warmups": "0",
+    "chars-per-token": "4",
+    "timeout": "600",
+    "temperature": "0.0",
+    "seed": "0",
+}
+
+
+def _as_float(value, default: float) -> float:
+    try:
+        v = float(str(value).strip())
+    except (TypeError, ValueError):
+        return default
+    return v if v == v else default  # 过滤 NaN
+
+
+def _as_int(value, default: int) -> int:
+    try:
+        return int(float(str(value).strip()))
+    except (TypeError, ValueError):
+        return default
+
+
+def params_from_yaml(content: str) -> dict:
+    """解析引擎参数清单文本（configs/<params_key>-default.yaml）为 {key: value}。"""
+    params: dict = {}
+    for ln in (content or "").splitlines():
+        s = ln.strip()
+        if not s or s.startswith("#") or ":" not in s:
+            continue
+        k, v = s.split(":", 1)
+        k = k.strip()
+        if k == "version":
+            continue
+        params[k] = v.strip()
+    return params
+
+
+def build_options(
+    params: dict,
+    *,
+    base_url: str,
+    model: str,
+    dataset: dict,
+    concurrency: int,
+    api_key: str = "",
+) -> "BuiltinOptions":
+    """由「引擎参数清单」构造一次执行的选项（参数随引擎，不与其他引擎混淆）。
+
+    params：解析自 configs/<params_key>-default.yaml 的 {key: value}（key 为连字符形式）。
+    """
+    p = {**BUILTIN_PARAM_DEFAULTS, **(params or {})}
+
+    rate_raw = str(p.get("request-rate", "inf")).strip().lower()
+    if rate_raw in ("inf", "", "none", "infinite"):
+        rate = float("inf")
+    else:
+        rate = _as_float(rate_raw, float("inf"))
+
+    num_prompts = _as_int(p.get("num-prompts"), 0)
+    if num_prompts <= 0:
+        num_prompts = int(concurrency)
+    seed = _as_int(p.get("seed"), 0)
+
+    return BuiltinOptions(
+        base_url=base_url,
+        api_key=api_key,
+        model=model,
+        endpoint=str(p.get("endpoint") or "/v1/chat/completions"),
+        backend=str(p.get("backend") or "openai-chat"),
+        dataset=dataset or {},
+        concurrency=int(concurrency),
+        num_prompts=num_prompts,
+        request_rate=rate,
+        timeout=_as_float(p.get("timeout"), DEFAULT_TIMEOUT),
+        warmups=_as_int(p.get("num-warmups"), 0),
+        chars_per_token=_as_float(p.get("chars-per-token"), DEFAULT_CHARS_PER_TOKEN),
+        seed=seed or None,
+        extra_body={"temperature": _as_float(p.get("temperature"), 0.0)},
+    )
+
+
+def build_command(opts: "BuiltinOptions", engine_id: str = "benchscope") -> list[str]:
+    """构建 Bench CLI 的等效命令（Step3 预览 / 日志留档 / 可直接复制执行）。
+
+    与 `benchscope perf` 子命令参数一致（见 benchscope/cli.py）。
+    """
+    ds = opts.dataset or {}
+    rate = "inf" if opts.request_rate == float("inf") else f"{opts.request_rate:g}"
+    return [
+        "benchscope", "perf",
+        "--engine", engine_id,
+        "--model", opts.model or "<model>",
+        "--base-url", opts.base_url or "<base-url>",
+        "--backend", opts.backend,
+        "--endpoint", opts.endpoint,
+        "--concurrency", str(int(opts.concurrency)),
+        "--num-prompts", str(int(opts.num_prompts)),
+        "--input-len", str(ds.get("input_len") or 0),
+        "--output-len", str(ds.get("output_len") or 0),
+        "--request-rate", rate,
+        "--num-warmups", str(int(opts.warmups)),
+        "--chars-per-token", f"{opts.chars_per_token:g}",
+        "--timeout", f"{opts.timeout:g}",
+        "--temperature", f"{_as_float((opts.extra_body or {}).get('temperature'), 0.0):g}",
+        "--seed", str(int(opts.seed or 0)),
+    ]
+
+
 @dataclass
 class RequestRecord:
     """单个请求的采集结果。"""
@@ -435,7 +555,7 @@ def run_builtin_bench(
         if stream_cb:
             stream_cb(line)
 
-    emit(f"$ benchscope bench --backend={opts.backend} --base-url={opts.base_url} "
+    emit(f"$ benchscope perf --backend={opts.backend} --base-url={opts.base_url} "
          f"--model={opts.model} --concurrency={opts.concurrency} --num-prompts={opts.num_prompts or opts.concurrency}\n")
 
     loop = asyncio.new_event_loop()

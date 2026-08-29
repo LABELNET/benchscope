@@ -70,13 +70,33 @@ class BenchEngine(Protocol):
 
 `benchscope/configs/benchs.yaml`——内置引擎清单（id / kind / version / 名称 / 介绍 / 对比 / 环境要求 / 参数集），后端 `benchs.py` 加载 + API 暴露，Settings 面板展示（复用 Datasets 面板「卡片 + 描述 + 状态」范式）。
 
+#### 文案双语约定（1.0.7，强制）
+
+引擎定义的**文案默认为英文**，中文放在 `*_zh` 字段（沿用仓库既有的 `name_zh` / `label_zh` / `desc_zh` 约定），
+界面按当前语言选择，缺失时回退英文；**英文界面不得出现硬编码中文**。
+
+| 字段 | 中文字段 | 说明 |
+| --- | --- | --- |
+| `name` | `name_zh` | 引擎名（语言中立时可只写 `name`） |
+| `description` | `description_zh` | 引擎介绍 |
+| `highlights` | `highlights_zh` | 亮点列表 |
+| `comparison[].dimension` | `dimension_zh` | 对比维度名 |
+| `comparison[].values` | `values_zh` | 对比表各引擎取值 |
+
+- 后端 `engine_summary()` 透传 `name_zh` / `description_zh` / `highlights_zh`（`name_zh` 缺失回退 `name`）；
+- 前端 `benchName()` / `benchDesc()` / `benchHighlights()` / `compTitle()` / `compValue()` 按 `i18nState.locale` 取值；
+- **Highlights 规范**：只列「简洁特性 + 版本支持情况」，不描述实现方式；≤6 条、每条 ≤80 字符，
+  末条以 `Version support: ...` 说明版本支持范围；
+- ⚠️ **YAML 陷阱**：列表项含半角 `: `（如 `Version support: vLLM 0.23.x only`）会被解析为
+  mapping 而非字符串，**必须加引号**；中文全角「：」无此问题。
+
 ---
 
 ## 3. 内置引擎清单（规划）
 
 | engine_id | kind | 命令 | 环境要求 | 说明 |
 | --- | --- | --- | --- | --- |
-| `benchscope` | builtin | 无（进程内执行） | **无**（Python 标准库 + 可选异步 HTTP 依赖） | 自研引擎，可 pip 安装后远程测任意 OpenAI 兼容服务 |
+| `benchscope` | builtin | `benchscope perf ...`（等价命令，进程内执行） | **无**（aiohttp） | Bench CLI 自研引擎，可 pip 安装后远程测任意 OpenAI 兼容服务 |
 | `vllm-0.23` | vllm | `vllm bench serve ...` | torch + vllm（版本范围匹配 0.23） | vLLM 原生 bench，参数集按 0.23 |
 | `sglang-0.5.10` | sglang | `python -m sglang.bench_serving ...` | torch + sglang（版本范围匹配 0.5.10） | SGLang 原生 bench，参数集按 0.5.10 |
 
@@ -137,6 +157,36 @@ class OptionMeta:
 - 下拉选中某选项后，在参数行下方展示该选项的 `description`（如 `backend` 选 `openai-chat` → 「使用 /v1/chat/completions 接口，适用于对话（instruct/chat）模型」）；
 - 参数本身 `help` 常驻（灰色小字或 tooltip）；
 - 版本适配：`since` / `deprecated` 标注，非当前引擎版本适用的参数置灰并说明。
+
+### 5.1 参数清单按引擎隔离（1.0.7）
+
+**约定**：每个引擎一套参数清单，**前面选什么引擎，后面就显示什么参数**（不显示全部）。
+
+| 引擎 | `params_key` | 参数清单文件 |
+| --- | --- | --- |
+| Bench CLI（自研） | `benchscope` | `configs/benchscope-default.yaml` |
+| vLLM 原生 | `vllm` | `configs/vllm-default.yaml` |
+| SGLang 原生 | `sglang` | `configs/sglang-default.yaml` |
+| 自定义 | 其 `params_key` | `configs/{params_key}-default.yaml` |
+
+**分工**：
+- `configs/{params_key}-default.yaml` → **取值**（`version` + `key: value`），创建任务页 Step2 加载与编辑；
+- `configs/bench-params.yaml` 的 `{params_key}` 段 → **说明**（`label` / `help` / 选项级 `description`）。
+
+两者**一一对应**，缺一不可（导入校验项 #6 检查 `params_key` 存在，#7 检查 option 描述非空）。
+
+**接口**：
+
+| 方法 | 路径 | 说明 |
+| --- | --- | --- |
+| GET | `/api/benchs/{id}/params-yaml` | 读取某引擎参数清单 → `{engine_id, params_key, version, content, lines}` |
+| PUT | `/api/benchs/{id}/params-yaml` | 保存（去重后写回） |
+
+**执行链路**：
+- 自研引擎：`params_from_yaml()` → `build_options()` 构造 `BuiltinOptions` → `build_command()` 生成预览命令；
+- 原生引擎：`merge_extra_args()` 将参数清单以 `--key=value` 附加到 CLI 命令（优先于旧 `params_yaml[framework]` 字段）。
+
+**payload 字段**：`engine_params_yaml`（随引擎切换；旧字段 `curated` / `params_yaml` 仅作向后兼容回退）。
 
 ---
 
@@ -219,6 +269,21 @@ N         输出 token 数        → 服务端 usage.completion_tokens（stream
 - 差异：自研引擎 `run()` 直接返回 metrics dict，跳过 `build_command` / `runner` / `parser`；
 - 兼容：为便于日志查看与解析复用，可选输出 vLLM 风格文本摘要（非必需）。
 
+### 6.7 CLI 子命令 `benchscope perf`（1.0.7）
+
+自研引擎界面名为 **Bench CLI**，其**实际命令**为 **`benchscope perf`**：
+
+```bash
+benchscope perf --model <model> --base-url <url> \
+  --backend openai-chat --concurrency 8 --input-len 1024 --output-len 1024 \
+  --request-rate inf --num-warmups 0 --timeout 600 --temperature 0 --seed 0
+```
+
+- 命令由 `builtin_bench.build_command()` 生成，与 CLI 子命令参数**完全一致**，
+  因此 Step3 预览的命令**可直接复制执行**；
+- 实现见 `benchscope/cli.py`（`_perf()` / `_add_perf_args()`）；
+- 任务日志中记录等价命令 `benchscope perf (builtin) --base-url=... --concurrency=...`。
+
 ---
 
 ## 7. 已确认决策（2026-08-28 用户确认）
@@ -260,9 +325,27 @@ N         输出 token 数        → 服务端 usage.completion_tokens（stream
 **校验项**（`validate_benchs_yaml`，与技能 `scripts/validate.sh` 规则一致）：
 yaml 合法 · engines 非空且 id 唯一 · kind ∈ {builtin,vllm,sglang} · 原生引擎 requires 含 torch+框架且带 spec · params_key 存在 · option_desc 完整 · mock 输出含必需指标行。**任一项失败不写磁盘**。
 
-**技能**：`skills/bench-engine-authoring/`（含 mock 核心方法说明、校验清单、模板、离线 `validate.sh`、打包脚本）。规范见 `skills/Readme.md`。
+**技能**：`skills/bench-engine-authoring/`（含 mock 核心方法说明、校验清单、模板、离线 `validate.sh`、打包脚本）。规范见 `skills/Readme.md` 与 [docs/skills/BenchEngineAuthoring.md](../skills/BenchEngineAuthoring.md)。
 
-**⚠️ 路由陷阱**：`/api/benchs` 的静态路由（`/authoring` `/import` `/config/yaml`）必须注册在 `/{engine_id}` **之前**，否则被参数路由拦截返回 404。
+**⚠️ 路由陷阱**：`/api/benchs` 的静态路由（`/authoring` `/import` `/upload` `/config/yaml`）必须注册在 `/{engine_id}` **之前**，否则被参数路由拦截返回 404。
+
+### 8.0.1 引擎包上传（Upload Engine，1.0.7）
+
+`POST /api/benchs/upload`（multipart，`file` 字段）：
+
+| 形态 | 内容 | 处理 |
+| --- | --- | --- |
+| `.yaml` / `.yml` | 引擎定义原文（含 `engines` 段） | 直接合并校验 |
+| `.tar.gz` / `.tgz` | 技能包（`bench-engine-authoring` 打包产物） | 递归查找 yaml：含 `engines` 段 → 引擎定义；`bench-params.yaml` → 参数说明段 |
+
+**合并策略**：引擎 `id` 已存在 → 更新；不存在 → 追加。对比表按 `dimension` 去重合并（`values` 覆盖）。参数段按 `params_key` 覆盖合并到 `bench-params.yaml`。
+
+**校验顺序**（关键）：随包的参数说明段需**先并入校验范围**再校验 `params_key`（`validate_benchs_yaml(..., extra_param_sections=...)`），
+否则「自带全新 `params_key` 的技能包」会被误判为 `params_key 不存在`。通过后依次写 `bench-params.yaml`、`benchs.yaml`。
+
+**安全**：单文件上限 20MB；解压时拒绝 `../` 路径穿越与绝对路径条目（`_safe_extract`）；不支持的类型直接 400。
+
+---
 
 ---
 

@@ -33,7 +33,7 @@
 
 ### Python（`pyproject.toml`）
 
-`fastapi>=0.110` · `uvicorn[standard]>=0.29` · `requests>=2.31` · `openpyxl>=3.1`（Excel 导出）· `pydantic>=2` · `python-multipart>=0.0.9`（数据集上传）· `pyyaml>=6.0`（1.0.6：内置数据集 / 模型厂商目录 yaml 定义解析）· `aiohttp>=3.9`（**1.0.7：自研 bench 引擎异步 SSE 压测**）
+`fastapi>=0.110` · `uvicorn[standard]>=0.29` · `requests>=2.31` · `openpyxl>=3.1`（Excel 导出）· `pydantic>=2` · `python-multipart>=0.0.9`（数据集上传、**1.0.7 新增：引擎包上传 `/api/benchs/upload`**）· `pyyaml>=6.0`（1.0.6：内置数据集 / 模型厂商目录 yaml 定义解析）· `aiohttp>=3.9`（**1.0.7：自研 bench 引擎异步 SSE 压测**）
 
 可选：`modelscope>=1.15`（`pip install benchscope[modelscope]`，1.0.6：数据集 modelscope 源下载）
 

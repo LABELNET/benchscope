@@ -1,7 +1,8 @@
-# 自研 Bench 引擎核心实现总结 — BenchCore
+# Bench CLI 核心实现总结 — BenchCore
 
-> **版本**：v1.0.7 · **最后更新**：2026-08-28 22:30:00  
-> **定位**：本文是**自研 bench 引擎（benchscope builtin）的核心实现总结与存档**，回答「自研 bench 的核心是什么、怎么实现的、为什么这样设计」。  
+> **版本**：v1.0.7 · **最后更新**：2026-08-29 19:40:00
+> **定位**：本文是**Bench CLI（自研引擎，`benchscope` / `kind=builtin`）的核心实现总结与存档**，回答「自研 bench 的核心是什么、怎么实现的、为什么这样设计」。
+> **命名**：自研引擎在界面与文档中统一称为 **Bench CLI**（1.0.7 起），源码仍为 `benchscope/benches/builtin_bench.py`。
 > **关联**：[BenchEngine.md](./BenchEngine.md)（整体引擎架构）· [Architecture.md](./Architecture.md) · 源码 `benchscope/benches/builtin_bench.py`
 
 ---
@@ -151,11 +152,39 @@ conc= 8  out_tps= 517.8  req/s=16.18  ttft=2.92ms  tpot=15.83ms  ok=8
 
 | 文件 | 职责 |
 | --- | --- |
-| `benchscope/benches/builtin_bench.py` | **自研引擎全部实现**：`BuiltinOptions` / `RequestRecord` / `_request_once`（SSE 采集）/ `_run_async`（负载编排）/ `compute_metrics`（指标口径）/ `run_builtin_bench`（同步入口） |
-| `benchscope/task_manager.py` | `_builtin_engine()` 判定、`_builtin_options()` 映射、`_run_one()` 分支 |
-| `benchscope/benchs.py` | 引擎注册表 + 环境校验（`check_env` / `_match_spec`） |
+| `benchscope/benches/builtin_bench.py` | **Bench CLI 全部实现**：`BuiltinOptions` / `RequestRecord` / `_request_once`（SSE 采集）/ `_run_async`（负载编排）/ `compute_metrics`（指标口径）/ `run_builtin_bench`（同步入口） |
+| `benchscope/benches/builtin_bench.py` | 参数清单映射：`BUILTIN_PARAM_DEFAULTS` / `params_from_yaml()` / `build_options()` / `build_command()`（1.0.7） |
+| `benchscope/task_manager.py` | `_builtin_engine()` 判定、`_builtin_options()` 映射（优先引擎参数清单，回退 `curated`）、`_run_one()` 分支 |
+| `benchscope/server/test_manager.py` | `build_command_lines()` 按引擎分支 → `build_builtin_command_lines()`（命令随引擎，1.0.7） |
+| `benchscope/cli.py` | `benchscope perf` 子命令（预览命令可直接复制执行，1.0.7） |
+| `benchscope/benchs.py` | 引擎注册表 + 环境校验（`check_env` / `_match_spec`）+ 引擎参数清单读写 + 引擎包上传合并 |
 | `benchscope/bench_params.py` | 参数描述与下拉选项加载（**注意**：不可命名为 `benchs`，与 `benchs.py` 模块同名会冲突） |
 | `benchscope/configs/benchs.yaml` | 引擎定义（扩展点） |
 | `benchscope/configs/bench-params.yaml` | 参数描述与选项（扩展点） |
+| `benchscope/configs/benchscope-default.yaml` | **Bench CLI 参数清单取值**（1.0.7，与 `bench-params.yaml` 的 `benchscope` 段一一对应） |
 | `mocks/openai_server.py` | mock 服务（支持 `stream_options.include_usage`，供自研引擎联调） |
 | `tests/api/test_builtin_bench.py` | 自研引擎测试（口径 / 并发扩展 / 任务级集成） |
+
+---
+
+## 九、参数清单与命令构建（1.0.7）
+
+**参数来源优先级**（`_builtin_options`）：
+
+1. `payload.engine_params_yaml` —— 创建任务 Step2 编辑的**该引擎参数清单**（`GET/PUT /api/benchs/{id}/params-yaml`）
+2. `payload.curated` —— 旧任务兼容字段（下划线键映射到连字符键）
+3. `BUILTIN_PARAM_DEFAULTS` —— 引擎参数清单出厂默认值
+
+**构造与命令**：
+
+```python
+params = params_from_yaml(engine_params_yaml)          # 文本 → {key: value}
+opts   = build_options(params, base_url=..., model=..., dataset=..., concurrency=...)
+cmd    = build_command(opts, engine_id)                # → ["benchscope", "bench", ...]
+```
+
+**关键映射**：`num-prompts=0` → 跟随并发数；`request-rate=inf` → `float("inf")` 全速；
+`seed=0` → `None`（不固定）；`endpoint` 缺省跟随服务配置。
+
+**预览命令可执行**：`build_command()` 产出的命令与 `benchscope perf` 子命令参数一致，
+可直接复制到终端运行（见 `benchscope/cli.py`）。

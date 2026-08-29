@@ -17,8 +17,8 @@
       </div>
     </div>
 
-    <!-- 右侧内容 -->
-    <div class="settings-content">
+    <!-- 右侧内容（Bench Engines 栏整页为可滑动列表，故切换为「填满高度 + 内部滚动」） -->
+    <div class="settings-content" :class="{ 'content-fill': activeTab === 'benches' }">
       <!-- General：Language + Cache Paths 两个面板 -->
       <div v-if="activeTab === 'general'" class="tab-content narrow">
         <a-card size="small" :bordered="true" class="panel-card">
@@ -85,13 +85,6 @@
             </span>
           </template>
 
-          <div class="panel-row">
-            <span class="panel-label">{{ t('framework') }}</span>
-            <a-radio-group v-model:value="form.framework" :disabled="!envEditMode" button-style="solid">
-              <a-radio-button value="vllm">vLLM</a-radio-button>
-              <a-radio-button value="sglang">SGLang</a-radio-button>
-            </a-radio-group>
-          </div>
           <div class="panel-row">
             <span class="panel-label">{{ t('baseUrl') }}</span>
             <a-input v-model:value="form.api.base_url" :disabled="!envEditMode" placeholder="http://127.0.0.1:8000" style="width: 380px" />
@@ -231,186 +224,79 @@
         </a-spin>
       </div>
 
-      <!-- Bench 引擎：内置引擎 + 介绍 + 对比 + 环境状态 -->
-      <div v-if="activeTab === 'benches'" class="tab-content">
-        <h3 style="margin: 0 0 8px">{{ t('benchesTab') }}</h3>
-        <p class="section-desc">{{ t('benchesDesc') }}</p>
+      <!-- Bench Engines：整页为引擎列表（可滑动），操作入口在右上角 -->
+      <div v-if="activeTab === 'benches'" class="tab-content bench-tab">
+        <div class="bench-topbar">
+          <div class="bench-topbar-left">
+            <h3 class="bench-tab-title">{{ t('benchesTab') }}</h3>
+            <p class="section-desc">{{ t('benchesDesc') }}</p>
+          </div>
+          <!-- 右上角文字按钮：Create / Upload / Comparison -->
+          <div class="bench-actions">
+            <a-button class="bench-text-btn" type="link" size="small" @click="openCreate">
+              {{ t('benchCreateEngine') }}
+            </a-button>
+            <a-button class="bench-text-btn" type="link" size="small" @click="openUpload">
+              {{ t('benchUploadEngine') }}
+            </a-button>
+            <a-button class="bench-text-btn" type="link" size="small" @click="compareOpen = true">
+              {{ t('benchCompareBtn') }}
+            </a-button>
+          </div>
+        </div>
 
         <a-spin :spinning="benchesLoading">
-          <!-- 引擎卡片列表 -->
-          <div v-if="benches.length" class="bench-list">
-            <div
-              v-for="eng in benches"
-              :key="eng.id"
-              class="bench-card"
-              :class="{ 'bench-default': eng.id === defaultEngineId }"
-            >
-              <div class="bench-head">
-                <span class="bench-name">{{ eng.name }}</span>
-                <a-tag v-if="eng.id === defaultEngineId" color="blue" size="small">{{ t('benchDefault') }}</a-tag>
-                <a-tag :color="eng.kind === 'builtin' ? 'purple' : 'cyan'" size="small">{{ eng.kind }}</a-tag>
-                <a-tag v-if="eng.env?.ok" color="green" size="small">{{ t('benchEnvReady') }}</a-tag>
-                <a-tag v-else color="red" size="small">{{ t('benchEnvMissing') }}</a-tag>
-              </div>
-              <div class="bench-meta">
-                <span class="bench-label">{{ t('benchVersion') }}</span>
-                <span class="bench-value">{{ eng.version || '-' }}</span>
-              </div>
-              <p class="bench-desc">{{ eng.description }}</p>
-
-              <div v-if="eng.highlights?.length" class="bench-highlights">
-                <div class="bench-label">{{ t('benchHighlights') }}</div>
-                <ul class="bench-ul">
-                  <li v-for="(h, i) in eng.highlights" :key="i">{{ h }}</li>
-                </ul>
-              </div>
-
-              <!-- 环境要求与校验结果 -->
-              <div v-if="eng.requires?.length" class="bench-env">
-                <div class="bench-label">{{ t('benchRequires') }}</div>
-                <div class="bench-env-table">
-                  <div v-for="c in eng.env?.checks || []" :key="c.name" class="bench-env-row">
-                    <span class="env-name">{{ c.name }}</span>
-                    <span class="env-req">{{ t('benchRequiredVersion') }}: {{ c.required }}</span>
-                    <span class="env-installed">
-                      {{ t('benchInstalled') }}:
-                      <span :class="c.ok ? 'env-ok' : 'env-bad'">{{ c.installed || t('benchNotInstalled') }}</span>
-                    </span>
-                    <a-tag :color="c.ok ? 'green' : 'red'" size="small">{{ c.ok ? 'OK' : 'FAIL' }}</a-tag>
-                  </div>
-                  <div v-for="c in (eng.env?.checks || []).filter((x) => !x.ok && x.hint)" :key="`hint-${c.name}`" class="bench-hint">
-                    {{ t('benchInstallHint') }}: {{ c.hint }}
-                  </div>
+          <!-- 引擎列表（整页可滑动） -->
+          <div class="bench-list-scroll">
+            <div v-if="benches.length" class="bench-list">
+              <div
+                v-for="eng in benches"
+                :key="eng.id"
+                class="bench-card"
+                :class="{ 'bench-default': eng.id === defaultEngineId }"
+              >
+                <div class="bench-head">
+                  <span class="bench-name">{{ benchName(eng) }}</span>
+                  <a-tag v-if="eng.id === defaultEngineId" color="blue" size="small">{{ t('benchDefault') }}</a-tag>
+                  <a-tag :color="eng.kind === 'builtin' ? 'purple' : 'cyan'" size="small">{{ eng.kind }}</a-tag>
+                  <a-tag v-if="eng.env?.ok" color="green" size="small">{{ t('benchEnvReady') }}</a-tag>
+                  <a-tag v-else color="red" size="small">{{ t('benchEnvMissing') }}</a-tag>
                 </div>
-              </div>
-              <div v-else class="bench-env-none">{{ t('benchesDesc') }}</div>
-            </div>
-          </div>
-
-          <!-- 引擎对比表 -->
-          <div v-if="benchComparison.length" class="bench-compare">
-            <h4 class="compare-title">{{ t('benchCompareTable') }}</h4>
-            <table class="compare-table">
-              <thead>
-                <tr>
-                  <th class="compare-dim"></th>
-                  <th v-for="eng in benches" :key="eng.id">{{ eng.name }}</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr v-for="row in benchComparison" :key="row.dimension">
-                  <td class="compare-dim">{{ row.dimension }}</td>
-                  <td v-for="eng in benches" :key="eng.id">{{ row.values?.[eng.id] || '-' }}</td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-
-          <a-empty v-if="!benchesLoading && !benches.length" :description="t('noData')" />
-
-          <!-- 添加自定义版本：AI 提示词 + 上游链接 + 导入校验 -->
-          <div class="bench-add">
-            <div class="bench-add-head">
-              <span class="bench-label">{{ t('benchAddTitle') }}</span>
-              <a-button size="small" type="primary" @click="showAddBench = !showAddBench">
-                {{ showAddBench ? t('benchAddCollapse') : t('benchAddCustom') }}
-              </a-button>
-            </div>
-            <p class="bench-yaml-desc">{{ t('benchAddDesc') }}</p>
-
-            <div v-if="showAddBench" class="bench-add-body">
-              <!-- 上游链接 -->
-              <div class="add-block">
-                <div class="bench-label">{{ t('benchUpstreamLinks') }}</div>
-                <ul class="bench-ul">
-                  <li v-for="(info, fw) in authoring.upstream || {}" :key="fw">
-                    <a :href="info.repo" target="_blank" rel="noopener">{{ info.repo }}</a>
-                    <span class="add-hint"> · {{ info.command }} · {{ info.bench_entry }}</span>
-                  </li>
-                </ul>
-                <p class="add-hint">{{ t('benchUpstreamHint') }}</p>
-              </div>
-
-              <!-- AI 提示词（可复制） -->
-              <div class="add-block">
-                <div class="add-block-head">
-                  <span class="bench-label">{{ t('benchPromptTitle') }}</span>
-                  <a-button size="small" @click="copyPrompt">{{ t('benchCopyPrompt') }}</a-button>
+                <div class="bench-meta">
+                  <span class="bench-label">{{ t('benchVersion') }}</span>
+                  <span class="bench-value">{{ eng.version || '-' }}</span>
                 </div>
-                <p class="add-hint">{{ t('benchPromptDesc') }}</p>
-                <pre class="bench-yaml-view">{{ authoring.prompt || t('benchLoading') }}</pre>
-              </div>
+                <p class="bench-desc">{{ benchDesc(eng) }}</p>
 
-              <!-- 导入定义（校验后才可导入） -->
-              <div class="add-block">
-                <div class="bench-label">{{ t('benchImportTitle') }}</div>
-                <p class="add-hint">{{ t('benchImportDesc') }}</p>
-                <a-textarea
-                  v-model:value="importContent"
-                  :rows="10"
-                  class="bench-yaml-editor"
-                  :placeholder="t('benchImportPlaceholder')"
-                  spellcheck="false"
-                />
-                <div class="add-actions">
-                  <a-button size="small" :loading="importChecking" @click="validateImport(false)">
-                    {{ t('benchValidate') }}
-                  </a-button>
-                  <a-button
-                    size="small"
-                    type="primary"
-                    :loading="importApplying"
-                    :disabled="!importResult?.ok"
-                    @click="validateImport(true)"
-                  >
-                    {{ t('benchImportApply') }}
-                  </a-button>
+                <div v-if="benchHighlights(eng).length" class="bench-highlights">
+                  <div class="bench-label">{{ t('benchHighlights') }}</div>
+                  <ul class="bench-ul">
+                    <li v-for="(h, i) in benchHighlights(eng)" :key="i">{{ h }}</li>
+                  </ul>
                 </div>
 
-                <!-- 校验结果逐项展示 -->
-                <div v-if="importResult" class="import-result">
-                  <div
-                    v-for="c in importResult.checks || []"
-                    :key="c.item"
-                    class="check-row"
-                  >
-                    <span class="check-item">{{ c.item }}</span>
-                    <a-tag :color="c.ok ? 'green' : 'red'" size="small">{{ c.ok ? 'OK' : 'FAIL' }}</a-tag>
-                    <span class="check-msg" :class="c.ok ? 'env-ok' : 'env-bad'">{{ c.message }}</span>
-                  </div>
-                  <div v-if="importResult.ok && importApplied" class="bench-hint-ok">
-                    {{ t('benchImportApplied') }}
+                <!-- 环境要求与校验结果 -->
+                <div v-if="eng.requires?.length" class="bench-env">
+                  <div class="bench-label">{{ t('benchRequires') }}</div>
+                  <div class="bench-env-table">
+                    <div v-for="c in eng.env?.checks || []" :key="c.name" class="bench-env-row">
+                      <span class="env-name">{{ c.name }}</span>
+                      <span class="env-req">{{ t('benchRequiredVersion') }}: {{ c.required }}</span>
+                      <span class="env-installed">
+                        {{ t('benchInstalled') }}:
+                        <span :class="c.ok ? 'env-ok' : 'env-bad'">{{ c.installed || t('benchNotInstalled') }}</span>
+                      </span>
+                      <a-tag :color="c.ok ? 'green' : 'red'" size="small">{{ c.ok ? 'OK' : 'FAIL' }}</a-tag>
+                    </div>
+                    <div v-for="c in (eng.env?.checks || []).filter((x) => !x.ok && x.hint)" :key="`hint-${c.name}`" class="bench-hint">
+                      {{ t('benchInstallHint') }}: {{ c.hint }}
+                    </div>
                   </div>
                 </div>
+                <div v-else class="bench-env-none">{{ t('benchNoRequires') }}</div>
               </div>
             </div>
-          </div>
-
-          <!-- 引擎定义编辑（用户可扩展：新增引擎 / 版本） -->
-          <div class="bench-yaml">
-            <div class="bench-yaml-head">
-              <span class="bench-label">{{ t('benchYamlTitle') }}</span>
-              <a-space size="small">
-                <a-button v-if="!benchesYamlEditing" size="small" @click="startEditBenchesYaml">
-                  {{ t('benchYamlEdit') }}
-                </a-button>
-                <template v-else>
-                  <a-button size="small" type="primary" :loading="benchesSaving" @click="saveBenchesYaml">
-                    {{ t('save') }}
-                  </a-button>
-                  <a-button size="small" @click="benchesYamlEditing = false">{{ t('cancel') }}</a-button>
-                </template>
-              </a-space>
-            </div>
-            <p class="bench-yaml-desc">{{ t('benchYamlDesc') }}</p>
-            <a-textarea
-              v-if="benchesYamlEditing"
-              v-model:value="benchesYamlDraft"
-              :rows="14"
-              class="bench-yaml-editor"
-              spellcheck="false"
-            />
-            <pre v-else class="bench-yaml-view">{{ benchesYaml || t('noData') }}</pre>
+            <a-empty v-if="!benchesLoading && !benches.length" :description="t('noData')" />
           </div>
         </a-spin>
       </div>
@@ -422,6 +308,147 @@
         <a-empty :description="t('noData')" />
       </div>
     </div>
+
+    <!-- ===================== Bench Engines 弹窗 ===================== -->
+
+    <!-- Create Engine：教程 + 上游链接 + 可复制提示词（不展示引擎定义原文） -->
+    <a-modal v-model:open="createOpen" class="bench-modal">
+      <template #title>
+        <div class="bench-modal-head">
+          <span class="bench-modal-title">{{ t('benchCreateEngine') }}</span>
+          <span class="bench-modal-hint">{{ t('benchCreateHint') }}</span>
+        </div>
+      </template>
+
+      <!-- 步骤教程 -->
+      <div class="add-block">
+        <div class="bench-label">{{ t('benchTutorialTitle') }}</div>
+        <ol class="bench-ol">
+          <li v-for="(s, i) in createSteps" :key="i">{{ s }}</li>
+        </ol>
+      </div>
+
+      <!-- 上游链接 -->
+      <div class="add-block">
+        <div class="bench-label">{{ t('benchUpstreamLinks') }}</div>
+        <ul class="bench-ul">
+          <li v-for="(info, fw) in authoring.upstream || {}" :key="fw">
+            <a :href="info.repo" target="_blank" rel="noopener">{{ info.repo }}</a>
+            <span class="add-hint"> · {{ info.command }} · {{ info.bench_entry }}</span>
+          </li>
+        </ul>
+        <p class="add-hint">{{ t('benchUpstreamHint') }}</p>
+      </div>
+
+      <!-- AI 提示词（可复制） -->
+      <div class="add-block">
+        <div class="bench-label">{{ t('benchPromptTitle') }}</div>
+        <p class="add-hint">{{ t('benchPromptDesc') }}</p>
+        <pre class="bench-yaml-view">{{ authoring.prompt || t('benchLoading') }}</pre>
+      </div>
+
+      <template #footer>
+        <div class="bench-modal-footer">
+          <a-button type="link" size="small" @click="copyPrompt">{{ t('benchCopyPrompt') }}</a-button>
+          <a-button type="link" size="small" @click="createOpen = false">{{ t('cancel') }}</a-button>
+        </div>
+      </template>
+    </a-modal>
+
+    <!-- Upload Engine：上传引擎包（yaml 定义 / tar.gz 技能包） -->
+    <a-modal v-model:open="uploadOpen" class="bench-modal">
+      <template #title>
+        <div class="bench-modal-head">
+          <span class="bench-modal-title">{{ t('benchUploadEngine') }}</span>
+          <span class="bench-modal-hint">{{ t('benchUploadHintText') }}</span>
+        </div>
+      </template>
+
+      <a-upload-dragger
+        :show-upload-list="false"
+        :before-upload="beforeUploadEngine"
+        accept=".yaml,.yml,.tar.gz,.tgz"
+      >
+        <p class="ant-upload-text">{{ t('benchUploadDrag') }}</p>
+        <p class="ant-upload-hint">{{ t('benchUploadHint') }}</p>
+      </a-upload-dragger>
+
+      <div v-if="uploadName" class="upload-file">
+        <span class="bench-label">{{ t('benchUploadFile') }}</span>
+        <span class="upload-name">{{ uploadName }}</span>
+        <a-button type="link" size="small" @click="clearUpload">{{ t('cancel') }}</a-button>
+      </div>
+
+      <!-- 上传校验 / 导入结果 -->
+      <div v-if="uploadResult" class="import-result">
+        <div class="check-row">
+          <span class="check-item">{{ t('benchUploadAdded') }}</span>
+          <span class="check-msg env-ok">{{ (uploadResult.added || []).join(', ') || '-' }}</span>
+        </div>
+        <div class="check-row">
+          <span class="check-item">{{ t('benchUploadUpdated') }}</span>
+          <span class="check-msg">{{ (uploadResult.updated || []).join(', ') || '-' }}</span>
+        </div>
+        <div
+          v-for="c in uploadResult.checks || []"
+          :key="c.item"
+          class="check-row"
+        >
+          <span class="check-item">{{ c.item }}</span>
+          <a-tag :color="c.ok ? 'green' : 'red'" size="small">{{ c.ok ? 'OK' : 'FAIL' }}</a-tag>
+          <span class="check-msg" :class="c.ok ? 'env-ok' : 'env-bad'">{{ c.message }}</span>
+        </div>
+      </div>
+
+      <template #footer>
+        <div class="bench-modal-footer">
+          <a-button
+            type="link"
+            size="small"
+            :loading="uploading"
+            :disabled="!uploadFile"
+            @click="submitUpload"
+          >
+            {{ t('benchUploadApply') }}
+          </a-button>
+          <a-button type="link" size="small" @click="uploadOpen = false">{{ t('cancel') }}</a-button>
+        </div>
+      </template>
+    </a-modal>
+
+    <!-- Engine Comparison：对比表 -->
+    <a-modal v-model:open="compareOpen" class="bench-modal">
+      <template #title>
+        <div class="bench-modal-head">
+          <span class="bench-modal-title">{{ t('benchCompareTable') }}</span>
+          <span class="bench-modal-hint">{{ t('benchCompareHint') }}</span>
+        </div>
+      </template>
+
+      <div v-if="benchComparison.length" class="bench-compare">
+        <table class="compare-table">
+          <thead>
+            <tr>
+              <th class="compare-dim"></th>
+              <th v-for="eng in benches" :key="eng.id">{{ benchName(eng) }}</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="row in benchComparison" :key="row.dimension">
+              <td class="compare-dim">{{ compTitle(row) }}</td>
+              <td v-for="eng in benches" :key="eng.id">{{ compValue(row, eng.id) }}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <a-empty v-else :description="t('noData')" />
+
+      <template #footer>
+        <div class="bench-modal-footer">
+          <a-button type="link" size="small" @click="compareOpen = false">{{ t('cancel') }}</a-button>
+        </div>
+      </template>
+    </a-modal>
 
     <!-- Data 目录迁移进度弹窗 -->
     <a-modal v-model:open="migrateOpen" :footer="null" :closable="false" :keyboard="false" :mask-closable="false" :width="420">
@@ -499,18 +526,17 @@ const benchComparison = ref([])
 const defaultEngineId = ref('benchscope')
 const benchesLoading = ref(false)
 // 引擎定义 yaml（查看 / 编辑，用户可扩展引擎与版本）
-const benchesYaml = ref('')
-const benchesYamlDraft = ref('')
-const benchesYamlEditing = ref(false)
-const benchesSaving = ref(false)
-// 添加自定义引擎（AI 提示词 + 上游链接 + 导入校验）
-const showAddBench = ref(false)
+
+// 自定义引擎（Create：教程 + 上游链接 + 可复制提示词；Upload：上传引擎包）
 const authoring = ref({})
-const importContent = ref('')
-const importResult = ref(null)
-const importApplied = ref(false)
-const importChecking = ref(false)
-const importApplying = ref(false)
+const createOpen = ref(false)
+const uploadOpen = ref(false)
+const compareOpen = ref(false)
+// 引擎包上传
+const uploadFile = ref(null)
+const uploadName = ref('')
+const uploading = ref(false)
+const uploadResult = ref(null)
 // Datasets 左侧分类
 const datasetCats = ref([])
 const activeDsCat = ref('all')
@@ -734,22 +760,12 @@ async function loadBenches() {
     benches.value = resp.engines || []
     benchComparison.value = resp.comparison || []
     defaultEngineId.value = resp.default_engine_id || 'benchscope'
-    await loadBenchesYaml()
     await loadAuthoring()
   } catch {
     benches.value = []
     benchComparison.value = []
   } finally {
     benchesLoading.value = false
-  }
-}
-
-async function loadBenchesYaml() {
-  try {
-    const resp = await api.getBenchsYaml()
-    benchesYaml.value = resp.content || ''
-  } catch {
-    benchesYaml.value = ''
   }
 }
 
@@ -774,53 +790,84 @@ async function copyPrompt() {
   }
 }
 
-// 导入校验：apply=false 仅校验；apply=true 校验通过后写入
-async function validateImport(apply) {
-  if (!importContent.value.trim()) {
-    message.warning(t('benchImportEmpty'))
-    return
+// ---- 引擎文案双语（英文默认，*_zh 为中文） ----
+function benchName(eng) {
+  return locale.value === 'zh' ? eng?.name_zh || eng?.name : eng?.name
+}
+function benchDesc(eng) {
+  return locale.value === 'zh' ? eng?.description_zh || eng?.description : eng?.description
+}
+function benchHighlights(eng) {
+  return locale.value === 'zh'
+    ? eng?.highlights_zh || eng?.highlights || []
+    : eng?.highlights || []
+}
+function compTitle(row) {
+  return locale.value === 'zh' ? row?.dimension_zh || row?.dimension : row?.dimension
+}
+function compValue(row, id) {
+  return locale.value === 'zh'
+    ? row?.values_zh?.[id] || row?.values?.[id] || '-'
+    : row?.values?.[id] || '-'
+}
+
+// ---- Create Engine 弹窗 ----
+const createSteps = computed(() => [
+  t('benchTutorialStep1'),
+  t('benchTutorialStep2'),
+  t('benchTutorialStep3'),
+  t('benchTutorialStep4'),
+])
+
+async function openCreate() {
+  if (!authoring.value?.prompt) await loadAuthoring()
+  createOpen.value = true
+}
+
+// ---- Upload Engine 弹窗 ----
+function openUpload() {
+  uploadResult.value = null
+  uploadOpen.value = true
+}
+
+function beforeUploadEngine(file) {
+  const name = (file?.name || '').toLowerCase()
+  if (!name.endsWith('.yaml') && !name.endsWith('.yml') && !name.endsWith('.tar.gz') && !name.endsWith('.tgz')) {
+    message.warning(t('benchUploadTypeWarn'))
+    return false
   }
-  importApplied.value = false
-  if (apply) importApplying.value = true
-  else importChecking.value = true
+  uploadFile.value = file
+  uploadName.value = file.name
+  uploadResult.value = null
+  return false // 阻止自动上传，由「导入」按钮触发
+}
+
+function clearUpload() {
+  uploadFile.value = null
+  uploadName.value = ''
+  uploadResult.value = null
+}
+
+async function submitUpload() {
+  if (!uploadFile.value) return
+  uploading.value = true
   try {
-    const resp = await api.importBenchs(importContent.value, '', apply)
-    importResult.value = { ok: !!resp.ok, checks: resp.checks || [] }
-    if (apply && resp.applied) {
-      importApplied.value = true
-      message.success(t('benchImportApplied'))
-      await loadBenches()
-    } else if (!resp.ok) {
-      message.error(t('benchValidateFail'))
-    } else {
-      message.success(t('benchValidateOk'))
+    const resp = await api.uploadBenchEngine(uploadFile.value)
+    uploadResult.value = {
+      ok: true,
+      added: resp.added || [],
+      updated: resp.updated || [],
+      checks: resp.checks || [],
     }
+    message.success(t('benchUploadSuccess'))
+    await loadBenches()
+    clearUpload()
   } catch (e) {
     const detail = e?.response?.data?.detail
-    importResult.value = { ok: false, checks: detail?.checks || [] }
-    message.error(detail?.message || t('benchValidateFail'))
+    uploadResult.value = { ok: false, added: [], updated: [], checks: detail?.checks || [] }
+    message.error(detail || t('benchUploadFail'))
   } finally {
-    importChecking.value = false
-    importApplying.value = false
-  }
-}
-
-function startEditBenchesYaml() {
-  benchesYamlDraft.value = benchesYaml.value
-  benchesYamlEditing.value = true
-}
-
-async function saveBenchesYaml() {
-  benchesSaving.value = true
-  try {
-    await api.saveBenchsYaml(benchesYamlDraft.value)
-    benchesYamlEditing.value = false
-    message.success(t('saved'))
-    await loadBenches()
-  } catch (e) {
-    message.error(e?.response?.data?.detail || t('saveFail'))
-  } finally {
-    benchesSaving.value = false
+    uploading.value = false
   }
 }
 
@@ -1024,11 +1071,31 @@ function deployModel() {
 .settings-content {
   flex: 1;
   overflow-y: auto;
-  padding: 32px 40px;
+  padding: 32px 40px 18px;
 }
 
 .tab-content {
   animation: fadeIn 0.2s ease;
+}
+/* 填满高度：内容区不自滚，由内部列表区滚动（Bench Engines） */
+.settings-content.content-fill {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  padding-top: 22px;
+  padding-bottom: 18px;
+}
+.settings-content.content-fill > .bench-tab {
+  flex: 1;
+  min-height: 0;
+}
+/* a-spin 包裹层必须传递高度约束，否则内部滚动容器拿不到限高而无法滚动 */
+.settings-content.content-fill .ant-spin-nested-loading,
+.settings-content.content-fill .ant-spin-container {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
 }
 
 /* 窄面板（General / Environment / Plugins）：减小面板宽度，滚动条保持在页面最右侧 */
@@ -1528,6 +1595,104 @@ function deployModel() {
 }
 
 /* ---------------- Bench 引擎面板 ---------------- */
+/* 整页即引擎列表：顶部操作栏固定，列表区可滑动 */
+.bench-tab {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+.bench-topbar {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--ant-color-border-secondary, #f0f0f0);
+}
+.bench-topbar-left {
+  min-width: 0;
+}
+.bench-tab-title {
+  margin: 0 0 4px;
+  font-size: 15px;
+  font-weight: 600;
+}
+.bench-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex-shrink: 0;
+}
+/* 右上角文字按钮 */
+.bench-text-btn {
+  padding: 0 8px;
+  font-size: 12.5px;
+  height: 24px;
+}
+.bench-list-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 12px 2px 8px;
+}
+/* 弹窗内区块 */
+.bench-modal-desc {
+  font-size: 12.5px;
+  color: var(--ant-color-text-tertiary, #8c8c8c);
+  margin: 0 0 12px;
+  line-height: 1.7;
+}
+/* 弹框宽度统一为 1/3 浏览器宽度（设上下限保证可用性）
+   注意：a-modal 的 class 直接落在 .ant-modal 上，故选择器为 .bench-modal 本身 */
+.bench-modal {
+  width: 33.33vw !important;
+  min-width: 420px;
+  max-width: 720px;
+}
+/* header：标题 + 提示文案 */
+.bench-modal-head {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding-right: 24px;
+}
+.bench-modal-title {
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.4;
+}
+.bench-modal-hint {
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--ant-color-text-tertiary, #8c8c8c);
+  line-height: 1.5;
+}
+/* footer：文字操作按钮，右对齐 */
+.bench-modal-footer {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 2px;
+}
+.bench-ol {
+  margin: 6px 0 0;
+  padding-left: 20px;
+  font-size: 12.5px;
+  line-height: 1.9;
+  color: var(--ant-color-text-secondary, #666);
+}
+.upload-file {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
+  font-size: 12.5px;
+}
+.upload-name {
+  font-family: 'SFMono-Regular', Consolas, monospace;
+  color: var(--ant-color-text, rgba(0, 0, 0, 0.88));
+  word-break: break-all;
+}
 .bench-list {
   display: flex;
   flex-direction: column;

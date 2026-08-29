@@ -40,6 +40,9 @@ class CreateTaskRequest(BaseModel):
     # 测试引擎 id（benchscope 自研 / vllm-0.23 / sglang-0.5.10，见 configs/benchs.yaml）
     # 空值表示未指定 → 回退原生引擎链路（旧任务兼容）
     engine_id: str = ""
+    # 引擎参数清单（Step2 编辑后的内容，随引擎切换；来自 /api/benchs/{id}/params-yaml）
+    # 自研引擎据此构造执行选项与预览命令；原生引擎据此附加 --key=value 参数
+    engine_params_yaml: str = ""
 
 
 class UpdateThresholdRequest(BaseModel):

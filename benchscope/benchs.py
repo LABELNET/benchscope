@@ -11,6 +11,8 @@ from __future__ import annotations
 
 import logging
 import re
+import tarfile
+import tempfile
 from importlib.metadata import PackageNotFoundError, version as _pkg_version
 from pathlib import Path
 from typing import Optional
@@ -189,16 +191,92 @@ def _check_cli_available(kind: str) -> bool:
     return False
 
 
+# ---------------------------------------------------------------------------
+# 引擎参数清单（每个引擎一套，互不干扰）
+#
+# 文件：configs/<params_key>-default.yaml
+#   - benchscope → benchscope-default.yaml（Bench CLI 自研引擎参数清单）
+#   - vllm       → vllm-default.yaml
+#   - sglang     → sglang-default.yaml
+# 说明：参数说明文案与可选值在 configs/bench-params.yaml 的对应 params_key 段，
+#       两者一一对应（default 提供取值，bench-params 提供说明）。
+# ---------------------------------------------------------------------------
+ENGINE_PARAMS_FILES = {
+    "benchscope": "benchscope-default.yaml",
+    "vllm": "vllm-default.yaml",
+    "sglang": "sglang-default.yaml",
+}
+
+
+def engine_params_path(engine: dict) -> Path:
+    """引擎参数清单文件路径（不存在时返回预期路径，由调用方创建）。"""
+    key = engine.get("params_key") or engine.get("kind") or engine.get("id") or ""
+    return CONFIGS_DIR / (ENGINE_PARAMS_FILES.get(key) or f"{key}-default.yaml")
+
+
+def parse_params_yaml(content: str) -> tuple[list[dict], str]:
+    """逐行解析参数 yaml 为 {key, value}（重复 key 取最后一个），version 单独返回。"""
+    lines: list[dict] = []
+    version = ""
+    seen: dict[str, int] = {}
+    for ln in (content or "").splitlines():
+        s = ln.strip()
+        if not s or s.startswith("#") or ":" not in s:
+            continue
+        k, v = s.split(":", 1)
+        k, v = k.strip(), v.strip()
+        if k == "version":
+            version = v
+            continue
+        if k in seen:
+            lines[seen[k]]["value"] = v
+            continue
+        seen[k] = len(lines)
+        lines.append({"key": k, "value": v})
+    return lines, version
+
+
+def load_engine_params(engine: dict) -> dict:
+    """读取引擎参数清单：{engine_id, params_key, version, content, lines}。"""
+    path = engine_params_path(engine)
+    content = path.read_text(encoding="utf-8") if path.exists() else ""
+    lines, version = parse_params_yaml(content)
+    return {
+        "engine_id": engine.get("id"),
+        "params_key": engine.get("params_key") or engine.get("kind") or "",
+        "version": version,
+        "content": content,
+        "lines": lines,
+    }
+
+
+def save_engine_params(engine: dict, content: str) -> dict:
+    """保存引擎参数清单（去重后写回），返回最新解析结果。"""
+    lines, version = parse_params_yaml(content)
+    body = f"version: {version}\n" if version else ""
+    body += "\n".join(f"{ln['key']}: {ln['value']}" for ln in lines)
+    if body and not body.endswith("\n"):
+        body += "\n"
+    path = engine_params_path(engine)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(body, encoding="utf-8")
+    return load_engine_params(engine)
+
+
 def engine_summary(engine: dict, with_env: bool = True) -> dict:
     """引擎摘要（供 API 返回）：基础信息 + 可选环境校验结果。"""
+    # 文案双语：默认英文，*_zh 为中文（界面按语言选择；缺失时回退英文）
     out = {
         "id": engine.get("id"),
         "kind": engine.get("kind"),
         "framework": engine.get("framework"),
         "version": engine.get("version"),
         "name": engine.get("name"),
+        "name_zh": engine.get("name_zh") or engine.get("name"),
         "description": (engine.get("description") or "").strip(),
+        "description_zh": (engine.get("description_zh") or engine.get("description") or "").strip(),
         "highlights": engine.get("highlights") or [],
+        "highlights_zh": engine.get("highlights_zh") or engine.get("highlights") or [],
         "requires": engine.get("requires") or [],
     }
     if with_env:
@@ -220,8 +298,11 @@ _MOCK_REQUIRED_LINES = (
 )
 
 
-def validate_benchs_yaml(content: str, mock_output: str = "") -> dict:
+def validate_benchs_yaml(content: str, mock_output: str = "", extra_param_sections: dict = None) -> dict:
     """逐项校验引擎定义，返回 {ok, checks: [{item, ok, message}]}。
+
+    extra_param_sections：随引擎包一起提交、尚未落盘的参数说明段
+      （上传场景下需先与现有 bench-params.yaml 合并后再校验 params_key）。
 
     校验项（与 skills/bench-engine-authoring/references/import-checklist.md 一致）：
       1. yaml         YAML 合法且顶层为对象
@@ -313,6 +394,9 @@ def validate_benchs_yaml(content: str, mock_output: str = "") -> dict:
         all_params = load_all_param_specs()
     except Exception:
         all_params = {}
+    # 待合并的参数段（上传引擎包时随包提供，尚未写盘）视为已存在
+    for key, section in (extra_param_sections or {}).items():
+        all_params[key] = section
     pkey_ok = True
     for i, e in enumerate(engines):
         if not isinstance(e, dict):
@@ -371,6 +455,186 @@ def save_benchs_yaml_text(content: str, mock_output: str = "") -> dict:
         raise ValueError(f"引擎定义校验失败：{failed}")
     BENCHS_YAML.write_text(content, encoding="utf-8")
     return result
+
+
+# ---------------------------------------------------------------------------
+# 引擎包上传（Settings → Upload Engine）
+#
+# 支持两种形态：
+#   1. .yaml / .yml —— 引擎定义原文（含 engines 段），直接校验合并
+#   2. .tar.gz / .tgz —— 技能包（skills/bench-engine-authoring 打包产物），
+#      自动查找其中的引擎定义（benchs.yaml / configs/benchs.yaml / 含 engines 段的 yaml）
+#      与参数说明（bench-params.yaml），合并进仓库配置
+# 合并策略：id 已存在 → 更新；id 不存在 → 追加。参数说明段按 params_key 覆盖合并。
+# ---------------------------------------------------------------------------
+_ENGINE_PKG_SUFFIXES = (".tar.gz", ".tgz", ".yaml", ".yml")
+
+
+def _safe_extract(tar: "tarfile.TarFile", dest: Path) -> None:
+    """安全解压（阻止 ../ 路径穿越与绝对路径）。"""
+    dest_root = dest.resolve()
+    for member in tar.getmembers():
+        name = member.name.lstrip("/")
+        target = (dest_root / name).resolve()
+        if not str(target).startswith(str(dest_root)):
+            raise ValueError(f"引擎包包含非法路径: {member.name}")
+        if member.isdir() or member.issym():
+            continue
+    try:
+        tar.extractall(dest_root, filter="data")  # Python ≥3.12
+    except TypeError:
+        tar.extractall(dest_root)
+
+
+def _collect_yaml_files(root: Path) -> list[Path]:
+    """收集包内所有 yaml 文件（排除无关目录）。"""
+    skip = {".git", "node_modules", "__pycache__", "dist", ".venv"}
+    files = []
+    for p in root.rglob("*"):
+        if not p.is_file() or p.suffix not in (".yaml", ".yml"):
+            continue
+        if any(part in skip or part.startswith(".") for part in p.relative_to(root).parts):
+            continue
+        files.append(p)
+    return sorted(files)
+
+
+def _load_yaml_file(path: Path) -> dict:
+    data = yaml.safe_load(path.read_text(encoding="utf-8", errors="replace"))
+    return data if isinstance(data, dict) else {}
+
+
+def import_engine_package(data: bytes, filename: str) -> dict:
+    """上传并合并引擎包，返回 {ok, checks, added, updated, engines}。
+
+    - 先做与手动导入一致的全量校验（validate_benchs_yaml）
+    - 校验通过才写文件（benchs.yaml 与 bench-params.yaml 一起更新）
+    """
+    name = (filename or "").lower()
+    if not name.endswith(_ENGINE_PKG_SUFFIXES):
+        raise ValueError(
+            f"不支持的文件类型：{filename or '（无文件名）'}；仅支持 .yaml / .yml / .tar.gz / .tgz"
+        )
+
+    new_engines: list[dict] = []
+    new_comparison: list[dict] = []
+    new_param_sections: dict = {}
+
+    if name.endswith((".tar.gz", ".tgz")):
+        from io import BytesIO
+
+        try:
+            with tarfile.open(fileobj=BytesIO(data), mode="r:gz") as tar:
+                with tempfile.TemporaryDirectory(prefix="benchscope-pkg-") as tmp:
+                    _safe_extract(tar, Path(tmp))
+                    for path in _collect_yaml_files(Path(tmp)):
+                        doc = _load_yaml_file(path)
+                        if not doc:
+                            continue
+                        # 引擎定义：显式含 engines 段，或文件名就是 benchs.yaml
+                        if isinstance(doc.get("engines"), list) and doc["engines"]:
+                            new_engines.extend(e for e in doc["engines"] if isinstance(e, dict))
+                            if isinstance(doc.get("comparison"), list):
+                                new_comparison.extend(doc["comparison"])
+                        elif path.name in ("bench-params.yaml", "params.yaml") and not doc.get("engines"):
+                            new_param_sections.update(
+                                {k: v for k, v in doc.items() if isinstance(v, dict)}
+                            )
+        except tarfile.TarError as e:
+            raise ValueError(f"引擎包解压失败（需为 gzip 压缩包）：{e}")
+    else:
+        doc = _load_yaml_file_from_bytes(data)
+        if not isinstance(doc.get("engines"), list) or not doc["engines"]:
+            raise ValueError("引擎定义文件缺少 engines 段（或为空列表）")
+        new_engines = [e for e in doc["engines"] if isinstance(e, dict)]
+        new_comparison = doc.get("comparison") or []
+
+    if not new_engines:
+        raise ValueError("引擎包中未找到任何引擎定义（engines 段）")
+
+    # ---- 与现有配置合并 ----
+    current_text = load_benchs_yaml_text()
+    try:
+        current = yaml.safe_load(current_text) or {}
+        if not isinstance(current, dict):
+            current = {}
+    except yaml.YAMLError:
+        current = {}
+    cur_engines = [e for e in (current.get("engines") or []) if isinstance(e, dict)]
+    cur_comparison = [c for c in (current.get("comparison") or []) if isinstance(c, dict)]
+
+    added: list[str] = []
+    updated: list[str] = []
+    by_id = {e.get("id"): i for i, e in enumerate(cur_engines)}
+    for eng in new_engines:
+        eid = eng.get("id")
+        if not eid:
+            raise ValueError("引擎定义存在缺少 id 的条目")
+        if eid in by_id:
+            cur_engines[by_id[eid]] = eng
+            updated.append(eid)
+        else:
+            by_id[eid] = len(cur_engines)
+            cur_engines.append(eng)
+            added.append(eid)
+
+    # 对比表：按 dimension 去重合并
+    dim_index = {c.get("dimension"): i for i, c in enumerate(cur_comparison)}
+    for comp in new_comparison:
+        dim = comp.get("dimension")
+        if not dim:
+            continue
+        if dim in dim_index:
+            merged = dict(cur_comparison[dim_index[dim]])
+            values = dict(merged.get("values") or {})
+            values.update(comp.get("values") or {})
+            merged["values"] = values
+            cur_comparison[dim_index[dim]] = merged
+        else:
+            dim_index[dim] = len(cur_comparison)
+            cur_comparison.append(comp)
+
+    merged_doc = {**current, "engines": cur_engines, "comparison": cur_comparison}
+    merged_text = yaml.safe_dump(merged_doc, allow_unicode=True, sort_keys=False)
+
+    # 全量校验（与手动导入一致）；随包的参数说明段需先并入校验范围，通过后才写文件
+    result = validate_benchs_yaml(merged_text, extra_param_sections=new_param_sections)
+    if not result["ok"]:
+        failed = "; ".join(c["message"] for c in result["checks"] if not c["ok"])
+        raise ValueError(f"引擎包校验失败：{failed}")
+
+    # 参数说明段合并（bench-params.yaml）
+    merged_params: list[str] = []
+    if new_param_sections:
+        from benchscope.bench_params import PARAMS_YAML
+
+        try:
+            doc = yaml.safe_load(PARAMS_YAML.read_text(encoding="utf-8")) or {}
+            if not isinstance(doc, dict):
+                doc = {}
+        except (OSError, yaml.YAMLError):
+            doc = {}
+        for key, section in new_param_sections.items():
+            doc[key] = section
+            merged_params.append(key)
+        PARAMS_YAML.write_text(
+            yaml.safe_dump(doc, allow_unicode=True, sort_keys=False), encoding="utf-8"
+        )
+
+    BENCHS_YAML.write_text(merged_text, encoding="utf-8")
+    return {
+        "ok": True,
+        "checks": result["checks"],
+        "added": added,
+        "updated": updated,
+        "param_sections": merged_params,
+        "engines": list_engines(with_env=False)["engines"],
+    }
+
+
+def _load_yaml_file_from_bytes(data: bytes) -> dict:
+    doc = yaml.safe_load(data.decode("utf-8", errors="replace"))
+    return doc if isinstance(doc, dict) else {}
 
 
 def list_engines(with_env: bool = True) -> dict:

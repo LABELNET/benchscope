@@ -16,11 +16,12 @@
 #
 # 说明：无 options 的参数按 type 渲染为输入框 / 开关，仅展示 help 描述。
 
-# ---------------- 自研引擎（benchscope） ----------------
+# ---------------- Bench CLI（自研引擎，params_key = benchscope） ----------------
+# 参数清单与 benchscope-default.yaml 一一对应（default 提供取值，本节提供说明与可选值）。
 benchscope:
   backend:
     label: 后端 Backend
-    help: 自研引擎请求被测服务使用的接口协议
+    help: Bench CLI 请求被测服务使用的接口协议
     type: select
     options:
       - value: openai-chat
@@ -57,6 +58,20 @@ benchscope:
       - value: "100"
         label: 100 req/s
         description: 每秒 100 个请求，较高压力，用于定位服务的吞吐拐点
+  num-prompts:
+    label: 请求总数 Num Prompts
+    help: 该并发下发送的请求总数；0 表示跟随并发数（每个 worker 一个请求）
+    type: int
+    options:
+      - value: "0"
+        label: 0（跟随并发数）
+        description: 请求数等于并发数，压测时长最短，适合快速摸底
+      - value: "100"
+        label: 100
+        description: 固定发送 100 个请求，样本量适中，结果较稳定
+      - value: "1000"
+        label: 1000
+        description: 大样本量，统计指标（尤其 P99）更可信，但耗时较长
   num-warmups:
     label: 预热请求数 Warmups
     help: 正式计时前先发送的预热请求数（不计入指标），用于消除冷启动影响
@@ -97,6 +112,10 @@ benchscope:
     label: 采样温度 Temperature
     help: 采样温度；压测时建议固定为 0 以保证结果可复现
     type: float
+  seed:
+    label: 随机种子 Seed
+    help: 固定随机种子以复现 prompt 构造与打散顺序；0 表示不固定
+    type: int
 
 # ---------------- vLLM 原生 bench ----------------
 vllm:

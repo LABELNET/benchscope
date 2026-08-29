@@ -257,6 +257,128 @@ conc= 8  out_tps= 517.8  req/s=16.18  ttft=2.92ms  tpot=15.83ms  ok=8
 - [x] 文档归口 — `docs/skills/` 三份文档 + `skills/Readme.md` 精简 + docs 索引同步
 - [x] 测试修复 — test_skills.py 语法错误修复 + 全量回归通过
 
+### 迭代 8（2026-08-29 19:42:00）：创建任务流程引擎联动 + Bench CLI 命名 + Settings/Bench Engines 重构
+
+**变更内容**：
+
+1. **创建任务流程引擎联动（参数与命令随引擎）**
+   - **Step2 取消双框架 Tab（vLLM / SGLang）**，改为**单参数面板**：只显示 Step1 所选引擎的参数
+     （顶部展示当前引擎名称与版本，附说明 `paramsEngineHint`）
+   - 新增**引擎参数清单**（每个引擎一套，互不干扰）：
+     `configs/{params_key}-default.yaml`（取值）+ `bench-params.yaml` 的 `{params_key}` 段（说明）
+     - Bench CLI → `benchscope-default.yaml`（9 项：backend / endpoint / request-rate /
+       num-prompts / num-warmups / chars-per-token / timeout / temperature / seed）
+   - 新增接口 `GET/PUT /api/benchs/{id}/params-yaml`（读取 / 保存引擎参数清单）
+   - **Step3 命令预览随引擎变化**：`build_command_lines()` 按 `kind` 分支
+     - 自研（`kind=builtin`）→ `benchscope perf ...`（标题行展示引擎标签 + 复制按钮 + `commandHintBuiltin`）
+     - 原生（vllm / sglang）→ 对应 CLI，参数清单以 `--key=value` 附加
+   - 新增 **`benchscope perf` 子命令**（`benchscope/cli.py`），使预览命令**可直接复制执行**
+   - payload 新增 `engine_params_yaml` 字段；`_builtin_options()` 优先使用引擎参数清单，
+     回退旧 `curated`；`merge_extra_args()` 原生引擎同样优先引擎参数清单
+2. **自研引擎命名统一为 Bench CLI**
+   - `benchs.yaml`：`name: Bench CLI`，对比表「引擎类型」→ `Bench CLI（自研内置）`
+   - 界面、文档（`BenchCore.md` / `BenchEngine.md` / `Performance-Create.md` / `Settings.md`）同步
+3. **Settings / Bench Engines 界面重构**
+   - **整页即引擎列表**，列表区独立可滑动（`.bench-list-scroll`），顶部操作栏固定
+   - **右上角三个文字按钮**（点击中间弹框）：
+     - **Create Engine** → 制作教程 + 上游链接 + 可复制 AI 提示词（**不再展示 Engine Definition 原文**）
+     - **Upload Engine** → 拖拽上传区（`.yaml` / `.yml` / `.tar.gz` / `.tgz`）+ 校验结果
+     - **Engine Comparison** → 对比表（原内联表移入弹框）
+   - 新增 **`POST /api/benchs/upload`**（multipart）：支持引擎定义原文与技能包；
+     引擎按 `id` 合并（新增 / 更新）、对比表按 `dimension` 去重、参数段按 `params_key` 覆盖；
+     **校验通过才写盘**；20MB 上限；拒绝 `../` 路径穿越与绝对路径
+4. **中英文 i18n**：新增 26 组键（Create/Upload/Comparison 弹窗、教程步骤、参数联动提示等），
+   `zh` / `en` 键集合校验一致
+
+**实现策略**：参数「取值」与「说明」分离到两个配置文件（一一对应）；
+命令预览由引擎 `kind` 驱动分支；上传校验顺序上**先并入随包参数段再校验 `params_key`**。
+
+**验证**：`./tests/run_tests.sh` 全量通过 —— **API 109**（较迭代 7 的 97 项 +12）/ **WebUI 25**（较 20 项 +5）。
+新增用例 —— API：Bench CLI 命名、引擎参数清单读写（3）、引擎包上传（4，含路径穿越防护）、
+命令随引擎联动、参数构造映射、参数优先级、CLI 子命令解析、技能包上传契约；
+WebUI：右上角按钮、Create / Upload / Comparison 三个弹框、Step2 参数跟随引擎。
+
+**修复记录**：
+- **配置被误还原**：上传接口人工验证后用 `git checkout -- benchscope/configs/*.yaml` 还原，
+  连带把「Bench CLI 命名 + 参数说明段扩展」等**功能改动一起回退** → 重新应用。
+  **教训：验证脚本中不要用 `git checkout` 还原配置，应改用备份/恢复文件或仅还原测试产生的增量**
+- **上传校验顺序错误**：技能包自带全新 `params_key` 时，原实现先校验（此时参数段尚未写盘）
+  后合并参数段 → 必报「params_key 不存在」→ 改为 `validate_benchs_yaml(..., extra_param_sections=...)`
+  将待合并参数段并入校验范围
+- **WebUI 选择器错误**：`a-upload-dragger` 在 ant-design-vue 4 渲染为 `.ant-upload-drag`
+  （非 `.ant-upload-dragger`）→ 修正测试选择器
+- **非故障（记录）**：`tests/api/test_sessions.py` 单文件耗时约 270s（mock 流式 chat），
+  全量套件约 8–10 分钟，属既有基线，非本次引入
+
+**TODO 状态**：
+- [x] 引擎联动 — Step2 单参数面板 + Step3 命令预览随引擎 + `benchscope perf` 子命令
+- [x] 参数清单 — `GET/PUT /api/benchs/{id}/params-yaml` + `benchscope-default.yaml`
+- [x] 命名统一 — 自研引擎统一为 Bench CLI（配置 / 界面 / 文档）
+- [x] Settings 重构 — 右上角 Create / Upload / Comparison 文字按钮 + 弹框 + 可滑动列表
+- [x] 引擎包上传 — `POST /api/benchs/upload`（yaml / tar.gz，校验通过才写盘）
+- [x] i18n 与文档 — 中英文 26 组键 + prds / rules 同步
+
+### 迭代 9（2026-08-29 20:20:39）：命令统一 `benchscope perf` + Environment 精简 + 弹框与滚动布局 + Bench Engines 全英文
+
+**变更内容**：
+
+1. **界面显示「Bench CLI」，实际命令统一为 `benchscope perf`**
+   - CLI 子命令 `benchscope bench` → **`benchscope perf`**（`benchscope/cli.py`：
+     `add_parser("perf")` / `_perf()` / `_add_perf_args()`）
+   - `build_command()` 输出 `benchscope perf ...`；`run_builtin_bench()` 日志回显同步
+   - 任务命令记录 `benchscope perf (builtin) --base-url=... --concurrency=...`
+   - 预览命令与 CLI 子命令参数完全一致，可直接复制执行
+2. **Settings / Environment 移除 Framework**
+   - 删除 vLLM / SGLang 单选，仅保留 **Base URL（OpenAI 接口）** 与 **API Key**
+   - **framework 改由所选引擎决定**：`PerfCreateView` 的 `framework` 取
+     `selectedEngine.framework`（回退 config）；`test_manager.build_command_lines()`
+     同样优先取引擎的 `framework`，避免「引擎是 sglang、命令却按 vllm 生成」
+3. **布局与弹框规范**
+   - **Bench Engines 列表可滚动**（修复）：`a-spin` 的 `.ant-spin-nested-loading` /
+     `.ant-spin-container` 包裹层未传递高度约束，导致 `.bench-list-scroll` 拿不到限高而无法滚动
+     → 为包裹层补 `flex: 1; min-height: 0; display: flex; flex-direction: column`
+   - **所有页面底部统一保留 18px**：`.app-content-layout { padding-bottom: 18px; box-sizing: border-box }`
+   - **弹框统一为 1/3 浏览器宽度**：`.bench-modal { width: 33.33vw !important; min-width: 420px; max-width: 720px }`
+     （移除各弹框的 `width` 内联属性，改由 CSS 统一控制）
+   - **弹框 header 为提示**：`#title` 插槽改为「标题 + 提示文案」（新增
+     `benchCreateHint` / `benchUploadHintText` / `benchCompareHint`）
+   - **弹框 footer 为文字操作按钮**：Create → 复制提示词 / 取消；Upload → 校验并导入 / 取消；
+     Comparison → 取消
+4. **Bench Engines 全英文 + Highlights 精简**
+   - 引擎定义改为**双语**：`description` / `highlights` / 对比表 `dimension` / `values` 默认为**英文**，
+     中文放 `*_zh`（沿用仓库既有的 `name_zh` / `label_zh` 约定）
+   - `engine_summary()` 透传 `name_zh` / `description_zh` / `highlights_zh`；
+     前端 `benchName()` / `benchDesc()` / `benchHighlights()` / `compTitle()` / `compValue()`
+     按当前语言选择
+   - `PerfCreateView` 新增 `engineName`（引擎显示名随语言）
+   - **Highlights 只列「简洁特性 + 版本支持」**（≤6 条、每条 ≤80 字符），移除实现方式的描述；
+     三个引擎均以 `Version support: ...` 结尾说明版本支持情况
+
+**验证**：`./tests/run_tests.sh` 全量通过 —— **API 112**（较迭代 8 的 110 项 +2）/ **WebUI 30**（较 25 项 +5）。
+新增用例 —— API：引擎文案双语（英文默认无中文 + `*_zh` 存在）、Highlights 精简性
+（≤6 条 / ≤80 字符 / 含 `Version support`）；WebUI：Environment 无 Framework、
+Bench Engines 全英文（列表与对比表）、弹框 header 提示 + footer 文字按钮 + 1/3 宽度、
+列表可滚动、全页面底部 18px。
+
+**修复记录**：
+- **YAML 冒号陷阱**：highlight 条目 `Version support: any service version ...` 含 `: `，
+  被 YAML 解析为 **mapping（dict）** 而非字符串 → 界面渲染异常、断言报
+  `'dict' object has no attribute 'startswith'` → 加引号修正，并补充「highlights 必须是字符串」的解析校验。
+  **教训：yaml 列表项若含 `: `（半角冒号 + 空格）必须加引号；中文全角「：」无此问题**
+- **弹框 class 落点**：ant-design-vue 的 `<a-modal class="bench-modal">` 会把 class 落在
+  `.ant-modal` **本身**（不是外层包裹）→ 原选择器 `.bench-modal .ant-modal` 匹配不到，
+  宽度规则不生效且测试 `bounding_box()` 超时 → 改为 `.bench-modal { ... }` 直接命中
+- **弹框宽度测量偏小**：ant 弹框有缩放动画，打开后立即测量得到 364px（真实 480px）
+  → 测量前等待 600ms
+- **测试未导航**：`test_all_pages_bottom_padding` 在 `about:blank` 上取样式得到 `None`
+  → 先 `goto` 并等待 `.app-content-layout`
+
+**TODO 状态**：
+- [x] 命令统一 — CLI 子命令与预览命令统一为 `benchscope perf`
+- [x] Environment 精简 — 移除 Framework，保留 Base URL + API Key；framework 改由引擎决定
+- [x] 布局 — Bench Engines 可滚动 + 全页面底部 18px + 弹框 1/3 宽（header 提示 / footer 文字按钮）
+- [x] 全英文 — 引擎文案双语（英文默认 + `*_zh`）+ Highlights 精简为特性与版本支持
+
 ## 4. TODO 清单
 
 - [x] **版本初始化**：VERSION_1_0_7.md + 版本号 `1.0.7.dev0` + Roadmap/Readme 同步 + 开发模式启动（2026-08-28 完成）
@@ -273,6 +395,16 @@ conc= 8  out_tps= 517.8  req/s=16.18  ttft=2.92ms  tpot=15.83ms  ok=8
 - [x] **自定义引擎实现方法**：明确「复制上游代码 + 适配入口/处理/出口/mock 四段契约」并写入技能与文档（2026-08-29 完成）
 - [x] **Skills 文档归口**：新增 `docs/skills/`（Readme 规范 / BenchEngineAuthoring / BenchTesting）+ `skills/Readme.md` 精简为指针 + docs 索引同步（2026-08-29 完成）
 - [x] **测试修复**：`tests/api/test_skills.py` 首行多余字符导致的语法错误（连带 WebUI 级联失败）修复 + 全量回归通过（2026-08-29 完成）
+- [x] **创建任务引擎联动**：Step2 取消双框架 Tab 改为单参数面板（参数随引擎）+ Step3 命令预览随引擎分支 + 新增 `benchscope perf` 子命令（预览命令可直接执行）（2026-08-29 完成）
+- [x] **引擎参数清单**：`configs/{params_key}-default.yaml`（取值）+ `bench-params.yaml`（说明）一一对应；新增 `GET/PUT /api/benchs/{id}/params-yaml`；Bench CLI 9 项参数（2026-08-29 完成）
+- [x] **自研引擎命名统一**：「BenchScope Bench（自研）」→ **Bench CLI**（配置 / 界面 / 对比表 / 文档同步）（2026-08-29 完成）
+- [x] **Settings/Bench Engines 重构**：整页可滑动引擎列表 + 右上角 Create Engine / Upload Engine / Engine Comparison 文字按钮（均为中间弹框）；移除内联的 Engine Definition 与对比表（2026-08-29 完成）
+- [x] **引擎包上传**：`POST /api/benchs/upload` 支持 `.yaml` / `.tar.gz` 技能包，按 id 合并、校验通过才写盘、防路径穿越（2026-08-29 完成）
+- [x] **中英文 i18n**：新增 26 组键（三个弹窗、教程步骤、参数联动提示等），zh/en 键集合一致（2026-08-29 完成）
+- [x] **命令统一 `benchscope perf`**：CLI 子命令 `bench` → `perf`，预览命令、任务命令记录与日志回显同步（2026-08-29 完成）
+- [x] **Environment 精简**：移除 Framework 单选，仅保留 Base URL + API Key；`framework` 改由所选引擎决定（2026-08-29 完成）
+- [x] **布局规范**：Bench Engines 列表可滚动（修复 a-spin 高度约束）、全页面底部 18px、弹框 1/3 浏览器宽度 + header 提示 + footer 文字按钮（2026-08-29 完成）
+- [x] **Bench Engines 全英文**：引擎文案双语（英文默认 + `*_zh`），Highlights 精简为「简洁特性 + 版本支持」（2026-08-29 完成）
 
 ---
 

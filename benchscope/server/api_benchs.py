@@ -9,15 +9,19 @@ from __future__ import annotations
 
 import logging
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, File, HTTPException, UploadFile
+from pydantic import BaseModel
 
 from benchscope.benchs import (
     check_env,
     engine_summary,
     get_engine,
+    import_engine_package,
     list_engines,
     load_benchs_yaml_text,
+    load_engine_params,
     save_benchs_yaml_text,
+    save_engine_params,
     validate_benchs_yaml,
 )
 
@@ -67,6 +71,31 @@ def get_authoring_guide():
         "upstream": UPSTREAM_LINKS,
         "prompt": _authoring_prompt(),
     }
+
+
+@router.post("/upload")
+async def upload_engine_package(file: UploadFile = File(...)):
+    """上传引擎包并合并进引擎列表（校验通过才写入）。
+
+    支持两类文件：
+      - `.yaml` / `.yml`：引擎定义原文（含 engines 段）
+      - `.tar.gz` / `.tgz`：技能包（bench-engine-authoring 打包产物），
+        自动提取其中的引擎定义与参数说明
+
+    返回 {ok, checks, added, updated, param_sections, engines}。
+    """
+    data = await file.read()
+    if not data:
+        raise HTTPException(status_code=400, detail="上传文件为空")
+    if len(data) > 20 * 1024 * 1024:
+        raise HTTPException(status_code=400, detail="引擎包过大（上限 20MB）")
+    try:
+        return import_engine_package(data, file.filename or "")
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        log.exception("导入引擎包失败: %s", file.filename)
+        raise HTTPException(status_code=400, detail=f"导入引擎包失败: {e}")
 
 
 @router.post("/import")
@@ -175,6 +204,32 @@ def get_engine_params(engine_id: str):
         "params_key": params_key,
         "params": param_specs_for_engine(engine),
     }
+
+
+@router.get("/{engine_id}/params-yaml")
+def get_engine_params_yaml(engine_id: str):
+    """引擎参数清单（随引擎切换，互不干扰）。
+
+    返回 {engine_id, params_key, version, content, lines: [{key, value}]}；
+    创建任务页 Step2 据此渲染「当前引擎」的参数，Step3 命令预览使用同一份参数。
+    """
+    engine = get_engine(engine_id)
+    if engine is None:
+        raise HTTPException(status_code=404, detail=f"未知引擎: {engine_id}")
+    return load_engine_params(engine)
+
+
+class ParamsYamlUpdateRequest(BaseModel):
+    content: str
+
+
+@router.put("/{engine_id}/params-yaml")
+def update_engine_params_yaml(engine_id: str, req: ParamsYamlUpdateRequest):
+    """保存引擎参数清单（去重后写回），返回最新解析结果。"""
+    engine = get_engine(engine_id)
+    if engine is None:
+        raise HTTPException(status_code=404, detail=f"未知引擎: {engine_id}")
+    return save_engine_params(engine, req.content or "")
 
 
 @router.get("/{engine_id}/params/{param_key}/option-desc")

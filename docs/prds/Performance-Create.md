@@ -17,10 +17,11 @@
 
 ### 1.0 测试引擎选择（BenchPicker，1.0.7）
 
-- 位于 Step1 顶部：下拉选择**测试引擎**（自研 `benchscope` / 原生 `vllm-0.23` / `sglang-0.5.10`），引擎定义来自 `GET /api/benchs`（`benchscope/configs/benchs.yaml`，可用户扩展）
+- 位于 Step1 顶部：下拉选择**测试引擎**（**Bench CLI** 自研 `benchscope` / 原生 `vllm-0.23` / `sglang-0.5.10`），引擎定义来自 `GET /api/benchs`（`benchscope/configs/benchs.yaml`，可用户扩展）
 - 选中后展示引擎介绍文案；原生引擎展示**环境校验明细**（要求版本 / 已安装 / OK-FAIL / 安装提示）
-- **环境校验约定（强制）**：原生引擎（vllm / sglang）必须校验 `torch` 与目标框架安装版本（+ CLI 可用性），**不满足则点击「下一步」被阻断**并提示 `benchEnvBlocked`；**自研引擎无框架环境依赖，恒可用**（pip 安装即可远程测 OpenAI 兼容服务）
+- **环境校验约定（强制）**：原生引擎（vllm / sglang）必须校验 `torch` 与目标框架安装版本（+ CLI 可用性），**不满足则点击「下一步」被阻断**并提示 `benchEnvBlocked`；**Bench CLI 自研引擎无框架环境依赖，恒可用**（pip 安装即可远程测 OpenAI 兼容服务）
 - 引擎 id 随 payload 提交（`engine_id` 字段）
+- **引擎决定后续步骤（1.0.7）**：切换引擎时同步刷新「参数定义（paramSpecs）」与「引擎参数清单（params-yaml）」，Step2 与 Step3 均跟随当前引擎变化（见 §2 / §3）
 
 ### 1.1 环境面板（BaseEnvPanel）
 
@@ -49,18 +50,41 @@
 
 ---
 
-## 2. Step 2 性能参数
+## 2. Step 2 性能参数（跟随引擎，1.0.7）
 
-- 双框架 Tab（vLLM / SGLang），当前框架 Tab 可编辑，另一框架只读
-- 参数按组展示（server / sampling / resource / benchmark / other），来源为后端 YAML 配置（`/api/config/params-yaml/{fw}`，`benchscope/configs/{fw}-default.yaml`）
-- **参数表单仅内存修改（syncParams），不写入文件**；修改结果用于后续命令生成
+- **取消双框架 Tab（vLLM / SGLang）**，改为**单参数面板**：只显示 Step1 所选引擎的参数（前面选什么引擎，后面就显示什么参数，不需要全部显示）
+- 面板顶部展示当前引擎标识（名称 + 版本）与说明文案（`paramsEngineHint`）
+- 参数来源：`GET /api/benchs/{id}/params-yaml` → `benchscope/configs/{params_key}-default.yaml`
+  - Bench CLI（自研）→ `benchscope-default.yaml`
+  - vLLM 原生 → `vllm-default.yaml`；SGLang 原生 → `sglang-default.yaml`
+- 参数说明与下拉可选值来自 `benchscope/configs/bench-params.yaml` 中该引擎的 `params_key` 段（每个 option 必须带 `description`）
+- **参数表单仅内存修改（syncEngineParams），不写入文件**；修改结果用于后续命令生成与任务执行
+
+**Bench CLI 参数配置清单**（`benchscope-default.yaml`，与 `bench-params.yaml` 的 `benchscope` 段一一对应）：
+
+| 参数 | 默认 | 说明 |
+| --- | --- | --- |
+| `backend` | `openai-chat` | 接口协议：`openai-chat`（/v1/chat/completions） / `openai`（/v1/completions） |
+| `endpoint` | `/v1/chat/completions` | 被测服务接口路径 |
+| `request-rate` | `inf` | 请求速率 req/s；`inf` 为全速（测最大吞吐） |
+| `num-prompts` | `0` | 请求总数；`0` = 跟随并发数 |
+| `num-warmups` | `0` | 预热请求数（不计入指标），消除冷启动影响 |
+| `chars-per-token` | `4` | 字符 / token 近似换算比（英文 4，中文 2） |
+| `timeout` | `600` | 单请求超时（秒），超时计为失败 |
+| `temperature` | `0.0` | 采样温度，压测建议固定 0 保证可复现 |
+| `seed` | `0` | 随机种子，`0` = 不固定 |
 
 ---
 
 ## 3. Step 3 启动测试
 
-- 预览**任务条件**（框架 / 模型 / Base URL / 数据集组 / 模式相关参数）
-- 预览**命令**（`/api/tasks/preview` 生成的首条命令）
+- 预览**任务条件**（测试引擎 / 框架 / 模型 / Base URL / 数据集组 / 模式相关参数）
+- 预览**命令**（`/api/tasks/preview` 生成的首条命令），**命令随引擎变化**（1.0.7）：
+  - **Bench CLI（自研，`kind=builtin`）** → `benchscope perf --model ... --concurrency ...`，
+    标题行展示引擎标签与「复制」按钮，附说明 `commandHintBuiltin`
+  - **原生引擎（vllm / sglang）** → 对应 CLI 命令（`vllm bench serve` / `python -m sglang.bench_serving`），
+    Step2 编辑的引擎参数以 `--key=value` 附加
+- Bench CLI 预览命令**可直接复制到终端执行**（新增 `benchscope perf` 子命令，见 [rules/BenchEngine.md](../rules/BenchEngine.md)）
 - 「启动」→ Modal 确认 → `createTask` + `startTask` + 设为当前任务 → 跳回 `/performance` 任务执行页
 
 ---
@@ -68,7 +92,13 @@
 ## 4. Payload 构建（buildPayload）
 
 ```text
-framework / model / tokenizer
+framework: 框架，由所选引擎的 framework 字段决定（Environment 不再单独配置框架）
+model / tokenizer
+engine_id: 测试引擎 id（benchscope / vllm-0.23 / sglang-0.5.10，决定命令与参数）
+engine_params_yaml: 当前引擎的参数清单（Step2 内存编辑后的序列化文本，随引擎切换）
+  # 自研引擎：据此构造执行选项与预览命令（build_options / build_command）
+  # 原生引擎：据此以 --key=value 附加到 CLI 命令（merge_extra_args）
+params_yaml: { vllm, sglang }（保留为空字符串，向后兼容字段，已被 engine_params_yaml 取代）
 dataset: { type: random, length_pairs: [[inputLen, outputLen, "IxO", case_id, {阈值}], ...] }
   # 第 4 元素为唯一组 id（相同条件多组不叠加）；第 5 元素为该组阈值 dict——阈值信息跟随每组请求配置，不跟随主任务：
   #   { ttft_statistic, ttft_threshold_ms, tpot_statistic, tpot_threshold_ms, output_throughput_threshold }
@@ -79,7 +109,6 @@ ttft_threshold_ms / ttft_statistic（保留：取第一组值，向后兼容旧�
 tpot_threshold_ms / tpot_statistic（保留：取第一组值，向后兼容旧逻辑/旧数据回退）
 output_throughput_threshold（保留：取第一组值，向后兼容旧逻辑/旧数据回退）
 mode: concurrency | threshold
-params_yaml: { vllm, sglang }（内存参数序列化）
 ```
 
 ---
@@ -92,6 +121,7 @@ params_yaml: { vllm, sglang }（内存参数序列化）
 | 请求数条件 | 并发模式仅取**第一组**的请求数作为 `concurrency_list`；多组条件下其余组的请求数不参与执行（仅展示） |
 | 阈值模式 | `concurrency_list` 恒为 `[1]`，实际并发由执行页阈值策略动态探测 |
 | 参数 YAML | 修改仅存内存，刷新页面丢失；不写回配置文件 |
+| 引擎联动 | Step2 参数面板与 Step3 命令预览均跟随 Step1 所选引擎；切换引擎会重新拉取参数清单，未保存的内存修改随之丢弃 |
 | 页面宽度 | 居中窄栏（max 760px），紧凑显示 |
 
 ## 6. 相关文档约定

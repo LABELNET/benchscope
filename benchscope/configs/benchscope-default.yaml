@@ -1,0 +1,10 @@
+version: Bench CLI stable
+backend: openai-chat
+endpoint: /v1/chat/completions
+request-rate: inf
+num-prompts: 0
+num-warmups: 0
+chars-per-token: 4
+timeout: 600
+temperature: 0.0
+seed: 0

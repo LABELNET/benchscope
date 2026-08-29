@@ -80,34 +80,30 @@
         />
       </div>
 
-      <!-- Step 2: 性能参数 -->
+      <!-- Step 2: 性能参数（跟随 Step1 所选引擎，只显示该引擎的参数） -->
       <div v-show="step === 2" class="panel-body">
-        <a-tabs v-model:activeKey="paramsTab" type="card" size="small">
-          <a-tab-pane key="vllm" :tab="t('paramsVllm')" :disabled="framework !== 'vllm'">
-            <div v-if="framework !== 'vllm'" class="params-lock">{{ t('paramsReadOnly').replace('{fw}', frameworkName) }}</div>
-            <ParamGroupPanel
-              v-else
-              :version="paramsYaml.vllm.version"
-              :version-label="versionLabel('vllm')"
-              :lines="paramsYaml.vllm.lines"
-              :specs="paramSpecs"
-              @save="syncParams('vllm')"
-              @update:version="(v) => { paramsYaml.vllm.version = v; syncParams('vllm') }"
-            />
-          </a-tab-pane>
-          <a-tab-pane key="sglang" :tab="t('paramsSglang')" :disabled="framework !== 'sglang'">
-            <div v-if="framework !== 'sglang'" class="params-lock">{{ t('paramsReadOnly').replace('{fw}', frameworkName) }}</div>
-            <ParamGroupPanel
-              v-else
-              :version="paramsYaml.sglang.version"
-              :version-label="versionLabel('sglang')"
-              :lines="paramsYaml.sglang.lines"
-              :specs="paramSpecs"
-              @save="syncParams('sglang')"
-              @update:version="(v) => { paramsYaml.sglang.version = v; syncParams('sglang') }"
-            />
-          </a-tab-pane>
-        </a-tabs>
+        <div class="params-engine">
+          <span class="params-engine-label">{{ t('benchSelectedEngine') }}</span>
+          <a-tag :color="selectedEngine?.kind === 'builtin' ? 'purple' : 'cyan'" size="small">
+            {{ engineName }}
+          </a-tag>
+          <span v-if="selectedEngine?.version" class="params-engine-meta">
+            v{{ selectedEngine.version }}
+          </span>
+        </div>
+        <p class="params-engine-desc">{{ t('paramsEngineHint').replace('{engine}', engineName) }}</p>
+        <a-spin :spinning="paramsLoading">
+          <ParamGroupPanel
+            v-if="engineParams.lines?.length"
+            :version="engineParams.version"
+            :version-label="t('benchParamsVersion')"
+            :lines="engineParams.lines"
+            :specs="paramSpecs"
+            @save="syncEngineParams"
+            @update:version="(v) => { engineParams.version = v; syncEngineParams() }"
+          />
+          <a-empty v-else :description="t('noData')" />
+        </a-spin>
       </div>
 
       <!-- Step 3: 启动测试 -->
@@ -121,9 +117,16 @@
         <div class="launch-block">
           <div class="launch-head">
             <span class="launch-title">{{ t('previewCommandTitle') }}</span>
+            <a-tag :color="selectedEngine?.kind === 'builtin' ? 'purple' : 'cyan'" size="small">
+              {{ engineName }}
+            </a-tag>
+            <a-button size="small" type="text" :disabled="!previewCommand" @click="copyCommand">
+              {{ t('copy') }}
+            </a-button>
           </div>
           <pre class="cmd-text">{{ previewCommand || t('loading') }}</pre>
-          <div v-if="mode === 'threshold'" class="cmd-hint">{{ t('commandHint') }}</div>
+          <div v-if="selectedEngine?.kind === 'builtin'" class="cmd-hint">{{ t('commandHintBuiltin') }}</div>
+          <div v-else-if="mode === 'threshold'" class="cmd-hint">{{ t('commandHint') }}</div>
         </div>
       </div>
 
@@ -155,7 +158,7 @@ import { ArrowLeftOutlined } from '@ant-design/icons-vue'
 import { api } from '@/api'
 import { useConfigStore } from '@/store/config'
 import { useTestStore } from '@/store/test'
-import { t } from '@/i18n'
+import { t, i18nState } from '@/i18n'
 import BaseEnvPanel from '@/components/performance/BaseEnvPanel.vue'
 import ConditionPanel from '@/components/performance/ConditionPanel.vue'
 import ParamGroupPanel from '@/components/performance/ParamGroupPanel.vue'
@@ -167,9 +170,15 @@ const test = useTestStore()
 
 const mode = computed(() => (route.query.mode === 'threshold' ? 'threshold' : 'concurrency'))
 const step = ref(1)
-const paramsTab = ref('vllm')
 
-const framework = computed(() => config.config?.framework || 'vllm')
+// framework 改由所选引擎决定（Environment 不再单独配置框架）
+const framework = computed(() => selectedEngine.value?.framework || config.config?.framework || 'vllm')
+
+// 引擎显示名（英文默认，中文取 name_zh）
+const engineName = computed(() => {
+  const e = selectedEngine.value
+  return (i18nState.locale === 'zh' ? e?.name_zh || e?.name : e?.name) || engineId.value
+})
 const frameworkName = computed(() => (framework.value === 'sglang' ? 'SGLang' : 'vLLM'))
 const baseUrl = computed(() => config.config?.api?.base_url || '')
 const inference = computed(() => config.status?.inference || 'offline')
@@ -195,8 +204,9 @@ const conditions = ref([
   },
 ])
 
-// Step2 参数 yaml
-const paramsYaml = ref({ vllm: { version: '', lines: [], content: '' }, sglang: { version: '', lines: [], content: '' } })
+// Step2 参数 yaml（跟随 Step1 所选引擎：每个引擎一套参数，互不干扰）
+const engineParams = ref({ version: '', lines: [], content: '' })
+const paramsLoading = ref(false)
 
 // ---- Bench 引擎选择 + 环境校验 ----
 const engineId = ref('benchscope')
@@ -222,10 +232,12 @@ async function loadEngines() {
     }
     await checkEngineEnv()
     await loadParamSpecs()
+    await loadEngineParams()
   } catch {
     engines.value = []
     envResult.value = null
     paramSpecs.value = {}
+    engineParams.value = { version: '', lines: [], content: '' }
   }
 }
 
@@ -242,6 +254,27 @@ async function loadParamSpecs() {
   }
 }
 
+// 引擎参数清单（Step2：只显示当前引擎的参数）
+async function loadEngineParams() {
+  if (!engineId.value) {
+    engineParams.value = { version: '', lines: [], content: '' }
+    return
+  }
+  paramsLoading.value = true
+  try {
+    const resp = await api.getBenchParamsYaml(engineId.value)
+    engineParams.value = {
+      version: resp.version || '',
+      lines: resp.lines || [],
+      content: resp.content || '',
+    }
+  } catch {
+    engineParams.value = { version: '', lines: [], content: '' }
+  } finally {
+    paramsLoading.value = false
+  }
+}
+
 async function checkEngineEnv() {
   if (!engineId.value) return
   envChecking.value = true
@@ -255,9 +288,11 @@ async function checkEngineEnv() {
   }
 }
 
+// 切换引擎 → 环境校验、参数定义、参数清单三者同步刷新（后续步骤跟随当前引擎）
 function onEngineChange() {
   checkEngineEnv()
   loadParamSpecs()
+  loadEngineParams()
 }
 
 // Step3 预览：任务详情文本 + 示例命令
@@ -268,6 +303,7 @@ const submitting = ref(false)
 
 const previewConditions = computed(() => {
   const lines = []
+  lines.push(`${t('benchSelectedEngine')}: ${engineName.value}`)
   lines.push(`${t('frameworkLabel')}: ${frameworkName.value}`)
   lines.push(`${t('modelLabel')}: ${model.value || '-'}`)
   lines.push(`${t('baseUrlLabel')}: ${baseUrl.value || '-'}`)
@@ -289,10 +325,6 @@ const previewConditions = computed(() => {
   }
   return lines.join('\n')
 })
-
-function versionLabel(fw) {
-  return fw === 'sglang' ? t('sglangVersionLabel') : t('vllmVersionLabel')
-}
 
 function addCondition() {
   const last = conditions.value[conditions.value.length - 1]
@@ -335,36 +367,25 @@ function onModelChange() {
   config.refreshStatus()
 }
 
-async function loadParamsYaml() {
-  for (const fw of ['vllm', 'sglang']) {
-    try {
-      const resp = await api.getParamsYaml(fw)
-      // 防御性去重：重复 key 只保留最后一个值
-      const seen = {}
-      const lines = []
-      for (const l of resp.lines || []) {
-        if (l.key in seen) lines[seen[l.key]].value = l.value
-        else {
-          seen[l.key] = lines.length
-          lines.push(l)
-        }
-      }
-      paramsYaml.value[fw] = { version: resp.version, lines, content: resp.content }
-    } catch {
-      paramsYaml.value[fw] = { version: '', lines: [], content: '' }
-    }
-  }
-}
-
-function buildContent(fw) {
-  const p = paramsYaml.value[fw]
+// 引擎参数仅在内存中修改（不写入 yaml 文件），修改结果用于预览命令与任务执行
+function buildEngineParamsContent() {
+  const p = engineParams.value
   const body = (p.lines || []).map((l) => `${l.key}: ${l.value}`).join('\n')
   return `version: ${p.version || ''}\n${body ? body + '\n' : ''}`
 }
 
-// 参数表单仅在内存中修改（不写入 yaml 文件），修改结果用于前后命令生成
-function syncParams(fw) {
-  paramsYaml.value[fw].content = buildContent(fw)
+function syncEngineParams() {
+  engineParams.value.content = buildEngineParamsContent()
+}
+
+async function copyCommand() {
+  if (!previewCommand.value) return
+  try {
+    await navigator.clipboard.writeText(previewCommand.value)
+    message.success(t('copied'))
+  } catch {
+    message.warning(t('copyFailed'))
+  }
 }
 
 // 校验 Step1
@@ -408,16 +429,16 @@ function validateStep1() {
 async function nextToParams() {
   // 环境校验：原生引擎（vllm/sglang）环境不满足时禁止进入参数选择
   if (!envResult.value || !envResult.value.ok) {
-    message.warning(t('benchEnvBlocked').replace('{name}', selectedEngine.value?.name || engineId.value))
+    message.warning(t('benchEnvBlocked').replace('{name}', engineName.value))
     return
   }
   if (!validateStep1()) return
   step1Saving.value = true
   try {
-    // 同步内存参数（变更跟随进入后续步骤，不写入文件）
-    syncParams(framework.value)
+    // 进入 Step2 前确保当前引擎的参数清单已就绪（切换引擎后保持同步）
+    if (!engineParams.value.lines?.length) await loadEngineParams()
+    syncEngineParams()
     step.value = 2
-    paramsTab.value = framework.value
   } finally {
     step1Saving.value = false
   }
@@ -426,9 +447,8 @@ async function nextToParams() {
 async function nextToLaunch() {
   step2Saving.value = true
   try {
-    // 同步两框架内存参数，保证命令预览使用最新值（不写入文件）
-    syncParams('vllm')
-    syncParams('sglang')
+    // 用当前引擎的最新参数生成预览命令（命令随引擎变化）
+    syncEngineParams()
     await loadPreview()
     step.value = 3
   } finally {
@@ -467,9 +487,11 @@ function buildPayload() {
     tpot_statistic: mode.value === 'threshold' ? g.tpotStatistic || 'mean' : 'mean',
     output_throughput_threshold: mode.value === 'threshold' ? Number(g.outThroughput) || 0 : 0,
     mode: mode.value,
+    // 当前所选引擎的参数清单（自研引擎据此构造执行选项，原生引擎据此附加 --key=value）
+    engine_params_yaml: buildEngineParamsContent(),
     params_yaml: {
-      vllm: buildContent('vllm'),
-      sglang: buildContent('sglang'),
+      vllm: '',
+      sglang: '',
     },
   }
 }
@@ -506,8 +528,7 @@ async function submit() {
     onOk: async () => {
       submitting.value = true
       try {
-        syncParams('vllm')
-        syncParams('sglang')
+        syncEngineParams()
         const resp = await test.createTask(buildPayload())
         await test.startTask(resp.task_id)
         test.setActiveTask(resp.task_id)
@@ -528,7 +549,7 @@ onMounted(async () => {
   } else {
     config.refreshStatus()
   }
-  await Promise.all([loadModels(), loadParamsYaml(), loadEngines()])
+  await Promise.all([loadModels(), loadEngines()])
 })
 </script>
 
@@ -627,10 +648,30 @@ onMounted(async () => {
   border-top: 1px solid rgba(0, 0, 0, 0.06);
   background: rgba(0, 0, 0, 0.015);
 }
-.params-lock {
-  padding: 32px 0;
-  text-align: center;
-  color: #999;
+/* Step2 参数面板：显示当前引擎（参数随引擎切换） */
+.params-engine {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  margin-bottom: 4px;
+  background: rgba(22, 119, 255, 0.04);
+  border: 1px solid rgba(22, 119, 255, 0.12);
+  border-radius: 8px;
+}
+.params-engine-label {
+  font-size: 12px;
+  font-weight: 600;
+}
+.params-engine-meta {
+  font-size: 11px;
+  color: var(--ant-color-text-tertiary, #999);
+}
+.params-engine-desc {
+  font-size: 11px;
+  color: var(--ant-color-text-tertiary, #999);
+  margin: 4px 0 10px;
+  line-height: 1.6;
 }
 /* 引擎选择 + 环境校验（Step1 顶部） */
 .bench-picker {
@@ -708,7 +749,11 @@ onMounted(async () => {
 .launch-head {
   display: flex;
   align-items: center;
+  gap: 8px;
   margin-bottom: 8px;
+}
+.launch-head .ant-btn {
+  margin-left: auto;
 }
 .launch-title {
   font-size: 13px;

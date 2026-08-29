@@ -123,7 +123,7 @@ def test_benchs_yaml_get_and_save(client, base_url):
         custom = (
             "engines:\n"
             "  - id: benchscope\n    kind: builtin\n    params_key: benchscope\n"
-            "    name: BenchScope Bench（自研）\n    requires: []\n"
+            "    name: Bench CLI\n    requires: []\n"
             "  - id: vllm-0.99\n    kind: vllm\n    version: '0.99'\n    params_key: vllm\n"
             "    name: Custom vLLM\n"
             "    requires:\n"
@@ -382,3 +382,378 @@ def test_load_bench_engines_and_comparison():
     assert load_comparison(), "对比表不应为空"
     assert default_engine_id() == "benchscope"
     assert list_engines()["default_engine_id"] == "benchscope"
+
+
+# ---------------- 自研引擎命名：Bench CLI ----------------
+
+
+def test_builtin_engine_named_bench_cli():
+    """自研引擎名称统一为 Bench CLI（界面与文档一致）。"""
+    engine = get_engine("benchscope")
+    assert engine is not None
+    assert engine["name"] == "Bench CLI", f"自研引擎应命名为 Bench CLI: {engine['name']}"
+    comparison = load_comparison()
+    kinds = [r for r in comparison if r.get("dimension") == "Engine Type"]
+    assert kinds, "对比表应含「Engine Type」维度"
+    assert "Bench CLI" in kinds[0]["values"]["benchscope"], kinds[0]["values"]
+
+
+def test_engine_content_is_bilingual():
+    """引擎文案双语：默认英文，*_zh 为中文（英文界面不应出现硬编码中文）。"""
+    import re
+
+    from benchscope.benchs import engine_summary, get_engine, load_comparison
+
+    cjk = re.compile(r"[\u4e00-\u9fff]")
+    engine = engine_summary(get_engine("benchscope"))
+
+    # 摘要须透传双语字段
+    for key in ("name", "name_zh", "description", "description_zh",
+                "highlights", "highlights_zh"):
+        assert engine.get(key), f"引擎摘要缺少 {key}"
+
+    # 默认（英文）文案不得含中文字符
+    assert not cjk.search(engine["description"]), f"默认描述应为英文: {engine['description'][:60]}"
+    for h in engine["highlights"]:
+        assert not cjk.search(h), f"默认亮点应为英文: {h}"
+
+    # 中文文案须存在且与英文不同
+    assert engine["highlights_zh"] != engine["highlights"], "中英文亮点应不同"
+    assert cjk.search(engine["description_zh"] or ""), "description_zh 应为中文"
+
+    # 对比表：维度与取值均双语
+    for row in load_comparison():
+        assert not cjk.search(row["dimension"]), f"默认维度应为英文: {row['dimension']}"
+        assert row.get("dimension_zh"), f"维度缺少中文: {row['dimension']}"
+        assert row.get("values_zh"), f"取值缺少中文: {row['dimension']}"
+
+
+def test_highlights_are_concise():
+    """Highlights 只列「简洁特性 + 版本支持」，条目短小且不含实现方式描述。"""
+    from benchscope.benchs import load_bench_engines
+
+    for engine in load_bench_engines():
+        eid = engine.get("id")
+        highlights = engine.get("highlights") or []
+        for key in ("highlights", "highlights_zh"):
+            items = engine.get(key) or []
+            assert items, f"{eid} 缺少 {key}"
+            assert len(items) <= 6, f"{eid} 的 {key} 条目过多: {len(items)}"
+            for h in items:
+                assert len(h) <= 80, f"{eid} 的 {key} 条目过长: {h}"
+        # 版本支持情况必须有一项（英文以 Version support 开头）
+        assert any(h.startswith("Version support") for h in highlights), \
+            f"{eid} 应说明版本支持情况: {highlights}"
+
+
+# ---------------- 引擎参数清单（随引擎切换） ----------------
+
+
+def test_engine_params_yaml_api(client, base_url):
+    """/api/benchs/{id}/params-yaml：每个引擎一套参数，互不干扰。"""
+    from benchscope.benchs import load_engine_params
+
+    r = client.get(f"{base_url}/api/benchs/benchscope/params-yaml", timeout=10)
+    assert r.status_code == 200, r.text
+    data = r.json()
+    assert data["engine_id"] == "benchscope"
+    assert data["params_key"] == "benchscope"
+    assert data["content"], "Bench CLI 应有参数清单内容"
+
+    keys = [l["key"] for l in data["lines"]]
+    # Bench CLI 参数清单核心项（与 configs/benchscope-default.yaml 对应）
+    for key in ("backend", "endpoint", "request-rate", "num-prompts", "num-warmups",
+                "chars-per-token", "timeout", "temperature", "seed"):
+        assert key in keys, f"Bench CLI 参数清单缺少 {key}: {keys}"
+
+    # 原生引擎读取各自的参数文件，与 Bench CLI 不同
+    vllm_params = load_engine_params(get_engine("vllm-0.23"))
+    assert vllm_params["params_key"] == "vllm"
+    assert vllm_params["content"] != data["content"], "各引擎参数清单应相互独立"
+
+
+def test_engine_params_yaml_save(client, base_url):
+    """/api/benchs/{id}/params-yaml 保存：去重后写回，且可再读回。"""
+    from benchscope.benchs import get_engine, load_engine_params, save_engine_params
+
+    engine = get_engine("benchscope")
+    original = load_engine_params(engine)["content"]
+    try:
+        r = client.put(
+            f"{base_url}/api/benchs/benchscope/params-yaml",
+            json={"content": "version: test\nbackend: openai\nendpoint: /v1/completions\n"},
+            timeout=10,
+        )
+        assert r.status_code == 200, r.text
+        data = r.json()
+        saved = {l["key"]: l["value"] for l in data["lines"]}
+        assert saved["backend"] == "openai"
+        assert saved["endpoint"] == "/v1/completions"
+        assert data["version"] == "test"
+
+        # 重复 key 去重（只保留最后一个）
+        r = client.get(f"{base_url}/api/benchs/benchscope/params-yaml", timeout=10)
+        keys = [l["key"] for l in r.json()["lines"]]
+        assert keys.count("backend") == 1, f"重复 key 应去重: {keys}"
+    finally:
+        save_engine_params(engine, original)
+        assert load_engine_params(engine)["content"] == original
+
+
+def test_engine_params_yaml_404(client, base_url):
+    """未知引擎请求参数清单 → 404。"""
+    r = client.get(f"{base_url}/api/benchs/no-such-engine/params-yaml", timeout=10)
+    assert r.status_code == 404
+
+
+# ---------------- 引擎包上传（Upload Engine） ----------------
+
+
+def _build_package(engine_yaml: str, param_yaml: str = "") -> bytes:
+    import io
+    import tarfile
+
+    buf = io.BytesIO()
+    with tarfile.open(fileobj=buf, mode="w:gz") as tar:
+        for name, text in (("configs/benchs.yaml", engine_yaml), ("configs/bench-params.yaml", param_yaml)):
+            if not text:
+                continue
+            data = text.encode()
+            info = tarfile.TarInfo(name)
+            info.size = len(data)
+            tar.addfile(info, io.BytesIO(data))
+    return buf.getvalue()
+
+
+# 复用已有 params_key（vllm）的新版本引擎 —— 单独上传 .yaml 即可通过校验
+VALID_ENGINE = (
+    "engines:\n"
+    "  - id: demo-1.0\n    kind: vllm\n    version: '1.0'\n    params_key: vllm\n"
+    "    name: Demo Bench\n    description: 上传校验用示例引擎\n"
+    "    requires:\n"
+    "      - {name: torch, spec: '>=2.0'}\n"
+    "      - {name: vllm, spec: '>=0.23,<0.24'}\n"
+)
+# 自带全新 params_key（demo）的引擎 —— 必须在包内同时提供参数说明段
+VALID_ENGINE_NEW_PARAMS = (
+    "engines:\n"
+    "  - id: demo-1.0\n    kind: vllm\n    version: '1.0'\n    params_key: demo\n"
+    "    name: Demo Bench\n    description: 上传校验用示例引擎\n"
+    "    requires:\n"
+    "      - {name: torch, spec: '>=2.0'}\n"
+    "      - {name: vllm, spec: '>=0.23,<0.24'}\n"
+)
+VALID_PARAMS = (
+    "demo:\n"
+    "  backend:\n"
+    "    label: 后端 Backend\n    help: 示例参数\n    type: select\n"
+    "    options:\n"
+    "      - value: openai-chat\n        label: openai-chat\n        description: 对话补全接口\n"
+)
+
+
+def test_upload_engine_package_tar(client, base_url):
+    """/api/benchs/upload：.tar.gz 技能包 → 校验通过 → 引擎与参数段合并生效。
+
+    技能包自带全新 params_key（demo）的参数说明段，故校验可通过。
+    """
+    from benchscope.bench_params import PARAMS_YAML
+    from benchscope.benchs import BENCHS_YAML
+
+    benchs_orig = BENCHS_YAML.read_text(encoding="utf-8")
+    params_orig = PARAMS_YAML.read_text(encoding="utf-8")
+    try:
+        r = client.post(
+            f"{base_url}/api/benchs/upload",
+            files={"file": ("demo-engine-1.0.0.tar.gz",
+                            _build_package(VALID_ENGINE_NEW_PARAMS, VALID_PARAMS),
+                            "application/gzip")},
+            timeout=60,
+        )
+        assert r.status_code == 200, r.text
+        data = r.json()
+        assert data["ok"] is True
+        assert data["added"] == ["demo-1.0"], data
+        assert "demo" in data["param_sections"], "参数说明段应随包合并"
+        assert "demo-1.0" in [e["id"] for e in data["engines"]]
+
+        # 引擎清单 API 同步生效
+        r = client.get(f"{base_url}/api/benchs", timeout=10)
+        assert "demo-1.0" in [e["id"] for e in r.json()["engines"]]
+    finally:
+        BENCHS_YAML.write_text(benchs_orig, encoding="utf-8")
+        PARAMS_YAML.write_text(params_orig, encoding="utf-8")
+
+
+def test_upload_engine_package_yaml(client, base_url):
+    """/api/benchs/upload：.yaml 引擎定义可直接上传。"""
+    from benchscope.benchs import BENCHS_YAML
+
+    benchs_orig = BENCHS_YAML.read_text(encoding="utf-8")
+    try:
+        r = client.post(
+            f"{base_url}/api/benchs/upload",
+            files={"file": ("engines.yaml", VALID_ENGINE.encode(), "application/x-yaml")},
+            timeout=60,
+        )
+        assert r.status_code == 200, r.text
+        assert r.json()["added"] == ["demo-1.0"]
+    finally:
+        BENCHS_YAML.write_text(benchs_orig, encoding="utf-8")
+
+
+def test_upload_engine_package_invalid(client, base_url):
+    """/api/benchs/upload：非法包被拒绝（400），且不修改配置。"""
+    from benchscope.benchs import BENCHS_YAML
+
+    benchs_orig = BENCHS_YAML.read_text(encoding="utf-8")
+    cases = [
+        ("kind 非法", "engines:\n  - id: bad\n    kind: unknown\n    params_key: vllm\n", ".yaml"),
+        ("缺 requires", "engines:\n  - id: bad\n    kind: vllm\n    params_key: vllm\n", ".yaml"),
+        ("无 engines 段", "foo: bar\n", ".yaml"),
+        ("空文件", "", ".yaml"),
+        # 单独上传 .yaml 时引用了不存在的 params_key（未提供参数说明段）→ 拒绝
+        ("未知 params_key", VALID_ENGINE_NEW_PARAMS, ".yaml"),
+    ]
+    try:
+        for label, content, suffix in cases:
+            r = client.post(
+                f"{base_url}/api/benchs/upload",
+                files={"file": (f"bad{suffix}", content.encode(), "application/octet-stream")},
+                timeout=60,
+            )
+            assert r.status_code == 400, f"{label} 应被拒绝: {r.status_code} {r.text}"
+            assert BENCHS_YAML.read_text(encoding="utf-8") == benchs_orig, f"{label} 不应写文件"
+
+        # 不支持的文件类型
+        r = client.post(
+            f"{base_url}/api/benchs/upload",
+            files={"file": ("engine.zip", b"PK\x03\x04", "application/zip")},
+            timeout=60,
+        )
+        assert r.status_code == 400, "zip 不应被支持"
+    finally:
+        BENCHS_YAML.write_text(benchs_orig, encoding="utf-8")
+
+
+def test_upload_engine_package_rejects_path_traversal():
+    """引擎包含路径穿越条目 → 直接拒绝，不解压。"""
+    import io
+    import tarfile
+
+    from benchscope.benchs import import_engine_package
+
+    buf = io.BytesIO()
+    with tarfile.open(fileobj=buf, mode="w:gz") as tar:
+        payload = VALID_ENGINE.encode()
+        info = tarfile.TarInfo("../../evil.yaml")
+        info.size = len(payload)
+        tar.addfile(info, io.BytesIO(payload))
+
+    with pytest.raises(ValueError, match="非法路径"):
+        import_engine_package(buf.getvalue(), "evil.tar.gz")
+
+
+# ---------------- 命令预览随引擎变化 ----------------
+
+
+def test_preview_command_follows_engine(client, base_url):
+    """同一 payload 下，切换引擎 → 预览命令随之变化（Bench CLI / vLLM 各自命令）。"""
+    params = "version: Bench CLI stable\nbackend: openai-chat\nendpoint: /v1/chat/completions\n"
+    payload = {
+        "framework": "vllm",
+        "engine_id": "benchscope",
+        "model": "mock-model",
+        "tokenizer": "",
+        "dataset": {"type": "random", "length_pairs": [[1024, 1024, "1024x1024", 1]]},
+        "concurrency_list": [8],
+        "gpu": {},
+        "request_rate": "inf",
+        "mode": "concurrency",
+        "engine_params_yaml": params,
+        "params_yaml": {},
+    }
+
+    r = client.post(f"{base_url}/api/tasks/preview", json=payload, timeout=30)
+    assert r.status_code == 200, r.text
+    builtin_cmd = r.json()["commands"][0]["cmd"]
+    assert builtin_cmd.startswith("benchscope perf"), f"Bench CLI 应给出 benchscope perf 命令: {builtin_cmd}"
+    for flag in ("--model mock-model", "--concurrency 8", "--input-len 1024", "--output-len 1024"):
+        assert flag in builtin_cmd, f"Bench CLI 命令缺少 {flag}: {builtin_cmd}"
+
+    # 切到原生引擎 → 命令为 vllm bench serve
+    payload["engine_id"] = "vllm-0.23"
+    r = client.post(f"{base_url}/api/tasks/preview", json=payload, timeout=30)
+    assert r.status_code == 200, r.text
+    native_cmd = r.json()["commands"][0]["cmd"]
+    assert "vllm bench serve" in native_cmd, f"原生引擎应给出 vllm bench serve 命令: {native_cmd}"
+    assert native_cmd != builtin_cmd, "切换引擎后命令必须变化"
+
+
+def test_builtin_options_from_engine_params():
+    """Bench CLI 执行选项由「引擎参数清单」构造（参数随引擎，不再为空）。"""
+    from benchscope.benches.builtin_bench import build_options, params_from_yaml
+
+    params = params_from_yaml(
+        "version: Bench CLI stable\nbackend: openai\nendpoint: /v1/completions\n"
+        "request-rate: 10\nnum-prompts: 100\nnum-warmups: 3\ntimeout: 60\n"
+        "chars-per-token: 2\ntemperature: 0.5\nseed: 42\n"
+    )
+    opts = build_options(params, base_url="http://x:8000", model="m",
+                         dataset={"input_len": 128, "output_len": 256}, concurrency=8)
+
+    assert opts.backend == "openai"
+    assert opts.endpoint == "/v1/completions"
+    assert opts.request_rate == 10.0
+    assert opts.num_prompts == 100
+    assert opts.warmups == 3
+    assert opts.timeout == 60.0
+    assert opts.chars_per_token == 2.0
+    assert opts.seed == 42
+    assert opts.extra_body["temperature"] == 0.5
+    assert opts.concurrency == 8
+
+    # 缺省：num-prompts=0 → 跟随并发数；request-rate=inf → 全速
+    default_opts = build_options({}, base_url="http://x:8000", model="m",
+                                 dataset={"input_len": 128, "output_len": 256}, concurrency=8)
+    assert default_opts.num_prompts == 8, "num-prompts=0 应跟随并发数"
+    assert default_opts.request_rate == float("inf")
+    assert default_opts.backend == "openai-chat"
+    assert default_opts.seed is None, "seed=0 表示不固定（None）"
+
+
+def test_merge_extra_args_prefers_engine_params():
+    """原生引擎命令：优先使用引擎参数清单（engine_params_yaml）。"""
+    from benchscope.benches.base import merge_extra_args
+
+    payload = {
+        "framework": "vllm",
+        "engine_params_yaml": "version: v\nmax-model-len: 4096\n",
+        "params_yaml": {"vllm": "version: v\nmax-num-seqs: 128\n"},
+        "extra_args": [],
+    }
+    extra = merge_extra_args(payload)
+    assert "--max-model-len=4096" in extra, extra
+    # 提供了 engine_params_yaml 时，旧字段不再生效（避免两套参数混用）
+    assert "--max-num-seqs=128" not in extra, extra
+
+    # 无引擎参数清单时回退旧字段（向后兼容）
+    legacy = merge_extra_args({"framework": "vllm", "params_yaml": {"vllm": "version: v\nmax-num-seqs: 128\n"}})
+    assert "--max-num-seqs=128" in legacy, legacy
+
+
+def test_bench_cli_subcommand_parsing(capsys):
+    """`benchscope perf` 子命令可解析（与 Step3 预览命令同构，可直接复制执行）。"""
+    from benchscope.cli import main
+
+    # 顶层 --help 与子命令均可用（argparse 打印后 SystemExit(0)）
+    for argv in (["--help"], ["perf", "--help"], ["serve", "--help"]):
+        with pytest.raises(SystemExit) as exc:
+            main(argv)
+        assert exc.value.code == 0, f"{argv} 解析失败"
+        assert "benchscope" in capsys.readouterr().out
+
+    # perf 子命令必填项校验：缺 --model 应报错退出（SystemExit(2)）
+    with pytest.raises(SystemExit) as exc:
+        main(["perf"])
+    assert exc.value.code == 2, "缺少必填 --model 时应拒绝执行"

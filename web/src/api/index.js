@@ -41,6 +41,16 @@ export const api = {
     content, mock_output: mockOutput, dry_run: !apply, apply: !!apply,
   }),
   getBenchAuthoring: () => http.get('/api/benchs/authoring'),
+  // 引擎参数清单（随引擎切换，每个引擎一套）
+  getBenchParamsYaml: (engineId) => http.get(`/api/benchs/${engineId}/params-yaml`),
+  saveBenchParamsYaml: (engineId, content) =>
+    http.put(`/api/benchs/${engineId}/params-yaml`, { content }),
+  // 上传引擎包（yaml 定义 / tar.gz 技能包）
+  uploadBenchEngine: (file, onProgress) => {
+    const form = new FormData()
+    form.append('file', file)
+    return http.post('/api/benchs/upload', form, { timeout: 120000, onUploadProgress: onProgress })
+  },
 
   // 缓存目录管理
   getDirs: () => http.get('/api/config/dirs'),

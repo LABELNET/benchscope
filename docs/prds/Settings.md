@@ -58,13 +58,17 @@ Settings 页面左侧 5 个侧边栏：
 ## 2. Environment（环境配置面板）
 
 - 面板标题：**Envs**；标题右侧显示**环境状态**徽标：🟢 在线（含模型数 `N models`）/ 🔴 离线（来自 `config.status`，`/api/config/status` 轮询 + WebSocket 广播）。
-- 内容三行：**Framework**（vLLM / SGLang 单选）、**Base URL**（默认显示 `http://127.0.0.1:8000`）、**API Key**（**可不填**，placeholder 提示 optional）。
+- 内容两行：**Base URL**（OpenAI 兼容接口，默认显示 `http://127.0.0.1:8000`）、**API Key**（**可不填**，placeholder 提示 optional）。
+  > **1.0.7 变更：移除 Framework（vLLM / SGLang 单选）**。框架不再在此处选择，
+  > 而是由「Performance → 创建任务」所选**测试引擎**决定（见 §5）：引擎的 `framework`
+  > 字段用于生成对应原生命令，`PerfCreateView` 与 `test_manager.build_command_lines()`
+  > 均优先取引擎的 `framework`。
 - **编辑/保存模式**：
   - 显示状态：输入框**禁用**，footer 右侧显示 `Edit` 按钮
   - 点击 `Edit` → 进入编辑：输入框可编辑，按钮变为 `Save`
-  - 点击 `Save` → 持久化 `framework` + `api`（base_url / api_key / extra_headers）→ toast「配置已保存」→ 退出编辑 → 刷新状态徽标
+  - 点击 `Save` → 持久化 `api`（base_url / api_key / extra_headers）→ toast「配置已保存」→ 退出编辑 → 刷新状态徽标
 - **Test Connection**：`POST /api/config/test-connection` 探测 `{base_url}/v1/models`；成功提示「连接成功」并刷新状态，失败提示错误信息。
-- 约束：Framework 单选必选其一；Base URL 无格式强校验；API Key 可为空；阈值等其余配置项不在此面板。
+- 约束：Base URL 无格式强校验；API Key 可为空；阈值等其余配置项不在此面板。
 
 ---
 
@@ -103,14 +107,99 @@ Settings 页面左侧 5 个侧边栏：
 
 ---
 
-## 5. Plugins
+## 5. Bench Engines（测试引擎管理，1.0.6 新增 / 1.0.7 重构）
+
+> 数据源：`GET /api/benchs`（`benchscope/configs/benchs.yaml`，yaml 驱动、用户可扩展）
+
+### 5.1 界面布局（1.0.7 重构）
+
+- **整页即引擎列表**：左侧菜单切换后，右侧内容区为引擎卡片列表（`.bench-card`），
+  **列表区独立可滑动**（`.bench-list-scroll`），顶部操作栏固定不随滚动
+- **右上角三个文字按钮**（`.bench-actions .bench-text-btn`），点击后在**中间弹框**展示内容：
+
+| 按钮 | 弹框内容 | 说明 |
+| --- | --- | --- |
+| **Create Engine** | 制作教程 + 上游链接 + 可复制 AI 提示词 | 纯教程与提示词，**不再展示 Engine Definition（引擎定义原文）** |
+| **Upload Engine** | 拖拽/点选上传区 + 校验结果 | 上传 `.yaml` / `.yml` 引擎定义，或 `.tar.gz` / `.tgz` 技能包 |
+| **Engine Comparison** | 引擎对比表（维度 × 引擎） | 原内联对比表移入弹框 |
+
+**弹框规范（1.0.7）**：
+
+| 项 | 规范 |
+| --- | --- |
+| 宽度 | 统一为 **1/3 浏览器宽度**（`.bench-modal { width: 33.33vw !important; min-width: 420px; max-width: 720px }`）；不再使用各弹框的内联 `width` 属性 |
+| Header | **标题 + 提示文案**（`#title` 插槽 → `.bench-modal-title` + `.bench-modal-hint`） |
+| Footer | **文字操作按钮**（`type="link"`，右对齐于 `.bench-modal-footer`） |
+| 底部间距 | 所有页面（`.app-content-layout`）底部统一保留 **18px** |
+
+各弹框 footer 操作：Create → 复制提示词 / 取消；Upload → 校验并导入 / 取消；Comparison → 取消。
+
+> 注意：ant-design-vue 的 `<a-modal class="bench-modal">` 会把 class 落在 **`.ant-modal` 本身**（不是外层包裹），
+> 因此宽度选择器为 `.bench-modal` 而非 `.bench-modal .ant-modal`。
+
+**列表可滚动（1.0.7 修复）**：`.bench-list-scroll` 的父级是 `a-spin` 的
+`.ant-spin-nested-loading` / `.ant-spin-container`，必须为其补充
+`flex: 1; min-height: 0; display: flex; flex-direction: column`，否则滚动容器拿不到限高而无法滚动。
+
+### 5.2 引擎卡片内容
+
+- 名称 + 默认标记 + kind 标签（`builtin` 紫 / `vllm`、`sglang` 青）+ 环境状态标签（`Ready` / `Not Satisfied`）
+- 版本、介绍文案、亮点列表（`highlights`）
+- 环境要求明细（`requires`）：要求版本 / 已安装 / OK-FAIL；不满足时展示安装提示
+- **Bench CLI（自研引擎）无 `requires`**，展示「无框架环境依赖，安装即用」
+
+### 5.3 Create Engine 弹框
+
+- 制作步骤教程（4 步）：确认目标版本 → 拉取上游源码核实参数 → 复制提示词给 AI → 用 Upload Engine 导入
+- 上游仓库链接（vLLM / SGLang，含 bench 入口与命令）
+- 可复制 AI 提示词（内容由 `GET /api/benchs/authoring` 生成）
+
+### 5.4 Upload Engine 弹框
+
+- 支持 `.yaml` / `.yml`（引擎定义原文）与 `.tar.gz` / `.tgz`（技能包），单文件上限 20MB
+- 技能包内自动识别：引擎定义（含 `engines` 段）、参数说明（`bench-params.yaml`）
+- 合并策略：引擎 `id` 已存在 → 更新，不存在 → 追加；对比表按 `dimension` 去重合并；参数段按 `params_key` 覆盖合并
+- **校验通过才写入**（与手动导入同一套校验）；未选择文件时「校验并导入」按钮禁用
+- 结果展示：新增引擎 / 更新引擎 / 逐项校验结果
+- 接口：`POST /api/benchs/upload`（multipart）
+- 安全：解压时拒绝 `../` 路径穿越与绝对路径条目
+
+### 5.5 引擎命名与文案（1.0.7）
+
+**命名**：自研引擎名称统一为 **Bench CLI**（原「BenchScope Bench（自研）」），界面、文档、对比表保持一致。
+其**实际命令**为 **`benchscope perf`**（原 `benchscope bench`），即界面显示「Bench CLI」、
+执行的是 `benchscope perf` 子命令。
+
+**文案双语**：引擎定义（`configs/benchs.yaml`）的文案**默认为英文**，中文放在 `*_zh` 字段
+（沿用仓库既有的 `name_zh` / `label_zh` / `desc_zh` 约定），界面按当前语言选择，缺失回退英文：
+
+| 字段 | 中文字段 | 说明 |
+| --- | --- | --- |
+| `name` | `name_zh` | 引擎名（Bench CLI 等名称语言中立，可只写一次） |
+| `description` | `description_zh` | 引擎介绍 |
+| `highlights` | `highlights_zh` | 亮点列表 |
+| `comparison[].dimension` | `dimension_zh` | 对比表维度名 |
+| `comparison[].values` | `values_zh` | 对比表各引擎取值 |
+
+后端 `engine_summary()` 透传 `name_zh` / `description_zh` / `highlights_zh`（`name_zh` 缺失时回退 `name`）；
+前端由 `benchName()` / `benchDesc()` / `benchHighlights()` / `compTitle()` / `compValue()` 按语言取值。
+
+**Highlights 规范**：只列「**简洁特性**」与「**版本支持情况**」，**不描述实现方式**；
+条目 ≤6 条、每条 ≤80 字符，最后一条以 `Version support: ...` 说明版本支持范围。
+
+> ⚠️ **YAML 陷阱**：列表项若含半角 `: `（如 `Version support: vLLM 0.23.x only`）会被解析为
+> **mapping 而非字符串**，必须加引号；中文全角「：」无此问题。
+
+---
+
+## 6. Plugins
 
 - 占位页：标题「插件」+ 描述「插件系统即将推出」+ 空状态（`a-empty`）。
 - v5.0 预留，无功能逻辑。
 
 ---
 
-## 6. 全局约束
+## 7. 全局约束
 
 | 项 | 约束 |
 | --- | --- |
@@ -119,8 +208,9 @@ Settings 页面左侧 5 个侧边栏：
 | 主题 | 使用 antd 变量（`var(--ant-color-*)`），亮/暗主题自适应 |
 | 面板样式 | 均为 `size="small"` 卡片，标签 12px，与 Dashboard 面板字体保持一致 |
 | 语言切换 | 立即生效并持久化；默认英文 |
-| 布局 | 左侧一级菜单（General/Environment/Models/Datasets/Plugins）+ 右侧内容区；Models/Datasets 在内容区内再嵌「副侧边栏 + 内容」结构 |
+| 布局 | 左侧一级菜单（General/Environment/Models/Datasets/Plugins/Bench Engines）+ 右侧内容区；Models/Datasets 在内容区内再嵌「副侧边栏 + 内容」结构 |
+| Bench Engines 布局 | 整页为可滑动引擎列表 + 右上角文字按钮（操作入口）；对比表与上传/教程均为弹框，不内联占用页面 |
 
-## 7. 相关文档约定
+## 8. 相关文档约定
 
 > **约定**：后续对 Settings 页面的设计/界面修改、逻辑与策略调整、UI 调整，均需同步更新本文档。

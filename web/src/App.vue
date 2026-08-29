@@ -79,9 +79,12 @@ body {
 .app-layout {
   height: 100vh;
 }
+/* 所有页面底部统一保留 18px */
 .app-content-layout {
   flex: 1;
   overflow: hidden;
+  padding-bottom: 18px;
+  box-sizing: border-box;
 }
 .theme-dark body,
 body.theme-dark {

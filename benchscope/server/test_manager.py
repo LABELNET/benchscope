@@ -104,6 +104,65 @@ class TestRun:
         return data
 
 
+def _resolve_engine(payload: dict):
+    """按 payload.engine_id 取引擎定义（未知/未指定返回 None）。"""
+    engine_id = (payload or {}).get("engine_id") or ""
+    if not engine_id:
+        return None
+    try:
+        from benchscope.benchs import get_engine
+
+        return get_engine(engine_id)
+    except Exception:
+        return None
+
+
+def build_builtin_command_lines(payload: dict, config, engine: dict) -> list[dict]:
+    """自研引擎（Bench CLI）的命令预览：参数取自该引擎的参数清单。"""
+    from benchscope.benches.builtin_bench import (
+        build_command,
+        build_options,
+        params_from_yaml,
+    )
+
+    engine_id = engine.get("id") or "benchscope"
+    params = params_from_yaml(payload.get("engine_params_yaml") or "")
+    model = payload.get("model", "")
+    dataset = dict(payload.get("dataset", {}))
+    cases = build_cases(dataset, model)
+    api = dict(config.api)
+    mode = payload.get("mode", "concurrency")
+    conc_list = payload.get("concurrency_list", [])
+    if mode == "threshold":
+        conc_list = conc_list[:1] or [1]
+
+    lines = []
+    for case in cases:
+        ds = dict(dataset)
+        ds.update({
+            "input_len": case.get("input_len"),
+            "output_len": case.get("output_len"),
+            "path": case.get("path"),
+        })
+        for conc in conc_list:
+            if conc == "inf" or conc is None:
+                continue
+            opts = build_options(
+                params,
+                base_url=api.get("base_url") or "",
+                model=model,
+                dataset=ds,
+                concurrency=int(conc),
+                api_key=api.get("api_key") or "",
+            )
+            lines.append({
+                "case": case["label"],
+                "concurrency": int(conc),
+                "cmd": " ".join(build_command(opts, engine_id)),
+            })
+    return lines
+
+
 def build_single_command(
     framework: str, model: str, tokenizer: str, api: dict, dataset: dict,
     concurrency: int, request_rate, curated: dict, extra_args: list,
@@ -128,10 +187,19 @@ def build_single_command(
 def build_command_lines(payload: dict, config) -> list[dict]:
     """为 payload 中的所有用例×并发构建命令列表（预览用）。
 
+    **命令随引擎变化**（前置选择了哪个引擎，预览就给哪个引擎的命令）：
+      - 自研引擎（kind=builtin）→ `benchscope perf ...`（进程内执行，命令可直接复制运行）
+      - 原生引擎（vllm / sglang）→ 对应 CLI 命令，Step2 编辑的引擎参数以 --key=value 附加
+
     阈值模式（mode=threshold）下并发由策略动态决定，预览仅给出从 1 并发开始的
-    首条命令；Step2「性能参数」编辑的 yaml 参数会以 --key=value 形式附加到命令。
+    首条命令。
     """
-    framework = payload.get("framework", "vllm")
+    engine = _resolve_engine(payload)
+    if engine and engine.get("kind") == "builtin":
+        return build_builtin_command_lines(payload, config, engine)
+
+    # framework 优先取自定义引擎（Settings/Environment 不再单独配置框架），回退 payload
+    framework = (engine or {}).get("framework") or payload.get("framework", "vllm")
     model = payload.get("model", "")
     tokenizer = payload.get("tokenizer", "")
     dataset = dict(payload.get("dataset", {}))

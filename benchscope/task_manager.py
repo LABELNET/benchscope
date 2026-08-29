@@ -14,7 +14,12 @@ from typing import Optional
 from benchscope.benches.base import BenchOptions, merge_extra_args
 from benchscope.benches.runner import BenchRunner, StopRequested
 from benchscope.benches import sglang_bench, vllm_bench
-from benchscope.benches.builtin_bench import BuiltinOptions, run_builtin_bench
+from benchscope.benches.builtin_bench import (
+    BuiltinOptions,
+    build_options,
+    params_from_yaml,
+    run_builtin_bench,
+)
 from benchscope.benchs import get_engine
 from benchscope.constants import DATASET_RANDOM, DATASET_SHAREGPT, FRAMEWORK_NAMES
 from benchscope.summary import write_summary_csv, write_xlsx
@@ -89,41 +94,50 @@ def _builtin_engine(task) -> bool:
 
 
 def _builtin_options(task, ds: dict, concurrency: int, api: dict) -> BuiltinOptions:
-    """由任务 payload 与配置 api 构造自研引擎选项。"""
-    payload = task.payload or {}
-    base_url = api.get("base_url") or ""
-    endpoint = api.get("endpoint") or "/v1/chat/completions"
-    rate = payload.get("request_rate", "inf")
-    try:
-        rate = float(rate) if rate not in ("inf", "", None) else float("inf")
-    except (TypeError, ValueError):
-        rate = float("inf")
-    curated = payload.get("curated") or {}
-    # 自研引擎专属参数（见 configs/bench-params.yaml 的 benchscope 段）
-    def _num(key, default):
-        try:
-            v = curated.get(key)
-            return type(default)(v) if v not in (None, "") else default
-        except (TypeError, ValueError):
-            return default
+    """由任务 payload 与配置 api 构造自研引擎（Bench CLI）选项。
 
-    return BuiltinOptions(
-        base_url=base_url,
-        api_key=api.get("api_key") or "",
+    参数来源优先级：
+      1. `payload.engine_params_yaml` —— 创建任务 Step2 中编辑的**该引擎参数清单**
+      2. `payload.curated` —— 旧任务的兼容字段
+      3. `BUILTIN_PARAM_DEFAULTS` —— 引擎参数清单出厂默认值
+    """
+    payload = task.payload or {}
+    params = params_from_yaml(payload.get("engine_params_yaml") or "")
+
+    # 旧任务兼容：curated 中的键（下划线形式）映射到参数清单键
+    curated = payload.get("curated") or {}
+    legacy = {
+        "backend": curated.get("backend"),
+        "endpoint": curated.get("endpoint"),
+        "num-prompts": payload.get("num_prompts"),
+        "num-warmups": curated.get("num_warmups"),
+        "chars-per-token": curated.get("chars_per_token"),
+        "timeout": curated.get("timeout"),
+        "seed": curated.get("seed"),
+    }
+    for key, value in legacy.items():
+        if value not in (None, "") and not params.get(key):
+            params[key] = value
+    if curated.get("temperature") not in (None, "") and not params.get("temperature"):
+        params["temperature"] = curated["temperature"]
+
+    # 请求速率：旧任务用 payload.request_rate（inf / 数值）
+    if payload.get("request_rate") not in (None, "") and not params.get("request-rate"):
+        params["request-rate"] = payload["request_rate"]
+    # endpoint 缺省跟随服务配置
+    if not params.get("endpoint"):
+        params["endpoint"] = api.get("endpoint") or "/v1/chat/completions"
+
+    opts = build_options(
+        params,
+        base_url=api.get("base_url") or "",
         model=task.model,
-        endpoint=endpoint,
-        backend=curated.get("backend") or "openai-chat",
         dataset=ds,
         concurrency=int(concurrency),
-        num_prompts=int(payload.get("num_prompts") or concurrency),
-        request_rate=rate,
-        warmups=int(curated.get("num_warmups") or 0),
-        timeout=_num("timeout", 600.0),
-        chars_per_token=_num("chars_per_token", 4.0),
-        seed=curated.get("seed"),
-        extra_body={"temperature": _num("temperature", 0.0)},
-        extra_headers=api.get("extra_headers") or {},
+        api_key=api.get("api_key") or "",
     )
+    opts.extra_headers = api.get("extra_headers") or {}
+    return opts
 
 
 def build_single_command(framework, model, tokenizer, api, dataset, concurrency, request_rate, curated, extra_args):
@@ -474,7 +488,7 @@ class TaskManager:
                 "case": case["label"], "label": case["label"], "case_id": case.get("case_id"),
                 "input_len": case.get("input_len"), "output_len": case.get("output_len"),
                 "concurrency": concurrency,
-                "cmd": f"benchscope bench (builtin) --base-url={opts.base_url} --concurrency={concurrency}",
+                "cmd": f"benchscope perf (builtin) --base-url={opts.base_url} --concurrency={concurrency}",
                 "metrics": metrics,
             }
 

@@ -62,8 +62,12 @@ bench-engine-authoring/
    输出文本**必须匹配** `parser.py` 正则。
 6. **导入前校验** —— 服务端执行 §7 的 8 项校验；修复全部失败项后重新校验，
    **全部通过才可导入**。
-7. **导入** —— Settings → Bench 引擎 → 引擎定义 (benchs.yaml) → 编辑 → 保存（服务端校验），
-   或调用 `PUT /api/benchs/config/yaml`。
+7. **导入** —— Settings → Bench Engines → 右上角 **Upload Engine** → 上传引擎包
+   （`.yaml` 引擎定义，或 `.tar.gz` 技能包），或调用 `POST /api/benchs/upload`。
+
+> **界面入口（1.0.7）**：Settings → **Bench Engines** 右上角三个文字按钮 ——
+> **Create Engine**（本文档教程与可复制提示词）、**Upload Engine**（上传引擎包）、
+> **Engine Comparison**（引擎对比表）。引擎定义原文不再内联展示。
 
 ---
 

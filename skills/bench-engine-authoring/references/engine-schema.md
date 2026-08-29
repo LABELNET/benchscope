@@ -50,7 +50,7 @@ engines:
     framework: builtin
     version: stable
     params_key: benchscope
-    name: BenchScope Bench（自研）
+    name: Bench CLI
     description: >-
       自研测试引擎，基于 OpenAI 兼容 API 的异步流式负载生成器。
       不依赖本地 vLLM / SGLang 环境，pip 安装后即可对本地或远程的任意 OpenAI 兼容推理服务进行性能测试。
