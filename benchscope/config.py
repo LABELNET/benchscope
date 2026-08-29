@@ -81,6 +81,7 @@ class ConfigManager:
                     loaded = json.loads(source.read_text(encoding="utf-8"))
                     self._merge(self._data, loaded)
                     self._normalize_legacy_defaults()
+                    self._migrate_providers()
                 except Exception:
                     log.exception("配置加载失败，使用默认配置: %s", source)
                 # 若读取的是旧版 config.json，则一次性落盘 settings.json 完成迁移
@@ -89,6 +90,8 @@ class ConfigManager:
             else:
                 # 首次启动：落盘默认配置，确保 settings.json 存在
                 self.save()
+            # Provider 迁移（旧配置仅 api / 全新配置均执行）
+            self._migrate_providers()
             # 启动时检查目录是否齐全（缺失则创建）
             self.ensure_dirs()
 
@@ -165,6 +168,121 @@ class ConfigManager:
                     Path(os.path.expanduser(raw)).mkdir(parents=True, exist_ok=True)
                 except Exception:
                     log.exception("目录创建失败: %s=%s", key, raw)
+
+    # ---------- Providers（推理服务提供方） ----------
+    def _migrate_providers(self) -> None:
+        """旧配置迁移：只有 api 无 providers 时，生成名为 Default 的 Provider 并激活。"""
+        providers = self._data.get("providers")
+        if providers:  # 已有 providers：确保 active 指向有效项
+            ids = [p.get("id") for p in providers if isinstance(p, dict)]
+            if self._data.get("active_provider") not in ids:
+                self._data["active_provider"] = ids[0] if ids else ""
+            return
+        api = self._data.get("api") or {}
+        if not api.get("base_url"):
+            return
+        provider = {
+            "id": "provider_default",
+            "name": "Default",
+            "base_url": api.get("base_url", ""),
+            "endpoint": api.get("endpoint") or "/v1/chat/completions",
+            "api_key": api.get("api_key", ""),
+            "extra_headers": deepcopy(api.get("extra_headers") or {}),
+        }
+        self._data["providers"] = [provider]
+        self._data["active_provider"] = provider["id"]
+        self.save()
+        log.info("已从旧配置迁移 Provider: %s (%s)", provider["name"], provider["base_url"])
+
+    def _sync_api_from_active(self) -> None:
+        """把激活的 Provider 同步到 api 字段（任务执行链路统一读 api）。"""
+        active_id = self._data.get("active_provider") or ""
+        provider = next(
+            (p for p in self._data.get("providers") or [] if p.get("id") == active_id), None
+        )
+        if provider is None:
+            return
+        self._data["api"] = {
+            "base_url": provider.get("base_url", ""),
+            "endpoint": provider.get("endpoint") or "/v1/chat/completions",
+            "api_key": provider.get("api_key", ""),
+            "extra_headers": deepcopy(provider.get("extra_headers") or {}),
+        }
+
+    def list_providers(self) -> dict:
+        with self._lock:
+            return {
+                "providers": deepcopy(self._data.get("providers") or []),
+                "active_provider": self._data.get("active_provider") or "",
+            }
+
+    def add_provider(self, data: dict) -> dict:
+        """新增 Provider（name 必填），首个自动激活；激活项同步到 api。"""
+        with self._lock:
+            name = (data.get("name") or "").strip()
+            if not name:
+                raise ValueError("Provider Name is required")
+            providers = self._data.setdefault("providers", [])
+            import time as _time
+
+            provider = {
+                "id": f"provider_{int(_time.time() * 1000)}",
+                "name": name,
+                "base_url": (data.get("base_url") or "").strip(),
+                "endpoint": data.get("endpoint") or "/v1/chat/completions",
+                "api_key": data.get("api_key") or "",
+                "extra_headers": deepcopy(data.get("extra_headers") or {}),
+            }
+            providers.append(provider)
+            if not self._data.get("active_provider"):
+                self._data["active_provider"] = provider["id"]
+            self._sync_api_from_active()
+            self.save()
+            return deepcopy(provider)
+
+    def update_provider(self, provider_id: str, patch: dict) -> dict:
+        with self._lock:
+            providers = self._data.get("providers") or []
+            provider = next((p for p in providers if p.get("id") == provider_id), None)
+            if provider is None:
+                raise KeyError(f"未知 Provider: {provider_id}")
+            if "name" in patch:
+                name = (patch.get("name") or "").strip()
+                if not name:
+                    raise ValueError("Provider Name is required")
+                provider["name"] = name
+            for key in ("base_url", "endpoint", "api_key", "extra_headers"):
+                if key in patch:
+                    provider[key] = patch[key]
+            if self._data.get("active_provider") == provider_id:
+                self._sync_api_from_active()
+            self.save()
+            return deepcopy(provider)
+
+    def delete_provider(self, provider_id: str) -> dict:
+        with self._lock:
+            providers = self._data.get("providers") or []
+            remaining = [p for p in providers if p.get("id") != provider_id]
+            if len(remaining) == len(providers):
+                raise KeyError(f"未知 Provider: {provider_id}")
+            self._data["providers"] = remaining
+            if self._data.get("active_provider") == provider_id:
+                self._data["active_provider"] = remaining[0]["id"] if remaining else ""
+            self._sync_api_from_active()
+            self.save()
+            return {"providers": deepcopy(remaining),
+                    "active_provider": self._data.get("active_provider") or ""}
+
+    def activate_provider(self, provider_id: str) -> dict:
+        with self._lock:
+            providers = self._data.get("providers") or []
+            provider = next((p for p in providers if p.get("id") == provider_id), None)
+            if provider is None:
+                raise KeyError(f"未知 Provider: {provider_id}")
+            self._data["active_provider"] = provider_id
+            self._sync_api_from_active()
+            self.save()
+            return deepcopy(provider)
 
     # ---------- 常用辅助 ----------
     @property

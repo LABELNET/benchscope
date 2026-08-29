@@ -84,6 +84,38 @@ def test_native_engine_env_check_reports_missing(client, base_url):
                 assert c["hint"], f"未通过的检查项必须有安装提示: {c}"
 
 
+def test_engine_mock_switch(client, base_url):
+    """引擎 mock 开关（POST /api/benchs/{id}/mock）：开启后环境校验通过并标记 Mock；关闭恢复 Real。"""
+    engine_id = "vllm-0.23"
+    # 打开 mock → env 通过 + mock 状态
+    r = client.post(f"{base_url}/api/benchs/{engine_id}/mock", json={"enabled": True}, timeout=10)
+    assert r.status_code == 200, r.text
+    data = r.json()
+    assert data["mock"] is True
+    assert data["mock_state"] == "mock"
+    assert data["env"]["ok"] is True, "mock 开启时环境应通过"
+    assert data["env"]["mock"] is True
+
+    # env-check 同步反映 mock
+    r = client.get(f"{base_url}/api/benchs/{engine_id}/env-check", timeout=10)
+    data = r.json()
+    assert data["mock"] is True and data["mock_state"] == "mock" and data["ok"] is True
+
+    # 引擎列表也带 mock 状态
+    r = client.get(f"{base_url}/api/benchs", timeout=10)
+    eng = next(e for e in r.json()["engines"] if e["id"] == engine_id)
+    assert eng["mock"] is True and eng["mock_state"] == "mock"
+
+    # 关闭 mock → 恢复真实环境校验
+    r = client.post(f"{base_url}/api/benchs/{engine_id}/mock", json={"enabled": False}, timeout=10)
+    data = r.json()
+    assert data["mock"] is False and data["mock_state"] == "real"
+
+    # 未知引擎 → 404
+    r = client.post(f"{base_url}/api/benchs/does-not-exist/mock", json={"enabled": True}, timeout=10)
+    assert r.status_code == 404
+
+
 def test_benchs_yaml_get_and_save(client, base_url):
     """引擎定义 yaml：可读；保存需校验（非法内容 400 且不写文件）；合法内容生效后还原。
 
@@ -757,3 +789,15 @@ def test_bench_cli_subcommand_parsing(capsys):
     with pytest.raises(SystemExit) as exc:
         main(["perf"])
     assert exc.value.code == 2, "缺少必填 --model 时应拒绝执行"
+
+
+def test_authoring_prompt_generates_package():
+    """Create Engine 提示词要求产出 tar.gz 引擎包（导入走 Upload Engine）。"""
+    from benchscope.server.api_benchs import _authoring_prompt
+
+    prompt = _authoring_prompt()
+    assert "<framework>-<version>-engine.tar.gz" in prompt, "应指定压缩包命名"
+    assert "tar -czf" in prompt, "应给出打包命令"
+    assert "benchs.yaml" in prompt and "bench-params.yaml" in prompt, "应包含包内布局"
+    assert "Upload Engine" in prompt, "应说明通过 Upload Engine 导入"
+    assert "name_zh" in prompt, "应包含双语字段约定"

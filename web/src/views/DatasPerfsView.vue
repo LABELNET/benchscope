@@ -28,6 +28,7 @@
           >
             <div class="record-head">
               <span class="record-id" :title="r.run_id">{{ shortId(r.run_id) }}</span>
+              <span v-if="r.meta?.framework" class="record-framework" :title="r.meta.framework">{{ r.meta.framework }}</span>
               <span class="record-status" :class="statusClass(r.meta?.status)">{{ statusText(r.meta?.status) }}</span>
             </div>
             <div class="record-meta">
@@ -921,7 +922,7 @@ watch(
 .record-head {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-start;
   gap: 6px;
 }
 .record-id {
@@ -931,6 +932,21 @@ watch(
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+/* 记录 framework 高亮标记：任务 ID 右边，字体再小些 */
+.record-framework {
+  font-size: 9px;
+  line-height: 1;
+  font-weight: 600;
+  padding: 1px 4px;
+  border-radius: 3px;
+  color: #1677ff;
+  background: rgba(22, 119, 255, 0.1);
+  flex-shrink: 0;
+  white-space: nowrap;
+  max-width: 96px;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .record-meta {
   display: flex;
@@ -956,6 +972,7 @@ watch(
   font-weight: 600;
   flex-shrink: 0;
   white-space: nowrap;
+  margin-left: auto;  /* 状态推到最右 */
 }
 .st-done {
   color: #52c41a;

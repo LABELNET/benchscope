@@ -28,3 +28,10 @@ export function initI18n(savedLocale) {
     setLocale('en')
   }
 }
+
+// 测试 / 调试辅助：暴露全局语言切换（供 WebUI 测试直接调用，不参与生产逻辑）
+if (typeof window !== 'undefined') {
+  window.__switchLocale = (locale) => {
+    if (messages[locale]) setLocale(locale)
+  }
+}

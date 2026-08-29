@@ -17,8 +17,11 @@
       </div>
     </div>
 
-    <!-- 右侧内容（Bench Engines 栏整页为可滑动列表，故切换为「填满高度 + 内部滚动」） -->
-    <div class="settings-content" :class="{ 'content-fill': activeTab === 'benches' }">
+    <!-- 右侧内容（Bench Engines / Models / Datasets / Skills 栏整页为可滑动列表，切换为「填满高度 + 内部滚动」） -->
+    <div
+      class="settings-content"
+      :class="{ 'content-fill': ['benches', 'models', 'datasets', 'skills'].includes(activeTab) }"
+    >
       <!-- General：Language + Cache Paths 两个面板 -->
       <div v-if="activeTab === 'general'" class="tab-content narrow">
         <a-card size="small" :bordered="true" class="panel-card">
@@ -73,125 +76,194 @@
 
       <!-- Environment：本地测试环境面板 -->
       <div v-if="activeTab === 'environment'" class="tab-content narrow">
-        <a-card size="small" :bordered="true" class="panel-card">
-          <template #title>Envs</template>
+        <!-- Providers：每个推理服务提供方一个面板，header 显示 Provider Name -->
+        <a-card size="small" :bordered="true" class="panel-card providers-head-card">
+          <template #title>
+            <div class="prov-toolbar">
+              <span>{{ t('providers') }}</span>
+            </div>
+          </template>
           <template #extra>
-            <span class="env-status" :class="envReady ? 'ok' : 'bad'">
-              <span class="env-dot"></span>
-              {{ envReady ? t('online') : t('offline') }}
-              <span v-if="envReady && config.status?.models?.length" class="env-models">
-                {{ config.status.models.length }} {{ t('models') }}
+            <a-button type="primary" size="small" @click="openAddProvider">{{ t('addProvider') }}</a-button>
+          </template>
+          <p class="section-desc">{{ t('providersHint') }}</p>
+        </a-card>
+
+        <a-card
+          v-for="p in providers"
+          :key="p.id"
+          size="small"
+          :bordered="true"
+          class="panel-card provider-card"
+        >
+          <template #title>
+            <div class="prov-head">
+              <span class="prov-name">{{ p.name }}</span>
+              <span class="env-status" :class="p._online ? 'ok' : 'bad'">
+                <span class="env-dot"></span>
+                {{ p._online ? t('online') : t('offline') }}
               </span>
-            </span>
+            </div>
+          </template>
+          <template #extra>
+            <a-space size="small">
+              <a-button type="link" size="small" danger @click="removeProvider(p)">{{ t('delete') }}</a-button>
+            </a-space>
           </template>
 
           <div class="panel-row">
+            <span class="panel-label">{{ t('providerName') }}</span>
+            <a-input v-model:value="p.name" :disabled="editingProviderId !== p.id" style="width: 380px" />
+          </div>
+          <div class="panel-row">
             <span class="panel-label">{{ t('baseUrl') }}</span>
-            <a-input v-model:value="form.api.base_url" :disabled="!envEditMode" placeholder="http://127.0.0.1:8000" style="width: 380px" />
+            <a-input v-model:value="p.base_url" :disabled="editingProviderId !== p.id" placeholder="http://127.0.0.1:8000" style="width: 380px" />
           </div>
           <div class="panel-row">
             <span class="panel-label">{{ t('apiKey') }}</span>
-            <a-input-password v-model:value="form.api.api_key" :disabled="!envEditMode" :placeholder="t('apiKeyPlaceholder')" style="width: 380px" />
+            <a-input-password v-model:value="p.api_key" :disabled="editingProviderId !== p.id" :placeholder="t('apiKeyPlaceholder')" style="width: 380px" />
+          </div>
+          <div class="panel-row">
+            <span class="panel-label">{{ t('modelStatus') }}</span>
+            <span class="panel-value">
+              <a-badge :status="p._online ? 'success' : 'error'" :text="p._online ? t('online') : t('offline')" />
+            </span>
+          </div>
+          <div class="panel-row">
+            <span class="panel-label">{{ t('providerModels') }}</span>
+            <span class="panel-value">
+              <a-spin v-if="p._probing" size="small" />
+              <template v-else>
+                <a-tag v-for="m in (p._models || [])" :key="m" color="blue" class="provider-model-tag">{{ m }}</a-tag>
+                <span v-if="!(p._models || []).length" class="no-model">{{ t('noModel') }}</span>
+              </template>
+            </span>
           </div>
 
           <div class="env-footer">
-            <a-button v-if="!envEditMode" type="primary" @click="envEditMode = true">{{ t('edit') }}</a-button>
-            <a-button v-else type="primary" :loading="saving" @click="saveEnvironment">{{ t('save') }}</a-button>
-            <a-button :loading="testing" @click="testEnvironment">{{ t('testConnection') }}</a-button>
+            <a-button v-if="editingProviderId !== p.id" type="primary" @click="editingProviderId = p.id">{{ t('edit') }}</a-button>
+            <a-button v-else type="primary" :loading="saving" @click="saveProvider(p)">{{ t('save') }}</a-button>
+            <a-button :loading="testingProviderId === p.id" @click="testProvider(p)">{{ t('testConnection') }}</a-button>
           </div>
         </a-card>
+
+        <a-empty v-if="!providers.length" :description="t('noProvider')" />
+
+        <!-- Add Provider 弹窗：Provider Name 必填 -->
+        <a-modal v-model:open="providerModalOpen" class="provider-modal">
+          <template #title>
+            <div class="bench-modal-head">
+              <span class="bench-modal-title">{{ t('addProvider') }}</span>
+              <span class="bench-modal-hint">{{ t('addProviderHint') }}</span>
+            </div>
+          </template>
+          <div class="panel-row">
+            <span class="panel-label">{{ t('providerName') }} *</span>
+            <a-input v-model:value="providerForm.name" :placeholder="t('providerNamePlaceholder')" style="width: 380px" />
+          </div>
+          <div class="panel-row">
+            <span class="panel-label">{{ t('baseUrl') }}</span>
+            <a-input v-model:value="providerForm.base_url" placeholder="http://127.0.0.1:8000" style="width: 380px" />
+          </div>
+          <div class="panel-row">
+            <span class="panel-label">{{ t('apiKey') }}</span>
+            <a-input-password v-model:value="providerForm.api_key" :placeholder="t('apiKeyPlaceholder')" style="width: 380px" />
+          </div>
+          <template #footer>
+            <div class="bench-modal-footer">
+              <a-button type="link" size="small" :loading="saving" :disabled="!providerForm.name.trim()" @click="submitAddProvider">
+                {{ t('save') }}
+              </a-button>
+              <a-button type="link" size="small" @click="providerModalOpen = false">{{ t('cancel') }}</a-button>
+            </div>
+          </template>
+        </a-modal>
       </div>
 
-      <!-- Datasets：内置数据集（左侧分类 + 每行一个数据集） -->
-      <div v-if="activeTab === 'datasets'" class="tab-content">
+      <!-- Datasets：内置数据集（分类信息在顶部，数据集面板为 header/内容/footer 三分区卡片，窄面板宽度） -->
+      <div v-if="activeTab === 'datasets'" class="tab-content content-fill">
         <h3 style="margin: 0 0 8px">{{ t('builtinDatasets') }}</h3>
         <p class="section-desc">{{ t('datasetsHint') }}</p>
 
-        <a-spin :spinning="datasetsLoading">
-          <div v-if="datasets.length" class="catalog-layout">
-            <div class="catalog-sidebar">
-              <div class="catalog-group">
-                <div class="catalog-group-title">{{ t('category') }}</div>
-                <div class="catalog-items">
-                  <div
-                    class="catalog-item"
-                    :class="{ active: activeDsCat === 'all' }"
-                    @click="activeDsCat = 'all'"
-                  >
-                    <span>{{ t('allCategories') }}</span>
-                    <span class="catalog-count">{{ datasets.length }}</span>
-                  </div>
-                  <div
-                    v-for="c in datasetCats"
-                    :key="c.key"
-                    class="catalog-item"
-                    :class="{ active: activeDsCat === c.key }"
-                    @click="activeDsCat = c.key"
-                  >
-                    <span>{{ catName(c) }}</span>
-                    <span class="catalog-count">{{ catCount(c.key) }}</span>
-                  </div>
-                </div>
+        <a-spin :spinning="datasetsLoading" class="fill-spin">
+          <div v-if="datasets.length" class="cat-layout">
+            <div class="cat-bar">
+              <div class="cat-chip" :class="{ active: activeDsCat === 'all' }" @click="activeDsCat = 'all'">
+                <span>{{ t('allCategories') }}</span>
+                <span class="cat-count">{{ datasets.length }}</span>
+              </div>
+              <div
+                v-for="c in datasetCats"
+                :key="c.key"
+                class="cat-chip"
+                :class="{ active: activeDsCat === c.key }"
+                @click="activeDsCat = c.key"
+              >
+                <span>{{ catName(c) }}</span>
+                <span class="cat-count">{{ catCount(c.key) }}</span>
               </div>
             </div>
-            <div class="catalog-content">
-              <div v-for="ds in filteredDatasets" :key="ds.id" class="ds-row-item">
-                <div class="ds-row-main">
-                  <div class="ds-row-head">
-                    <span class="ds-name">{{ ds.name }}</span>
-                    <a-tag v-if="ds.status?.cached" color="green" size="small">{{ t('datasetCached') }}</a-tag>
-                    <a-tag v-else size="small">{{ t('datasetNotCached') }}</a-tag>
-                  </div>
+            <div class="panel-list">
+              <a-card
+                v-for="ds in filteredDatasets"
+                :key="ds.id"
+                size="small"
+                :bordered="true"
+                class="panel-card ds-panel-card"
+              >
+                <template #title>
+                  <span class="ds-name">{{ ds.name }}</span>
+                  <a-tag v-if="ds.status?.cached" color="green" size="small">{{ t('datasetCached') }}</a-tag>
+                  <a-tag v-else size="small">{{ t('datasetNotCached') }}</a-tag>
+                </template>
+                <template #extra>
+                  <a-button type="primary" size="small" :loading="downloadingId === ds.id" @click="downloadDataset(ds)">
+                    {{ t('download') }}
+                  </a-button>
+                </template>
+                <div class="card-body">
                   <p class="ds-desc">{{ ds.description }}</p>
                   <div class="ds-row-links">
                     <span class="ds-label">{{ t('accessLink') }}</span>
                     <a class="ds-link" :href="ds.url" target="_blank" rel="noopener noreferrer">{{ ds.url }}</a>
                   </div>
+                </div>
+                <div class="card-footer">
                   <div class="ds-row-links column">
                     <span class="ds-label">{{ t('downloadCmd') }}</span>
                     <a-typography-text code copyable class="ds-cmd">{{ ds.download }}</a-typography-text>
                   </div>
                 </div>
-                <div class="ds-row-actions">
-                  <a-button type="primary" size="small" :loading="downloadingId === ds.id" @click="downloadDataset(ds)">
-                    {{ t('download') }}
-                  </a-button>
-                </div>
-              </div>
+              </a-card>
+              <a-empty v-if="!filteredDatasets.length" :description="t('noData')" />
             </div>
           </div>
           <a-empty v-else-if="!datasetsLoading" :description="t('noData')" />
         </a-spin>
       </div>
 
-      <!-- Models：厂商目录（左侧分组副侧边栏 + 右侧厂商模型列表） -->
-      <div v-if="activeTab === 'models'" class="tab-content">
+      <!-- Models：厂商目录（分类信息在顶部，模型面板为 header/内容/footer 三分区卡片，窄面板宽度） -->
+      <div v-if="activeTab === 'models'" class="tab-content content-fill">
         <h3 style="margin: 0 0 8px">{{ t('builtinModels') }}</h3>
         <p class="section-desc">{{ t('modelsCatalogHint') }}</p>
 
-        <a-spin :spinning="catalogLoading">
-          <div v-if="modelGroups.length" class="catalog-layout">
-            <div class="catalog-sidebar">
-              <div v-for="g in modelGroups" :key="g.key" class="catalog-group">
-                <div class="catalog-group-title clickable" @click="toggleGroup(g.key)">
-                  <span class="group-caret" :class="{ collapsed: isCollapsed(g.key) }">▸</span>
-                  <span>{{ groupName(g) }}</span>
-                  <span class="catalog-count">{{ g.providers.length }}</span>
-                </div>
-                <div v-show="!isCollapsed(g.key)" class="catalog-items">
-                  <div
-                    v-for="p in g.providers"
-                    :key="p.key"
-                    class="catalog-item"
-                    :class="{ active: selectedProvider?.key === p.key }"
-                    @click="selectProvider(p)"
-                  >
-                    <span>{{ p.name }}</span>
-                  </div>
+        <a-spin :spinning="catalogLoading" class="fill-spin">
+          <div v-if="modelGroups.length" class="cat-layout">
+            <div class="cat-bar">
+              <div v-for="g in modelGroups" :key="g.key" class="cat-group">
+                <span class="cat-group-label">{{ groupName(g) }}</span>
+                <div
+                  v-for="p in g.providers"
+                  :key="p.key"
+                  class="cat-chip"
+                  :class="{ active: selectedProvider?.key === p.key }"
+                  @click="selectProvider(p)"
+                >
+                  <span>{{ p.name }}</span>
                 </div>
               </div>
             </div>
-            <div class="catalog-content">
+            <div class="panel-list">
               <template v-if="selectedProvider">
                 <div class="provider-head">
                   <h3 class="provider-title">{{ selectedProvider.name }}</h3>
@@ -204,16 +276,50 @@
                   >{{ t('homepage') }}</a>
                 </div>
                 <div v-if="selectedProvider.models?.length" class="provider-models">
-                  <div
+                  <a-card
                     v-for="m in selectedProvider.models"
                     :key="m"
-                    class="provider-model-item"
-                    :class="{ clickable: !!matchCatalog(m) }"
-                    @click="openProviderModel(m)"
+                    size="small"
+                    :bordered="true"
+                    class="panel-card model-panel-card"
                   >
-                    <span class="pm-name">{{ m }}</span>
-                    <a-tag v-if="matchCatalog(m)" color="blue" size="small">{{ t('details') }}</a-tag>
-                  </div>
+                    <template #title>
+                      <span class="pm-name">{{ m }}</span>
+                    </template>
+                    <template #extra>
+                      <a
+                        v-if="matchCatalog(m)?.homepage"
+                        class="mp-action"
+                        :href="matchCatalog(m).homepage"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                      >{{ t('details') }}</a>
+                    </template>
+                    <template v-if="matchCatalog(m)">
+                      <div class="card-body">
+                        <p class="mp-intro">{{ matchCatalog(m).intro[locale] }}</p>
+                        <div class="mp-row">
+                          <span class="mp-label">{{ t('supportedPrecision') }}</span>
+                          <span class="mp-tags">
+                            <a-tag v-for="p in matchCatalog(m).precision" :key="p" color="blue">{{ p }}</a-tag>
+                          </span>
+                        </div>
+                        <div class="mp-row">
+                          <span class="mp-label">{{ t('accessLink') }}</span>
+                          <a class="mp-link" :href="matchCatalog(m).homepage" target="_blank" rel="noopener noreferrer">
+                            {{ matchCatalog(m).homepage }}
+                          </a>
+                        </div>
+                      </div>
+                      <div class="card-footer">
+                        <div class="mp-row column">
+                          <span class="mp-label">{{ t('downloadCmd') }}</span>
+                          <a-typography-text code copyable class="mp-cmd">{{ matchCatalog(m).download }}</a-typography-text>
+                        </div>
+                      </div>
+                    </template>
+                    <p v-else class="mp-intro muted">{{ t('modelNoCatalog') }}</p>
+                  </a-card>
                 </div>
                 <a-empty v-else :description="t('noModels')" />
               </template>
@@ -224,7 +330,7 @@
         </a-spin>
       </div>
 
-      <!-- Bench Engines：整页为引擎列表（可滑动），操作入口在右上角 -->
+      <!-- Bench Engines：顶部操作栏全宽，引擎列表窄面板宽度居中，滚动条在最右侧 -->
       <div v-if="activeTab === 'benches'" class="tab-content bench-tab">
         <div class="bench-topbar">
           <div class="bench-topbar-left">
@@ -256,15 +362,16 @@
                 :class="{ 'bench-default': eng.id === defaultEngineId }"
               >
                 <div class="bench-head">
-                  <span class="bench-name">{{ benchName(eng) }}</span>
-                  <a-tag v-if="eng.id === defaultEngineId" color="blue" size="small">{{ t('benchDefault') }}</a-tag>
-                  <a-tag :color="eng.kind === 'builtin' ? 'purple' : 'cyan'" size="small">{{ eng.kind }}</a-tag>
-                  <a-tag v-if="eng.env?.ok" color="green" size="small">{{ t('benchEnvReady') }}</a-tag>
-                  <a-tag v-else color="red" size="small">{{ t('benchEnvMissing') }}</a-tag>
-                </div>
-                <div class="bench-meta">
-                  <span class="bench-label">{{ t('benchVersion') }}</span>
-                  <span class="bench-value">{{ eng.version || '-' }}</span>
+                  <div class="bench-head-left">
+                    <span class="bench-name">{{ benchName(eng) }}</span>
+                    <a-tag v-if="eng.id === defaultEngineId" color="blue" size="small">{{ t('benchDefault') }}</a-tag>
+                    <a-tag :color="eng.kind === 'builtin' ? 'purple' : 'cyan'" size="small">{{ eng.kind }}</a-tag>
+                    <a-tag v-if="eng.mock" color="orange" size="small">{{ t('engineMockTag') }}</a-tag>
+                    <a-tag v-else color="default" size="small">{{ t('engineRealTag') }}</a-tag>
+                    <a-tag v-if="eng.env?.ok" color="green" size="small">{{ t('benchEnvReady') }}</a-tag>
+                    <a-tag v-else color="red" size="small">{{ t('benchEnvMissing') }}</a-tag>
+                  </div>
+                  <span class="bench-version">{{ t('benchVersion') }} v{{ eng.version || '-' }}</span>
                 </div>
                 <p class="bench-desc">{{ benchDesc(eng) }}</p>
 
@@ -275,25 +382,36 @@
                   </ul>
                 </div>
 
-                <!-- 环境要求与校验结果 -->
-                <div v-if="eng.requires?.length" class="bench-env">
-                  <div class="bench-label">{{ t('benchRequires') }}</div>
-                  <div class="bench-env-table">
-                    <div v-for="c in eng.env?.checks || []" :key="c.name" class="bench-env-row">
-                      <span class="env-name">{{ c.name }}</span>
-                      <span class="env-req">{{ t('benchRequiredVersion') }}: {{ c.required }}</span>
-                      <span class="env-installed">
-                        {{ t('benchInstalled') }}:
-                        <span :class="c.ok ? 'env-ok' : 'env-bad'">{{ c.installed || t('benchNotInstalled') }}</span>
-                      </span>
-                      <a-tag :color="c.ok ? 'green' : 'red'" size="small">{{ c.ok ? 'OK' : 'FAIL' }}</a-tag>
-                    </div>
-                    <div v-for="c in (eng.env?.checks || []).filter((x) => !x.ok && x.hint)" :key="`hint-${c.name}`" class="bench-hint">
-                      {{ t('benchInstallHint') }}: {{ c.hint }}
+                <!-- 环境要求与校验结果（面板 footer） -->
+                <div class="bench-foot">
+                  <div v-if="eng.requires?.length" class="bench-env">
+                    <div class="bench-label">{{ t('benchRequires') }}</div>
+                    <div class="bench-env-table">
+                      <div v-for="c in eng.env?.checks || []" :key="c.name" class="bench-env-row">
+                        <span class="env-name">{{ c.name }}</span>
+                        <span class="env-req">{{ t('benchRequiredVersion') }}: {{ c.required }}</span>
+                        <span class="env-installed">
+                          {{ t('benchInstalled') }}:
+                          <span :class="c.ok ? 'env-ok' : 'env-bad'">{{ c.installed || t('benchNotInstalled') }}</span>
+                        </span>
+                        <a-tag :color="c.ok ? 'green' : 'red'" size="small">{{ c.ok ? 'OK' : 'FAIL' }}</a-tag>
+                      </div>
+                      <div v-for="c in (eng.env?.checks || []).filter((x) => !x.ok && x.hint)" :key="`hint-${c.name}`" class="bench-hint">
+                        {{ t('benchInstallHint') }}: {{ c.hint }}
+                      </div>
                     </div>
                   </div>
+                  <div v-else class="bench-env-none">{{ t('benchNoRequires') }}</div>
+                  <div class="bench-mock">
+                    <span class="bench-mock-label">{{ t('engineMock') }}</span>
+                    <a-switch
+                      :checked="!!eng.mock"
+                      size="small"
+                      :loading="mockSaving === eng.id"
+                      @change="(v) => toggleEngineMock(eng, v)"
+                    />
+                  </div>
                 </div>
-                <div v-else class="bench-env-none">{{ t('benchNoRequires') }}</div>
               </div>
             </div>
             <a-empty v-if="!benchesLoading && !benches.length" :description="t('noData')" />
@@ -307,6 +425,55 @@
         <p class="section-desc">{{ t('pluginsDesc') }}</p>
         <a-empty :description="t('noData')" />
       </div>
+
+      <!-- Skills：内置技能清单（全宽滚动，滚动条最右，卡片居中位置不变） -->
+      <div v-if="activeTab === 'skills'" class="tab-content content-fill">
+        <h3 style="margin: 0 0 8px">{{ t('skills') }}</h3>
+        <p class="section-desc">{{ t('skillsDesc') }}</p>
+
+        <a-spin :spinning="skillsLoading" class="fill-spin">
+          <div class="skill-list">
+            <a-card
+              v-for="s in skills"
+              :key="s.id"
+              size="small"
+              :bordered="true"
+              class="panel-card skill-card"
+            >
+              <template #title>
+                <span class="skill-name">{{ s.name }}</span>
+                <a-tag color="purple" size="small">{{ s.id }}</a-tag>
+              </template>
+              <template #extra>
+                <span class="skill-version">{{ t('benchVersion') }} v{{ s.version }}</span>
+              </template>
+              <p class="skill-desc">{{ skillDesc(s) }}</p>
+              <div class="skill-block">
+                <div class="skill-label">{{ t('skillFeatures') }}</div>
+                <ul class="skill-ul">
+                  <li v-for="(f, i) in skillFeatures(s)" :key="i">{{ f }}</li>
+                </ul>
+              </div>
+              <div class="skill-block">
+                <div class="skill-label">{{ t('skillUsage') }}</div>
+                <ol class="skill-ol">
+                  <li v-for="(u, i) in skillUsage(s)" :key="i">{{ u }}</li>
+                </ol>
+              </div>
+              <div class="skill-block">
+                <div class="skill-label">{{ t('skillPrompt') }}</div>
+                <pre class="skill-prompt">{{ skillPrompt(s) }}</pre>
+              </div>
+              <div class="skill-footer">
+                <a-button type="link" size="small" @click="downloadSkill(s)">{{ t('skillDownload') }}</a-button>
+                <a-button type="link" size="small" @click="copySkillPrompt(s)">{{ t('skillCopyPrompt') }}</a-button>
+              </div>
+            </a-card>
+          </div>
+          <a-empty v-if="!skillsLoading && !skills.length" :description="t('noData')" />
+        </a-spin>
+      </div>
+
     </div>
 
     <!-- ===================== Bench Engines 弹窗 ===================== -->
@@ -460,41 +627,6 @@
       </div>
     </a-modal>
 
-    <!-- 模型详情右侧面板 -->
-    <a-drawer
-      v-model:open="drawerOpen"
-      :width="440"
-      placement="right"
-      :title="selectedModel?.name || ''"
-    >
-      <div v-if="selectedModel" class="model-detail">
-        <div class="detail-logo" :style="{ background: selectedModel.color }">{{ selectedModel.short }}</div>
-        <h3 class="detail-name">{{ selectedModel.name }}</h3>
-        <div class="detail-org">{{ selectedModel.org }}</div>
-        <p class="detail-intro">{{ selectedModel.intro[locale] }}</p>
-
-        <div class="detail-row">
-          <span class="detail-label">{{ t('supportedPrecision') }}</span>
-          <span class="detail-tags">
-            <a-tag v-for="p in selectedModel.precision" :key="p" color="blue">{{ p }}</a-tag>
-          </span>
-        </div>
-        <div class="detail-row">
-          <span class="detail-label">{{ t('accessLink') }}</span>
-          <a class="detail-link" :href="selectedModel.homepage" target="_blank" rel="noopener noreferrer">{{ selectedModel.homepage }}</a>
-        </div>
-        <div class="detail-row column">
-          <span class="detail-label">{{ t('downloadCmd') }}</span>
-          <a-typography-text code copyable class="download-cmd">{{ selectedModel.download }}</a-typography-text>
-        </div>
-      </div>
-
-      <template #footer>
-        <div class="drawer-footer">
-          <a-button type="primary" @click="deployModel">{{ t('deploy') }}</a-button>
-        </div>
-      </template>
-    </a-drawer>
   </div>
 </template>
 
@@ -502,8 +634,8 @@
 import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 import { message, notification, Modal } from 'ant-design-vue'
 import {
-  SettingOutlined, DesktopOutlined, DatabaseOutlined, ApiOutlined,
-  CloudDownloadOutlined, ThunderboltOutlined,
+  ControlOutlined, CloudServerOutlined, RobotOutlined, DatabaseOutlined,
+  ExperimentOutlined, ApiOutlined, BookOutlined,
 } from '@ant-design/icons-vue'
 import { api, wsUrl } from '@/api'
 import { useConfigStore } from '@/store/config'
@@ -512,11 +644,118 @@ import { modelCatalog } from '@/data/modelCatalog'
 
 const config = useConfigStore()
 const activeTab = ref('general')
-const envEditMode = ref(false)
+// ---- Providers（推理服务提供方） ----
+const providers = ref([])
+const activeProviderId = ref('')
+const providerModalOpen = ref(false)
+const providerForm = reactive({ name: '', base_url: '', api_key: '' })
+const editingProviderId = ref('')
+const testingProviderId = ref('')
+
+function openAddProvider() {
+  providerForm.name = ''
+  providerForm.base_url = ''
+  providerForm.api_key = ''
+  providerModalOpen.value = true
+}
+
+async function submitAddProvider() {
+  const name = providerForm.name.trim()
+  if (!name) {
+    message.warning(t('providerNameRequired'))
+    return
+  }
+  saving.value = true
+  try {
+    const resp = await api.addProvider({ ...providerForm, name })
+    providers.value = resp.providers || []
+    activeProviderId.value = resp.active_provider || ''
+    providerModalOpen.value = false
+    message.success(t('saved'))
+    await loadProviders()
+  } catch (e) {
+    message.error(e?.response?.data?.detail || e.message || t('connectionFail'))
+  } finally {
+    saving.value = false
+  }
+}
+
+async function saveProvider(p) {
+  if (!p.name.trim()) {
+    message.warning(t('providerNameRequired'))
+    return
+  }
+  saving.value = true
+  try {
+    const resp = await api.updateProvider(p.id, {
+      name: p.name,
+      base_url: p.base_url,
+      api_key: p.api_key,
+    })
+    providers.value = resp.providers || []
+    activeProviderId.value = resp.active_provider || ''
+    editingProviderId.value = ''
+    message.success(t('saved'))
+    await probeAllProviders()
+  } catch (e) {
+    message.error(e?.response?.data?.detail || e.message || t('connectionFail'))
+  } finally {
+    saving.value = false
+  }
+}
+
+async function removeProvider(p) {
+  try {
+    const resp = await api.deleteProvider(p.id)
+    providers.value = resp.providers || []
+    activeProviderId.value = resp.active_provider || ''
+    message.success(t('saved'))
+    await probeAllProviders()
+  } catch (e) {
+    message.error(e?.response?.data?.detail || e.message || t('connectionFail'))
+  }
+}
+
+// 探测 Provider：在线状态 + 模型列表（显示在各 Provider 自己的面板中）
+async function probeAllProviders() {
+  await Promise.all((providers.value || []).map((p) => probeProviderStatus(p)))
+}
+
+async function probeProviderStatus(p) {
+  p._probing = true
+  try {
+    const result = await api.testConnection({
+      base_url: p.base_url,
+      endpoint: p.endpoint || '/v1/chat/completions',
+      api_key: p.api_key || '',
+      extra_headers: p.extra_headers || {},
+    })
+    p._online = !!result.ok
+    p._models = result.models || []
+  } catch {
+    p._online = false
+    p._models = []
+  } finally {
+    p._probing = false
+  }
+}
+
+async function testProvider(p) {
+  testingProviderId.value = p.id
+  try {
+    await probeProviderStatus(p)
+    if (p._online) {
+      message.success(t('connectionOk'))
+    } else {
+      message.error(t('connectionFail'))
+    }
+  } finally {
+    testingProviderId.value = ''
+  }
+}
+
 const testing = ref(false)
 const saving = ref(false)
-const drawerOpen = ref(false)
-const selectedModel = ref(null)
 const datasets = ref([])
 const datasetsLoading = ref(false)
 const downloadingId = ref('')
@@ -525,6 +764,7 @@ const benches = ref([])
 const benchComparison = ref([])
 const defaultEngineId = ref('benchscope')
 const benchesLoading = ref(false)
+const mockSaving = ref('')
 // 引擎定义 yaml（查看 / 编辑，用户可扩展引擎与版本）
 
 // 自定义引擎（Create：教程 + 上游链接 + 可复制提示词；Upload：上传引擎包）
@@ -543,8 +783,10 @@ const activeDsCat = ref('all')
 // Models 厂商目录
 const catalogLoading = ref(false)
 const modelGroups = ref([])
-const collapsedGroups = ref([])
 const selectedProvider = ref(null)
+// Skills 内置技能
+const skills = ref([])
+const skillsLoading = ref(false)
 
 // ---- Cache Paths 目录管理 ----
 const dirs = ref([])
@@ -575,14 +817,18 @@ const form = reactive({
   api: { base_url: '', endpoint: '/v1/chat/completions', api_key: '', extra_headers: {} },
 })
 
-const menuItems = computed(() => [
-  { key: 'general', icon: SettingOutlined, label: t('general') },
-  { key: 'environment', icon: DesktopOutlined, label: t('environment') },
-  { key: 'models', icon: DatabaseOutlined, label: t('modelsTab') },
-  { key: 'datasets', icon: CloudDownloadOutlined, label: t('datasetsTab') },
-  { key: 'benches', icon: ThunderboltOutlined, label: t('benchesTab') },
-  { key: 'plugins', icon: ApiOutlined, label: t('plugins') },
-])
+const menuItems = computed(() => {
+  const items = [
+    { key: 'general', icon: ControlOutlined, label: t('general') },
+    { key: 'environment', icon: CloudServerOutlined, label: t('environment') },
+    { key: 'models', icon: RobotOutlined, label: t('modelsTab') },
+    { key: 'datasets', icon: DatabaseOutlined, label: t('datasetsTab') },
+    { key: 'benches', icon: ExperimentOutlined, label: t('benchesTab') },
+    { key: 'skills', icon: BookOutlined, label: t('skills') },
+    { key: 'plugins', icon: ApiOutlined, label: t('plugins') },
+  ]
+  return items
+})
 
 const localeOptions = computed(() => [
   { value: 'en', label: 'English' },
@@ -590,8 +836,6 @@ const localeOptions = computed(() => [
 ])
 
 const locale = computed(() => i18nState.locale)
-
-const envReady = computed(() => config.status?.inference === 'ready')
 
 onMounted(async () => {
   try {
@@ -615,6 +859,8 @@ onMounted(async () => {
     loadDatasets()
     loadModelCatalog()
     loadBenches()
+    loadProviders()
+    loadSkills()
   } catch { /* ignore */ }
 })
 
@@ -769,6 +1015,23 @@ async function loadBenches() {
   }
 }
 
+// 引擎 mock 开关（默认关闭）：开启后用该引擎的仿真数据/运行环境并刷新环境状态（标记 mock/real）
+async function toggleEngineMock(eng, v) {
+  mockSaving.value = eng.id
+  try {
+    const updated = await api.setEngineMock(eng.id, !!v)
+    const i = benches.value.findIndex((e) => e.id === eng.id)
+    if (i >= 0 && updated) {
+      benches.value[i] = { ...benches.value[i], mock: updated.mock, mock_state: updated.mock_state, env: updated.env }
+    }
+    message.success(v ? t('engineMockOn') : t('engineMockOff'))
+  } catch (e) {
+    message.error(e.message || t('saveFail'))
+  } finally {
+    mockSaving.value = ''
+  }
+}
+
 // 自定义引擎开发指引（提示词 + 上游链接）
 async function loadAuthoring() {
   try {
@@ -801,6 +1064,27 @@ function benchHighlights(eng) {
   return locale.value === 'zh'
     ? eng?.highlights_zh || eng?.highlights || []
     : eng?.highlights || []
+}
+// ---- Skills 双语展示（按界面语言选择 _zh / 英文） ----
+function skillDesc(s) {
+  return locale.value === 'zh'
+    ? s?.description_zh || s?.description || ''
+    : s?.description || s?.description_zh || ''
+}
+function skillFeatures(s) {
+  return locale.value === 'zh'
+    ? s?.features_zh || s?.features || []
+    : s?.features || s?.features_zh || []
+}
+function skillUsage(s) {
+  return locale.value === 'zh'
+    ? s?.usage_zh || s?.usage || []
+    : s?.usage || s?.usage_zh || []
+}
+function skillPrompt(s) {
+  return locale.value === 'zh'
+    ? s?.prompt_zh || s?.prompt || ''
+    : s?.prompt || s?.prompt_zh || ''
 }
 function compTitle(row) {
   return locale.value === 'zh' ? row?.dimension_zh || row?.dimension : row?.dimension
@@ -877,8 +1161,7 @@ async function loadModelCatalog() {
   try {
     const resp = await api.getModelCatalog()
     modelGroups.value = resp.groups || []
-    // 默认展开全部组，选中第一个厂商
-    collapsedGroups.value = []
+    // 默认选中第一个厂商
     const first = modelGroups.value[0]?.providers?.[0]
     if (first) selectedProvider.value = first
   } catch {
@@ -892,16 +1175,6 @@ function groupName(g) {
   return locale.value === 'zh' ? g.name_zh : g.name_en
 }
 
-function toggleGroup(key) {
-  const i = collapsedGroups.value.indexOf(key)
-  if (i >= 0) collapsedGroups.value.splice(i, 1)
-  else collapsedGroups.value.push(key)
-}
-
-function isCollapsed(key) {
-  return collapsedGroups.value.includes(key)
-}
-
 function selectProvider(p) {
   selectedProvider.value = p
 }
@@ -909,11 +1182,6 @@ function selectProvider(p) {
 function matchCatalog(modelName) {
   const name = String(modelName || '').toLowerCase()
   return modelCatalog.find((m) => m.name.toLowerCase() === name || m.id.toLowerCase() === name) || null
-}
-
-function openProviderModel(modelName) {
-  const hit = matchCatalog(modelName)
-  if (hit) openModel(hit)
 }
 
 // ---- Datasets 分类 ----
@@ -961,53 +1229,78 @@ function saveField(key) {
   config.save({ [key]: form[key] }).catch(() => {})
 }
 
-async function saveEnvironment() {
-  saving.value = true
+async function loadProviders() {
   try {
-    await config.save({
-      framework: form.framework,
-      api: { ...form.api, extra_headers: form.api.extra_headers || {} },
-    })
-    message.success(t('saved'))
-    envEditMode.value = false
-    config.refreshStatus()
-  } catch (e) {
-    message.error(e.message || t('connectionFail'))
-  } finally {
-    saving.value = false
+    const resp = await api.listProviders()
+    providers.value = resp.providers || []
+    activeProviderId.value = resp.active_provider || ''
+    await probeAllProviders()
+  } catch {
+    providers.value = []
+    activeProviderId.value = ''
   }
 }
 
-async function testEnvironment() {
-  testing.value = true
+// ---- Skills 内置技能 ----
+async function loadSkills() {
+  skillsLoading.value = true
   try {
-    const result = await api.testConnection({
-      base_url: form.api.base_url,
-      endpoint: form.api.endpoint || '/v1/chat/completions',
-      api_key: form.api.api_key || '',
-      extra_headers: form.api.extra_headers || {},
-    })
-    if (result.ok) {
-      message.success(t('connectionOk'))
-      config.refreshStatus()
-    } else {
-      message.error(result.error || t('connectionFail'))
+    const resp = await api.getSkills()
+    skills.value = resp.skills || []
+  } catch {
+    skills.value = []
+  } finally {
+    skillsLoading.value = false
+  }
+}
+
+async function copySkillPrompt(s) {
+  const text = s?.prompt || ''
+  if (!text) return
+  try {
+    await navigator.clipboard.writeText(text)
+    message.success(t('skillCopySuccess'))
+  } catch {
+    message.warning(t('skillCopyFail'))
+  }
+}
+
+async function downloadSkill(s) {
+  // 优先下载技能版本包（tar.gz，经后端下载端点发版产物）；失败时回退下载 SKILL.md 文本
+  if (s?.download_url) {
+    try {
+      const resp = await api.downloadSkill(s.id)
+      const blob = resp instanceof Blob ? resp : (resp.data instanceof Blob ? resp.data : new Blob([resp]))
+      const fileName = s.package?.name || `${s.id}-${s.version || '1.0.0'}.tar.gz`
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = fileName
+      document.body.appendChild(a)
+      a.click()
+      a.remove()
+      URL.revokeObjectURL(url)
+      message.success(t('skillDownloaded'))
+      return
+    } catch (e) {
+      // 回退：下载 SKILL.md 文本
     }
-  } catch (e) {
-    message.error(e.message || t('connectionFail'))
-  } finally {
-    testing.value = false
   }
+  const file = s?.download
+  if (!file) return
+  const text = s?.prompt || ''
+  const blob = new Blob([text], { type: 'text/markdown;charset=utf-8' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = file.name
+  document.body.appendChild(a)
+  a.click()
+  a.remove()
+  URL.revokeObjectURL(url)
+  message.success(t('skillDownloaded'))
 }
 
-function openModel(m) {
-  selectedModel.value = m
-  drawerOpen.value = true
-}
-
-function deployModel() {
-  message.info(t('notImplemented'))
-}
 </script>
 
 <style scoped>.settings-page{
@@ -1055,23 +1348,43 @@ function deployModel() {
   padding: 32px 40px 18px;
 }.tab-content{
   animation: fadeIn 0.2s ease;
-}/* 填满高度：内容区不自滚，由内部列表区滚动（Bench Engines） */.settings-content.content-fill{
+}/* 填满高度：内容区不自滚，由内部列表区滚动（Bench Engines / Models / Datasets / Skills） */.settings-content.content-fill{
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  padding-top: 22px;
-  padding-bottom: 18px;
-}.settings-content.content-fill > .bench-tab{
+  padding: 22px 16px 18px;
+}.settings-content.content-fill > .tab-content{
   flex: 1;
   min-height: 0;
+  display: flex;
+  flex-direction: column;
 }/* a-spin 包裹层必须传递高度约束，否则内部滚动容器拿不到限高而无法滚动 */.settings-content.content-fill :deep(.ant-spin-nested-loading),
 .settings-content.content-fill :deep(.ant-spin-container){
   flex: 1;
   min-height: 0;
   display: flex;
   flex-direction: column;
-}/* 窄面板（General / Environment / Plugins）：减小面板宽度，滚动条保持在页面最右侧 */.tab-content.narrow{
+}.settings-content.content-fill .fill-spin{
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}.settings-content.content-fill .fill-spin :deep(.ant-spin-container){
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}/* 面板宽度（General / Environment / Models / Datasets / Benches / Skills / Plugins）：滚动条保持在页面最右侧 */.tab-content.narrow{
   max-width: 720px;
+}/* 顶部分类 + 面板列表：填满高度，面板列表内部滚动 */.cat-layout{
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}.cat-layout .panel-list{
+  overflow-y: auto;
+  max-height: none;
 }@keyframes fadeIn {
   from { opacity: 0; transform: translateY(4px); }
   to { opacity: 1; transform: translateY(0); }
@@ -1170,75 +1483,76 @@ function deployModel() {
   margin-top: 16px;
   padding-top: 16px;
   border-top: 1px solid var(--ant-color-border, #f0f0f0);
-}/* ===== Models / Datasets 副侧边栏布局 ===== */.catalog-layout{
+}/* ===== Models / Datasets 顶部分类 + 三分区面板 ===== */.cat-bar{
   display: flex;
-  align-items: flex-start;
-  gap: 0;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
   border: 1px solid var(--ant-color-border, #e8e8e8);
   border-radius: 12px;
-  overflow: hidden;
-}.catalog-sidebar{
-  width: 210px;
-  flex-shrink: 0;
-  border-right: 1px solid var(--ant-color-border, #f0f0f0);
   background: var(--ant-color-bg-layout, #fafafa);
-  max-height: calc(100vh - 220px);
-  overflow-y: auto;
-  padding: 8px 0;
-}.catalog-group{
-  margin-bottom: 4px;
-}.catalog-group-title{
-  display: flex;
+}.cat-group{
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+}.cat-group-label{
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ant-color-text-secondary, #666);
+}.cat-chip{
+  display: inline-flex;
   align-items: center;
   gap: 6px;
-  padding: 8px 14px;
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--ant-color-text, #333);
-}.catalog-group-title.clickable{
-  cursor: pointer;
-  user-select: none;
-}.catalog-group-title.clickable:hover{
-  background: var(--ant-color-fill-secondary, #f0f0f0);
-}.group-caret{
-  display: inline-block;
-  font-size: 10px;
-  transition: transform 0.2s;
-  color: var(--ant-color-text-tertiary, #999);
-}.group-caret.collapsed{
-  transform: rotate(90deg);
-}.catalog-items{
-  padding-bottom: 6px;
-}.catalog-item{
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  padding: 7px 14px 7px 30px;
-  font-size: 13px;
+  padding: 3px 12px;
+  border: 1px solid var(--ant-color-border, #e8e8e8);
+  border-radius: 999px;
+  background: var(--ant-color-bg-container, #fff);
+  font-size: 12px;
   color: var(--ant-color-text-secondary, #555);
   cursor: pointer;
+  user-select: none;
   transition: all 0.15s;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}.catalog-item:hover{
-  background: var(--ant-color-fill-secondary, #f0f0f0);
-  color: var(--ant-color-text, #333);
-}.catalog-item.active{
-  background: var(--ant-color-primary-bg, #e6f4ff);
+}.cat-chip:hover{
+  border-color: var(--ant-color-primary, #1677ff);
   color: var(--ant-color-primary, #1677ff);
+}.cat-chip.active{
+  background: var(--ant-color-primary, #1677ff);
+  border-color: var(--ant-color-primary, #1677ff);
+  color: #fff;
   font-weight: 500;
-}.catalog-count{
+}.cat-chip.active .cat-count{
+  color: rgba(255, 255, 255, 0.85);
+}.cat-count{
   font-size: 11px;
   color: var(--ant-color-text-tertiary, #999);
   flex-shrink: 0;
-}.catalog-item.active .catalog-count{
-  color: var(--ant-color-primary, #1677ff);
-}.catalog-content{
+}.panel-list{
   flex: 1;
-  min-width: 0;
-  padding: 16px 20px;
+  min-height: 0;
+  overflow-y: auto;  /* 滚动条保持在页面最右侧 */
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;  /* 内容靠左显示 */
+  gap: 12px;
+  padding: 2px 2px 8px;
+}.panel-list .panel-card{
+  margin-bottom: 0;
+  width: 100%;
+  max-width: 720px;
+}.panel-list .provider-head,
+.panel-list .ant-empty{
+  width: 100%;
+  max-width: 720px;
+}
+.card-body{
+  padding: 4px 0 10px;
+}.card-footer{
+  margin: 0 -12px -12px;
+  padding: 10px 12px;
+  background: var(--ant-color-bg-layout, #fafafa);
+  border-top: 1px solid var(--ant-color-border-secondary, #f0f0f0);
 }/* 厂商模型列表 */.provider-head{
   display: flex;
   align-items: center;
@@ -1408,7 +1722,149 @@ function deployModel() {
   display: flex;
   justify-content: flex-end;
   margin-top: 8px;
-}/* ---------------- Bench 引擎面板 ---------------- *//* 整页即引擎列表：顶部操作栏固定，列表区可滑动 */.bench-tab{
+}/* ===== Models / Datasets 面板卡片 ===== */.model-panel-card :deep(.ant-card-head),
+.ds-panel-card :deep(.ant-card-head){
+  border-bottom: 1px solid var(--ant-color-border-secondary, #f0f0f0);
+}.mp-intro{
+  font-size: 12px;
+  line-height: 1.7;
+  color: var(--ant-color-text, #333);
+  margin: 0 0 10px;
+}.mp-intro.muted{
+  color: var(--ant-color-text-tertiary, #999);
+  margin-bottom: 0;
+}.mp-row{
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 5px 0;
+  font-size: 12px;
+}.mp-row.column{
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+}.mp-label{
+  color: var(--ant-color-text-tertiary, #999);
+  flex-shrink: 0;
+  min-width: 64px;
+}.mp-tags{
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}.mp-link{
+  word-break: break-all;
+  font-size: 12px;
+}.mp-cmd{
+  font-size: 12px;
+  word-break: break-all;
+  white-space: pre-wrap;
+}.mp-action{
+  font-size: 12.5px;
+  font-weight: 500;
+}/* ===== Skills 内置技能面板（全宽滚动，卡片靠左） ===== */.skill-list{
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;  /* 滚动条在页面最右侧 */
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;  /* 技能卡片靠左显示 */
+  gap: 14px;
+  padding: 2px 2px 10px;
+}.skill-card{
+  width: 100%;
+  max-width: 720px;
+  margin-bottom: 0;
+}
+.skill-card :deep(.ant-card-head){
+  border-bottom: 1px solid var(--ant-color-border-secondary, #f0f0f0);
+  background: transparent;  /* header 无高亮颜色 */
+}.skill-name{
+  font-size: 14px;
+  font-weight: 600;
+  margin-right: 6px;
+}.skill-version{
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--ant-color-text-tertiary, #999);
+}.skill-desc{
+  font-size: 12px;
+  color: var(--ant-color-text-secondary, #666);
+  margin: 0 0 10px;
+  line-height: 1.7;
+}.skill-block{
+  margin-bottom: 10px;
+}.skill-label{
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ant-color-text, #333);
+  margin-bottom: 4px;
+}.skill-ul,
+.skill-ol{
+  margin: 0;
+  padding-left: 20px;
+  font-size: 12px;
+  line-height: 1.8;
+  color: var(--ant-color-text-secondary, #666);
+}.skill-prompt{
+  max-height: 220px;
+  overflow-y: auto;
+  background: var(--ant-color-fill-tertiary, #fafafa);
+  border: 1px solid var(--ant-color-border-secondary, #f0f0f0);
+  border-radius: 6px;
+  padding: 8px 10px;
+  font-size: 11px;
+  line-height: 1.6;
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-all;
+}.skill-footer{
+  display: flex;
+  justify-content: flex-end;
+  gap: 2px;
+}/* ---------------- Providers（推理服务提供方） ---------------- */
+.providers-head-card {
+  margin-bottom: 12px;
+}
+.prov-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.provider-card {
+  margin-bottom: 12px;
+}
+.prov-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.prov-name {
+  font-size: 14px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.panel-value {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  font-size: 13px;
+  max-width: 520px;
+}
+.provider-model-tag {
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.no-model {
+  font-size: 12px;
+  color: var(--ant-color-text-tertiary, #999);
+}
+
+/* ---------------- Bench 引擎面板 ---------------- *//* 整页即引擎列表：顶部操作栏固定，列表区可滑动 */.bench-tab{
   display: flex;
   flex-direction: column;
   min-height: 0;
@@ -1489,29 +1945,59 @@ function deployModel() {
   display: flex;
   flex-direction: column;
   gap: 12px;
-  margin-bottom: 20px;
+  width: 100%;
+  max-width: 720px;
+  margin: 0 auto 20px 0;  /* 靠左，滚动条保持在页面最右侧 */
 }.bench-card{
   border: 1px solid var(--ant-color-border-secondary, #f0f0f0);
   border-radius: 8px;
-  padding: 12px 14px;
+  overflow: hidden;
   background: var(--ant-color-bg-container, #fff);
+}.bench-card .bench-head{
+  padding: 12px 14px 6px;
+}.bench-card .bench-desc{
+  margin: 0;
+  padding: 0 14px 8px;
+}.bench-card .bench-highlights{
+  margin: 0;
+  padding: 0 14px 8px;
+}.bench-card .bench-foot{
+  padding: 10px 14px;
+  background: var(--ant-color-bg-layout, #fafafa);
+  border-top: 1px solid var(--ant-color-border-secondary, #f0f0f0);
+}.bench-card .bench-mock{
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px dashed var(--ant-color-border-secondary, #f0f0f0);
+}.bench-mock-label{
+  font-size: 12px;
+  color: var(--ant-color-text-secondary, #666);
 }.bench-card.bench-default{
   border-color: var(--ant-color-primary, #1677ff);
 }.bench-head{
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: 8px;
   flex-wrap: wrap;
   margin-bottom: 6px;
-}.bench-name{
-  font-size: 14px;
-  font-weight: 600;
-}.bench-meta{
+}.bench-head-left{
   display: flex;
   align-items: center;
   gap: 8px;
+  flex-wrap: wrap;
+  min-width: 0;
+}.bench-name{
+  font-size: 14px;
+  font-weight: 600;
+}.bench-version{
   font-size: 12px;
-  margin-bottom: 6px;
+  font-weight: 500;
+  color: var(--ant-color-text-tertiary, #999);
+  flex-shrink: 0;
 }:global(.bench-label){
   color: var(--ant-color-text-tertiary, #999);
   font-size: 12px;
@@ -1533,13 +2019,10 @@ function deployModel() {
   color: var(--ant-color-text-secondary, #666);
   line-height: 1.7;
 }.bench-env{
-  border-top: 1px dashed var(--ant-color-border-secondary, #f0f0f0);
-  padding-top: 8px;
+  font-size: 12px;
 }.bench-env-none{
   font-size: 12px;
   color: var(--ant-color-text-tertiary, #999);
-  border-top: 1px dashed var(--ant-color-border-secondary, #f0f0f0);
-  padding-top: 8px;
 }.bench-env-table{
   margin-top: 4px;
 }.bench-env-row{

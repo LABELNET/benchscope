@@ -1,7 +1,7 @@
 # Skills 技能体系
 
 > **适用范围**：`skills/` 目录下所有技能项目；`docs/skills/` 为技能文档的**唯一整理归口**
-> **最后更新**：2026-08-29
+> **最后更新**：2026-08-30
 > **目标**：让技能（skill）可被 AI 直接消费、可打包分发、可校验
 
 ---
@@ -41,6 +41,22 @@ skills/
 
 **强制项**：`SKILL.md`、`README.md`、`scripts/package.sh`。
 
+### 2.1 命名规范（强制）
+
+所有技能及产物统一采用 **`bs-` 前缀**：
+
+| 对象 | 命名模式 | 示例 |
+| --- | --- | --- |
+| 技能目录 / SKILL.md `name` | `bs-<模块>-<目标>` | `bs-engine-create` · `bs-perfs-concurrency` · `bs-perfs-threshold` |
+| 技能版本包 | `bs-<模块>-<目标>-<版本>.tar.gz` | `bs-perfs-concurrency-1.0.0.tar.gz` |
+| 技能生成产物目录 | `bs-<模块>-<目标>-<版本>-pkgs/` | `bs-engine-vllm-0.28-pkgs/` |
+| 技能生成产物包 | `bs-<模块>-<目标>-<版本>.tar.gz` | `bs-engine-vllm-0.28.tar.gz` |
+
+- `模块`：能力域，如 `engine`（引擎生成）、`perfs`（压测）；
+- `目标`：具体对象，如 `create`（动作）、`concurrency`（并发）、`threshold`（阈值）、`vllm` / `sglang`（框架）；
+- 技能自身的分发打包产物仍为 `<skill-name>-<version>.tar.gz`（见 §5）；
+- 例：使用 `bs-engine-create` 生成 vLLM 0.28 引擎 → 产物命名为 `bs-engine-vllm-0.28.tar.gz`。
+
 ---
 
 ## 3. SKILL.md 规范
@@ -49,7 +65,7 @@ skills/
 
 ```yaml
 ---
-name: <skill-name>              # 与目录名一致，kebab-case
+name: bs-<module>-<target>      # 与目录名一致，bs- 前缀命名（见 §2.1）
 description: >-                 # 一句话描述（AI 据此判断何时加载该技能）
   动词开头的用途描述，包含关键场景与关键词，便于 AI 检索匹配。
 version: 1.0.0                  # 语义化版本
@@ -130,9 +146,9 @@ tar -tzf "$ARCHIVE" >/dev/null && echo "✅ 产物校验通过（可解压）"
 
 | 技能 | 用途 | 版本 | 文档 |
 | --- | --- | --- | --- |
-| [bench-engine-authoring](../../skills/bench-engine-authoring/) | 自定义 bench 引擎（vllm/sglang/其他版本）配置与代码生成、导入校验 | 1.0.0 | [BenchEngineAuthoring.md](./BenchEngineAuthoring.md) |
-| [vllm-bench-testing](../../skills/vllm-bench-testing/) | 对 vLLM 推理服务执行性能测试 | 1.1.0 | [BenchTesting.md](./BenchTesting.md) |
-| [sglang-bench-testing](../../skills/sglang-bench-testing/) | 对 SGLang 推理服务执行性能测试 | 1.1.0 | [BenchTesting.md](./BenchTesting.md) |
+| [bs-engine-create](../../skills/bs-engine-create/) | 创建自定义 bench 引擎压缩包（vllm/sglang/其他版本）；导入时校验 + mock 数据验证 + 功能动态注册 | 1.1.0 | [BenchEngineAuthoring.md](./BenchEngineAuthoring.md) |
+| [bs-perfs-concurrency](../../skills/bs-perfs-concurrency/) | 安装 benchscope 并用 `benchscope perf` 进行并发（concurrency）压测；内置表单 + 生成可导入 Datas/perfs 的 zip | 1.0.0 | [BenchTesting.md](./BenchTesting.md) |
+| [bs-perfs-threshold](../../skills/bs-perfs-threshold/) | 安装 benchscope 并用 `benchscope perf --mode threshold` 进行阈值搜索压测；内置表单 + 生成可导入 Datas/perfs 的 zip | 1.0.0 | [BenchTesting.md](./BenchTesting.md) |
 
 ---
 
@@ -141,7 +157,7 @@ tar -tzf "$ARCHIVE" >/dev/null && echo "✅ 产物校验通过（可解压）"
 | 文档 | 内容 |
 | --- | --- |
 | [BenchEngineAuthoring.md](./BenchEngineAuthoring.md) | **自定义引擎技能详解**：工作流、上游源码链接与获取、实现契约（Input/Core/Output/Mock）、mock 核心方法、导入校验 8 项、可复制提示词、排错 |
-| [BenchTesting.md](./BenchTesting.md) | **性能测试技能说明**（vLLM / SGLang）：引擎选择与环境校验、服务与框架参数配置、数据集、并发与速率、测试流程、日志产物、排错 |
+| [BenchTesting.md](./BenchTesting.md) | **benchscope perf 压测技能说明**（并发 / 阈值）：内置表单、命令、产物打包、Datas/perfs 导入、排错 |
 
 **关联文档（rules）**：
 
@@ -159,3 +175,14 @@ tar -tzf "$ARCHIVE" >/dev/null && echo "✅ 产物校验通过（可解压）"
 - **技能内容变更涉及功能/流程** → 同步 `docs/versions/VERSION_x_y_z.md` 迭代记录；
 - **规范变更** → 只改本文件（`docs/skills/Readme.md`），`skills/Readme.md` 保持精简指针，不复制规范正文；
 - 所有技能必须能通过 `scripts/package.sh` 成功打包（由 `tests/api/test_skills.py` 强制校验）。
+
+### 8.1 版本递增与发版（强制约定）
+
+- **技能有版本**：每个技能 `SKILL.md` frontmatter 的 `version` 为语义化版本 `x.y.z`。
+- **每次更新技能自动增加版本号**：任何内容变更（SKILL.md / README / references / templates / scripts）
+  都必须递增 `version`（末位 +1）。
+- **更新内容多时建议加大版本号**：涉及功能重构 / 接口或流程变更 / 多项行为变化，建议提升**大版本号**
+  （如 `1.0.0` → `1.1.0`）；仅小修 / 文案调整递增末位。
+- **每次发版到本地**：更新后运行 `./scripts/package.sh` 生成 `dist/<name>-<version>.tar.gz` 提交。
+- **服务可下载技能包**：benchscope 提供 `GET /api/skills/{id}/download`，服务启动后即可访问下载
+  已发版技能包（优先 `dist/` 产物，未发版实时打包）。

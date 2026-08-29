@@ -1,7 +1,7 @@
 # docs 文档目录
 
 > **文档状态**：benchscope 文档体系说明与维护约定  
-> **最后更新**：2026-08-29 21:15:00
+> **最后更新**：2026-08-31 00:30:00
 
 本目录组织项目全部技术文档。**开发更新功能时，必须同步更新对应文档**（见文末「维护约定」）。
 
@@ -20,7 +20,7 @@
 | [prds/TopBar.md](prds/TopBar.md) | **TopBar 主导航（1.0.6 新增）**：全局参数（品牌区/6 栏菜单/Service 状态/StatusBadge prop）+ **导航变更记录（含精确到秒的 commit 时间）** |
 | [prds/Accuracy.md](prds/Accuracy.md) | Accuracy 占位页与 v5.0 规划 |
 | [prds/Sessions.md](prds/Sessions.md) | Sessions：会话管理、SSE 流式、思考解析、性能栏 |
-| [prds/Settings.md](prds/Settings.md) | Settings：General / Envs / Models / Datasets / Plugins 五栏（1.0.6：Models 厂商目录、Datasets 分类行式、双语缓存路径） |
+| [prds/Settings.md](prds/Settings.md) | Settings：General / Providers / Models / Datasets / Bench Engines / Skills / Plugins / Debug 八栏（1.0.7：面板化 + Skills/Debug 新栏，Debug 仅开发模式） |
 
 > 命名规则：`<页面名>.md`；有子页面时 `Sessions-xxx.md` 形式。
 

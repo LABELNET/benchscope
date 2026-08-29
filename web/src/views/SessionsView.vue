@@ -38,8 +38,8 @@
     <!-- 主内容区 -->
     <div class="main-area">
       <template v-if="activeSession">
-        <!-- 会话标题栏:推理性能数据 -->
-        <div class="chat-header">
+        <!-- 会话标题栏:推理性能数据（颜色标记所选模型状态：默认红/未选或离线，在线绿） -->
+        <div class="chat-header" :class="providerOnline ? 'chat-ok' : 'chat-bad'">
           <div class="perf-bar">
             <span class="perf-item">{{ displayPerf.turns }} turns · {{ displayPerf.steps }} steps</span>
             <span class="perf-sep">|</span>
@@ -121,6 +121,16 @@
               <div class="input-bottom-row">
                 <div class="input-right">
                   <a-select
+                    v-model:value="selectedProviderId"
+                    :options="providerOptions"
+                    size="small"
+                    :bordered="false"
+                    style="width: 150px"
+                    :placeholder="t('selectInferenceProvider')"
+                    :loading="providerProbing"
+                    @change="onProviderChange"
+                  />
+                  <a-select
                     v-model:value="selectedModel"
                     :options="modelOptions"
                     size="small"
@@ -185,7 +195,15 @@ const perfStats = ref({ ...defaultPerf })
 const livePerf = ref(null)
 const displayPerf = computed(() => (streaming.value && livePerf.value) ? livePerf.value : (activeSession.value?.perf || defaultPerf))
 
-const modelOptions = computed(() => (config.status?.models || []).map((m) => ({ value: m, label: m })))
+// Provider 选择：联动模型列表；header 颜色标记所选 Provider 状态（默认红，在线绿）
+const localProviderKey = 'benchscope_chat_provider'
+const providers = ref([])
+const selectedProviderId = ref(localStorage.getItem(localProviderKey) || '')
+const providerProbing = ref(false)
+const providerOnline = ref(false)
+const providerModels = ref([])
+const providerOptions = computed(() => providers.value.map((p) => ({ value: p.id, label: p.name })))
+const modelOptions = computed(() => providerModels.value.map((m) => ({ value: m, label: m })))
 
 // 对话质量 high/medium/low
 const qualityOptions = computed(() => [
@@ -390,7 +408,7 @@ async function sendMessage() {
     const resp = await fetch(api.chatUrl(activeId.value), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ message: text, model: selectedModel.value || undefined, quality: selectedQuality.value, enable_thinking: enableThinking.value }),
+      body: JSON.stringify({ message: text, model: selectedModel.value || undefined, quality: selectedQuality.value, enable_thinking: enableThinking.value, provider_id: selectedProviderId.value }),
     })
 
     const reader = resp.body.getReader()
@@ -498,8 +516,58 @@ function formatDuration(ms) {
   return `${totalSec}s`
 }
 
+async function loadProviders() {
+  try {
+    const resp = await api.listProviders()
+    providers.value = resp.providers || []
+    // 默认选择第一个 Provider
+    if (!providers.value.some((p) => p.id === selectedProviderId.value)) {
+      selectedProviderId.value = providers.value[0]?.id || ''
+      localStorage.setItem(localProviderKey, selectedProviderId.value)
+    }
+    await probeProvider()
+  } catch {
+    providers.value = []
+    providerOnline.value = false
+    providerModels.value = []
+  }
+}
+
+// 探测所选 Provider：模型列表 + 在线状态（header 颜色）
+async function probeProvider() {
+  const p = providers.value.find((x) => x.id === selectedProviderId.value)
+  if (!p) {
+    providerOnline.value = false
+    providerModels.value = []
+    return
+  }
+  providerProbing.value = true
+  try {
+    const result = await api.testConnection({
+      base_url: p.base_url,
+      endpoint: p.endpoint || '/v1/chat/completions',
+      api_key: p.api_key || '',
+      extra_headers: p.extra_headers || {},
+    })
+    providerOnline.value = !!result.ok
+    providerModels.value = result.models || []
+  } catch {
+    providerOnline.value = false
+    providerModels.value = []
+  } finally {
+    providerProbing.value = false
+  }
+}
+
+function onProviderChange() {
+  localStorage.setItem(localProviderKey, selectedProviderId.value)
+  selectedModel.value = ''
+  probeProvider()
+}
+
 onMounted(() => {
   loadSessions()
+  loadProviders()
   config.refreshStatus()
   // 如果没有本地记住的模型，默认选第一个
   if (!selectedModel.value && modelOptions.value.length) {
@@ -632,6 +700,14 @@ onMounted(() => {
   flex-shrink: 0;
   border-bottom: 1px solid #f0f0f0;
   background: var(--ant-color-bg-container, #fff);
+  transition: border-color 0.3s;
+}
+/* 所选 Provider 在线 → 绿色；默认/离线 → 红色 */
+.chat-header.chat-ok {
+  border-bottom: 2px solid #52c41a;
+}
+.chat-header.chat-bad {
+  border-bottom: 2px solid #ff4d4f;
 }
 .chat-header .perf-bar {
   margin-top: 0;

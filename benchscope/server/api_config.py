@@ -40,13 +40,79 @@ class ConfigPatch(BaseModel):
     theme: str | None = None
     locale: str | None = None
     providers: list | None = None
+    engine_mocks: dict | None = None
 
 
 @router.post("")
 def update_config(patch: ConfigPatch):
     data = patch.model_dump(exclude_none=True)
-    state.config.update(data)
+    if "engine_mocks" in data:
+        # engine_mocks 为键值映射，需整体替换（递归 merge 无法删除 key）
+        state.config.set("engine_mocks", data.pop("engine_mocks"))
+    if data:
+        state.config.update(data)
     return state.config.snapshot()
+
+
+# ---------------------------------------------------------------------------
+# Providers（Settings → Providers）：多个推理服务提供方，激活项同步到 api
+# ---------------------------------------------------------------------------
+class ProviderCreate(BaseModel):
+    name: str
+    base_url: str = ""
+    endpoint: str = "/v1/chat/completions"
+    api_key: str = ""
+    extra_headers: dict = {}
+
+
+class ProviderPatch(BaseModel):
+    name: str | None = None
+    base_url: str | None = None
+    endpoint: str | None = None
+    api_key: str | None = None
+    extra_headers: dict | None = None
+
+
+@router.get("/providers")
+def list_providers():
+    return state.config.list_providers()
+
+
+@router.post("/providers")
+def add_provider(req: ProviderCreate):
+    try:
+        provider = state.config.add_provider(req.model_dump())
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return {"provider": provider, **state.config.list_providers()}
+
+
+@router.put("/providers/{provider_id}")
+def update_provider(provider_id: str, req: ProviderPatch):
+    try:
+        provider = state.config.update_provider(provider_id, req.model_dump(exclude_none=True))
+    except KeyError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return {"provider": provider, **state.config.list_providers()}
+
+
+@router.delete("/providers/{provider_id}")
+def delete_provider(provider_id: str):
+    try:
+        return state.config.delete_provider(provider_id)
+    except KeyError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
+
+@router.post("/providers/{provider_id}/activate")
+def activate_provider(provider_id: str):
+    try:
+        provider = state.config.activate_provider(provider_id)
+    except KeyError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    return {"provider": provider, **state.config.list_providers()}
 
 
 @router.get("/status")

@@ -77,7 +77,12 @@
             </div>
             <div class="info-row">
               <span class="info-label">{{ t('framework') }}</span>
-              <span class="info-value">{{ theTask.framework_name || theTask.framework }}</span>
+              <span class="info-value">
+                {{ theTask.framework_name || theTask.framework }}
+                <a-tag v-if="theTask.use_mock_env" color="orange" size="small" class="mock-env-tag" :title="t('mockEnvTagHint')">
+                  {{ t('mockEnvTag') }}
+                </a-tag>
+              </span>
             </div>
             <div class="info-row">
               <span class="info-label">{{ t('modeLabel') }}</span>
@@ -275,9 +280,9 @@ const config = useConfigStore()
 const router = useRouter()
 const loading = ref(false)
 const features = computed(() => [
-  { icon: '⚡', title: t('featMultiFramework'), desc: t('featMultiFrameworkDesc') },
-  { icon: '🎯', title: t('featMultiCombination'), desc: t('featMultiCombinationDesc') },
-  { icon: '📈', title: t('featRealtimeData'), desc: t('featRealtimeDataDesc') },
+  { icon: '⚡', title: t('featConcurrencyMode'), desc: t('featConcurrencyModeDesc') },
+  { icon: '🎯', title: t('featThresholdMode'), desc: t('featThresholdModeDesc') },
+  { icon: '📈', title: t('featRealtimePerf'), desc: t('featRealtimePerfDesc') },
 ])
 const termBox = ref(null)
 const userNearBottom = ref(true)
@@ -543,6 +548,8 @@ const elapsedText = computed(() => {
 })
 
 function statusText(s) {
+  // 阈值模式强制结束（下一次执行请求数超过 max_requests）：显示 Finish 而非 Done
+  if (s === 'done' && theTask.value?.forced_finish) return t('statusFinish')
   const map = { pending: t('pending'), running: t('running'), done: t('done'), stopped: t('stopped'), error: t('error') }
   return map[s] || s
 }
@@ -767,11 +774,6 @@ onMounted(async () => {
   text-overflow: ellipsis;
 }
 .feature-card :deep(.ant-card-meta-description) {
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
-  min-height: 40px;
   line-height: 20px;
   margin-top: 4px;
 }
@@ -849,6 +851,11 @@ onMounted(async () => {
 .meta-text {
   font-size: 12px;
   color: var(--ant-color-text-secondary, #666);
+}
+/* Mock 运行标识 */
+.mock-env-tag {
+  margin-left: 6px;
+  vertical-align: middle;
 }
 /* Perf 面板 body：不滚动，内容决定面板高度 */
 .panel-body {

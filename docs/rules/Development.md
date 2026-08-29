@@ -66,11 +66,15 @@ TWINE_USERNAME=__token__ TWINE_PASSWORD=<pypi-token> ./scripts/release.sh 1.0.6
 # 可选 --notes 指定 Release 说明文件；缺省自动从 docs/versions/VERSION_1_0_6.md 提取迭代摘要
 ```
 
-- **发布 = 打包推送 PyPI + 推送 GitHub Release 总结 + 推送版本 tag**（三者缺一不算完整发布）：
+- **发布规则（按版本号 X.Y.Z 区分）**：
+  1. **仅 Z（补丁）更新**（如 `1.0.7 → 1.0.8`）：**不推送 PyPI**，只推送 **GitHub tag + Release**；
+  2. **X.Y（主/次）更新**（如 `1.0.8 → 1.1.0` 或 `1.1.0 → 2.0.0`）：推送 **PyPI + GitHub tag + Release**（完整发布）。
+  `scripts/release.sh` 会自动比较新旧版本的 X.Y 决定是否上传 PyPI（`NEED_PYPI`）。
+- 完整发布（X.Y 变化时）= 打包推送 PyPI + 推送 GitHub Release 总结 + 推送版本 tag：
   1. **PyPI**：`python -m build` + `twine upload`（`TWINE_USERNAME=__token__` + PyPI API token）；
-  2. **GitHub Release 总结**：`scripts/release.sh` 自动创建（`gh release create` 或 `GITHUB_TOKEN` REST API 回退），说明默认从 `docs/versions/VERSION_x_y_z.md` 迭代记录提取，可用 `--notes <file>` 覆盖；
+  2. **GitHub Release 总结**：`scripts/release.sh` 自动创建（`gh release create` 或 `GITHUB_TOKEN` REST API 回退），说明默认从 `docs/versions/VERSION_x_y_z.md` 提取**版本更新功能清单**（迭代标题 + 变更内容一级功能项），可用 `--notes <file>` 覆盖；**补丁版本不推 PyPI，但 Release 仍带功能清单照常推送**；
   3. **版本 tag**：`git tag vX.Y.Z` + `git push origin main --tags`。
-- 前置：PyPI token（`TWINE_USERNAME/TWINE_PASSWORD` 或 `~/.pypirc`）+ GitHub 凭据（`gh auth` 或 `GITHUB_TOKEN`）。
+- 前置：PyPI token（`TWINE_USERNAME/TWINE_PASSWORD` 或 `~/.pypirc`，仅 X.Y 变化时需要）+ GitHub 凭据（`gh auth` 或 `GITHUB_TOKEN`）。
 - 发布记录写入 `docs/versions/VERSION_x_y_z.md`（按时间顺序），并将该版本状态置为「已发布（Released）」，同步 `docs/Readme.md` 最后更新日期与版本表。
 
 ## 6. 目录约定

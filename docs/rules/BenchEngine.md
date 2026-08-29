@@ -325,7 +325,7 @@ benchscope perf --model <model> --base-url <url> \
 **校验项**（`validate_benchs_yaml`，与技能 `scripts/validate.sh` 规则一致）：
 yaml 合法 · engines 非空且 id 唯一 · kind ∈ {builtin,vllm,sglang} · 原生引擎 requires 含 torch+框架且带 spec · params_key 存在 · option_desc 完整 · mock 输出含必需指标行。**任一项失败不写磁盘**。
 
-**技能**：`skills/bench-engine-authoring/`（含 mock 核心方法说明、校验清单、模板、离线 `validate.sh`、打包脚本）。规范见 `skills/Readme.md` 与 [docs/skills/BenchEngineAuthoring.md](../skills/BenchEngineAuthoring.md)。
+**技能**：`skills/bs-engine-create/`（含 mock 核心方法说明、校验清单、模板、离线 `validate.sh`、打包脚本）。规范见 `skills/Readme.md` 与 [docs/skills/BenchEngineAuthoring.md](../skills/BenchEngineAuthoring.md)。
 
 **⚠️ 路由陷阱**：`/api/benchs` 的静态路由（`/authoring` `/import` `/upload` `/config/yaml`）必须注册在 `/{engine_id}` **之前**，否则被参数路由拦截返回 404。
 
@@ -336,7 +336,7 @@ yaml 合法 · engines 非空且 id 唯一 · kind ∈ {builtin,vllm,sglang} · 
 | 形态 | 内容 | 处理 |
 | --- | --- | --- |
 | `.yaml` / `.yml` | 引擎定义原文（含 `engines` 段） | 直接合并校验 |
-| `.tar.gz` / `.tgz` | 技能包（`bench-engine-authoring` 打包产物） | 递归查找 yaml：含 `engines` 段 → 引擎定义；`bench-params.yaml` → 参数说明段 |
+| `.tar.gz` / `.tgz` | 技能包（`bs-engine-create` 打包产物） | 递归查找 yaml：含 `engines` 段 → 引擎定义；`bench-params.yaml` → 参数说明段 |
 
 **合并策略**：引擎 `id` 已存在 → 更新；不存在 → 追加。对比表按 `dimension` 去重合并（`values` 覆盖）。参数段按 `params_key` 覆盖合并到 `bench-params.yaml`。
 

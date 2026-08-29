@@ -2,15 +2,23 @@
   <div class="base-env-panel panel-section">
     <div class="section-head">
       <span class="section-title">{{ t('baseTitle') }}</span>
-      <a-button v-if="!online" type="link" size="small" class="settings-link" @click="emit('go-settings')">
+      <a-button type="link" size="small" class="settings-link" @click="emit('go-settings')">
         <template #icon><setting-outlined /></template>
         {{ t('goSettings') }}
       </a-button>
     </div>
 
     <div class="env-row">
-      <span class="env-label">{{ t('framework') }}</span>
-      <span class="env-value">{{ frameworkName }}</span>
+      <span class="env-label">{{ t('providers') }}</span>
+      <span class="env-value">
+        <a-select
+          :value="provider"
+          :options="providerOptions"
+          style="width: 360px"
+          :placeholder="t('selectInferenceProvider')"
+          @change="onProviderChange"
+        />
+      </span>
     </div>
 
     <div class="env-row">
@@ -51,19 +59,24 @@ import { ReloadOutlined, SettingOutlined } from '@ant-design/icons-vue'
 import { t } from '@/i18n'
 
 const props = defineProps({
-  framework: { type: String, default: 'vllm' },
+  providers: { type: Array, default: () => [] },
+  provider: { type: String, default: '' },
   baseUrl: { type: String, default: '' },
   model: { type: String, default: '' },
   models: { type: Array, default: () => [] },
-  inference: { type: String, default: 'offline' },
+  online: { type: Boolean, default: false },
   loading: { type: Boolean, default: false },
 })
 
-const emit = defineEmits(['update:model', 'model-change', 'refresh', 'go-settings'])
+const emit = defineEmits(['update:provider', 'provider-change', 'update:model', 'model-change', 'refresh', 'go-settings'])
 
-const frameworkName = computed(() => (props.framework === 'sglang' ? 'SGLang' : 'vLLM'))
-const online = computed(() => props.inference === 'ready')
+const providerOptions = computed(() => props.providers.map((p) => ({ value: p.id, label: p.name })))
 const modelOptions = computed(() => props.models.map((m) => ({ value: m, label: m })))
+
+function onProviderChange(id) {
+  emit('update:provider', id)
+  emit('provider-change', id)
+}
 </script>
 
 <style scoped>

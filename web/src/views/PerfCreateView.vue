@@ -37,9 +37,13 @@
               @change="onEngineChange"
             />
             <a-spin v-if="envChecking" size="small" />
-            <a-tag v-else-if="envResult" :color="envResult.ok ? 'green' : 'red'" size="small">
-              {{ envResult.ok ? t('benchEnvReady') : t('benchEnvMissing') }}
-            </a-tag>
+            <template v-else-if="envResult">
+              <a-tag v-if="envResult.mock" color="orange" size="small">{{ t('engineMockTag') }}</a-tag>
+              <a-tag v-else color="default" size="small">{{ t('engineRealTag') }}</a-tag>
+              <a-tag :color="envResult.ok ? 'green' : 'red'" size="small">
+                {{ envResult.ok ? t('benchEnvReady') : t('benchEnvMissing') }}
+              </a-tag>
+            </template>
           </div>
           <p class="bench-picker-desc">{{ t('benchSelectDesc') }}</p>
           <p v-if="selectedEngine?.description" class="bench-picker-desc bench-engine-desc">
@@ -62,16 +66,25 @@
           </div>
         </div>
         <BaseEnvPanel
+          v-model:provider="providerId"
           v-model:model="model"
-          :framework="framework"
+          :providers="providers"
           :base-url="baseUrl"
           :models="modelOptions"
-          :inference="inference"
-          :loading="modelsLoading"
+          :online="providerOnline"
+          :loading="providerProbing"
+          @provider-change="onProviderChange"
           @model-change="onModelChange"
-          @refresh="loadModels"
+          @refresh="probeProvider"
           @go-settings="goSettings"
         />
+        <div v-if="mode === 'threshold'" class="maxreq-panel">
+          <div class="maxreq-line">
+            <span class="cond-label">{{ t('maxRequests') }}</span>
+            <a-input-number v-model:value="maxRequests" :min="1" :precision="0" :parser="(v) => String(v || '').replace(/[^\d]/g, '')" style="width: 160px" />
+          </div>
+          <span class="maxreq-hint">{{ t('maxRequestsHint') }}</span>
+        </div>
         <ConditionPanel
           :mode="mode"
           :conditions="conditions"
@@ -163,6 +176,8 @@ import BaseEnvPanel from '@/components/performance/BaseEnvPanel.vue'
 import ConditionPanel from '@/components/performance/ConditionPanel.vue'
 import ParamGroupPanel from '@/components/performance/ParamGroupPanel.vue'
 
+const bool = (v) => !!v
+
 const route = useRoute()
 const router = useRouter()
 const config = useConfigStore()
@@ -180,9 +195,13 @@ const engineName = computed(() => {
   return (i18nState.locale === 'zh' ? e?.name_zh || e?.name : e?.name) || engineId.value
 })
 const frameworkName = computed(() => (framework.value === 'sglang' ? 'SGLang' : 'vLLM'))
-const baseUrl = computed(() => config.config?.api?.base_url || '')
-const inference = computed(() => config.status?.inference || 'offline')
-const modelsLoading = ref(false)
+// Provider 选择（Base → Provider）：模型与状态联动所选 Provider
+const providers = ref([])
+const providerId = ref('')
+const selectedProvider = computed(() => providers.value.find((p) => p.id === providerId.value) || null)
+const baseUrl = computed(() => selectedProvider.value?.base_url || '')
+const providerOnline = ref(false)
+const providerProbing = ref(false)
 const model = ref('')
 const modelOptions = ref([])
 
@@ -195,7 +214,6 @@ const conditions = ref([
     outputLen: 1024,
     dataset: 'Random',
     requestRates: [1, 2, 4, 8, 16, 32, 40, 64, 128],
-    rateMode: 'inf',
     ttftStatistic: 'mean',
     ttftThreshold: 0,
     tpotStatistic: 'mean',
@@ -214,6 +232,8 @@ const engines = ref([])
 const defaultEngineId = ref('benchscope')
 const envResult = ref(null)
 const envChecking = ref(false)
+// 阈值模式：最大请求数上限（下一次执行请求数超过即强制结束）
+const maxRequests = ref(4096)
 // 引擎参数定义（下拉选项 + 描述信息）
 const paramSpecs = ref({})
 
@@ -280,7 +300,12 @@ async function checkEngineEnv() {
   envChecking.value = true
   try {
     const resp = await api.checkBenchEnv(engineId.value)
-    envResult.value = { ok: !!resp.ok, checks: resp.checks || [] }
+    envResult.value = {
+      ok: !!resp.ok,
+      mock: !!resp.mock,
+      mock_state: resp.mock_state || 'real',
+      checks: resp.checks || [],
+    }
   } catch {
     envResult.value = null
   } finally {
@@ -311,14 +336,15 @@ const previewConditions = computed(() => {
     .map((c) => `${c.dataset} ${c.inputLen}x${c.outputLen}`)
     .join(', ')
   lines.push(`${t('datasetLabel')}: ${ds || '-'}`)
+  const rateFromParams = (engineParams.value.lines || []).find((l) => l.key === 'request-rate')
+  lines.push(`${t('requestRate')}: ${rateFromParams?.value || 'Inf'}`)
   if (mode.value === 'concurrency') {
     const g = conditions.value[0]
     lines.push(`${t('requestCounts')}: [${(g?.requestRates || []).join(', ')}]`)
-    lines.push(`${t('requestRate')}: ${g?.rateMode === 'follow' ? 'Follow' : 'Inf'}`)
   } else {
     const g = conditions.value[0]
     const statLabel = (s) => (s === 'median' ? t('median') : s === 'p99' ? t('p99') : t('mean'))
-    lines.push(`${t('requestRate')}: ${g?.rateMode === 'follow' ? 'Follow' : 'Inf'}`)
+    lines.push(`${t('maxRequests')}: ${maxRequests.value ?? 4096}`)
     lines.push(`${t('ttftThresholdLabel')} (${statLabel(g?.ttftStatistic)}): ≤ ${g?.ttftThreshold ?? 0} ms`)
     lines.push(`${t('tpotThresholdLabel')} (${statLabel(g?.tpotStatistic)}): ≤ ${g?.tpotThreshold ?? 0} ms`)
     lines.push(`${t('outputThroughputLabel')}: ≤ ${g?.outThroughput ?? 0} tok/s`)
@@ -334,7 +360,6 @@ function addCondition() {
     outputLen: last?.outputLen || 1024,
     dataset: 'Random',
     requestRates: last ? [...last.requestRates] : [1, 2, 4, 8, 16, 32, 40, 64, 128],
-    rateMode: 'inf',
     ttftStatistic: 'mean',
     ttftThreshold: 0,
     tpotStatistic: 'mean',
@@ -347,25 +372,58 @@ function removeCondition(idx) {
   conditions.value.splice(idx, 1)
 }
 
-async function loadModels() {
-  modelsLoading.value = true
+async function loadProviders() {
   try {
-    const resp = await api.getModels()
+    const resp = await api.listProviders()
+    providers.value = resp.providers || []
+    // 默认选择第一个 Provider
+    if (!providers.value.some((p) => p.id === providerId.value)) {
+      providerId.value = providers.value[0]?.id || ''
+    }
+    await probeProvider()
+  } catch (e) {
+    providers.value = []
+    providerOnline.value = false
+    modelOptions.value = []
+    message.error(e.message || '加载 Providers 失败')
+  }
+}
+
+// 探测所选 Provider：模型列表 + 在线状态联动
+async function probeProvider() {
+  const p = selectedProvider.value
+  if (!p) {
+    providerOnline.value = false
+    modelOptions.value = []
+    return
+  }
+  providerProbing.value = true
+  try {
+    const resp = await api.testConnection({
+      base_url: p.base_url,
+      endpoint: p.endpoint,
+      api_key: p.api_key,
+      extra_headers: p.extra_headers || {},
+    })
+    providerOnline.value = !!resp.ok
     modelOptions.value = resp.models || []
     if (!model.value && modelOptions.value.length) {
       model.value = modelOptions.value[0]
     }
-  } catch (e) {
-    message.error(e.message || '加载模型列表失败')
+  } catch {
+    providerOnline.value = false
     modelOptions.value = []
   } finally {
-    modelsLoading.value = false
+    providerProbing.value = false
   }
 }
 
-function onModelChange() {
-  config.refreshStatus()
+function onProviderChange() {
+  model.value = ''
+  probeProvider()
 }
+
+function onModelChange() {}
 
 // 引擎参数仅在内存中修改（不写入 yaml 文件），修改结果用于预览命令与任务执行
 function buildEngineParamsContent() {
@@ -427,7 +485,8 @@ function validateStep1() {
 }
 
 async function nextToParams() {
-  // 环境校验：原生引擎（vllm/sglang）环境不满足时禁止进入参数选择
+  // 环境校验：原生引擎（vllm/sglang）环境不满足时禁止进入参数选择；
+  // 该引擎 mock 开关开启时（env-check 返回 ok=True + Mock 状态）自动放行，执行走 FAKE 模式
   if (!envResult.value || !envResult.value.ok) {
     message.warning(t('benchEnvBlocked').replace('{name}', engineName.value))
     return
@@ -480,7 +539,20 @@ function buildPayload() {
     },
     concurrency_list: mode.value === 'threshold' ? [1] : [...(g.requestRates || [])],
     gpu: {},
-    request_rate: g.rateMode === 'follow' ? 'follow' : 'inf',
+    // Request Rate 已移到 Step2 引擎参数（request-rate，默认 Inf）；此处保留兼容字段
+    request_rate: 'inf',
+    // 任务执行使用的 Provider（Base → Provider：创建页选择，默认第一个）
+    provider_id: providerId.value,
+    api: selectedProvider.value
+      ? {
+          base_url: selectedProvider.value.base_url,
+          endpoint: selectedProvider.value.endpoint,
+          api_key: selectedProvider.value.api_key,
+          extra_headers: selectedProvider.value.extra_headers || {},
+        }
+      : {},
+    // 阈值模式：最大请求数上限（超限强制结束）
+    max_requests: mode.value === 'threshold' ? Number(maxRequests.value) || 4096 : 4096,
     ttft_threshold_ms: mode.value === 'threshold' ? Number(g.ttftThreshold) || 0 : 0,
     ttft_statistic: mode.value === 'threshold' ? g.ttftStatistic || 'mean' : 'mean',
     tpot_threshold_ms: mode.value === 'threshold' ? Number(g.tpotThreshold) || 0 : 0,
@@ -549,7 +621,7 @@ onMounted(async () => {
   } else {
     config.refreshStatus()
   }
-  await Promise.all([loadModels(), loadEngines()])
+  await Promise.all([loadProviders(), loadEngines()])
 })
 </script>
 
@@ -649,6 +721,25 @@ onMounted(async () => {
   background: rgba(0, 0, 0, 0.015);
 }
 /* Step2 参数面板：显示当前引擎（参数随引擎切换） */
+.maxreq-panel {
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  border-radius: 8px;
+  padding: 10px 12px;
+  margin-bottom: 12px;
+  background: var(--ant-color-bg-container, #fff);
+}
+.maxreq-line {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.maxreq-hint {
+  display: block;
+  margin-top: 4px;
+  font-size: 11px;
+  line-height: 1.6;
+  color: var(--ant-color-text-tertiary, #999);
+}
 .params-engine {
   display: flex;
   align-items: center;

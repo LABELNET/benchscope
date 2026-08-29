@@ -125,6 +125,9 @@ class BenchRunner:
         self.command_template = command_template or "vllm bench serve"
         self._proc: Optional[subprocess.Popen] = None
         self._stop_flag = threading.Event()
+        # FAKE 模式开关（mocks 环境联调）：True 时不启动真实子进程，
+        # 由 mocks/ 生成仿真输出；也可用环境变量 BENCHSCOPE_FAKE_BENCH=1 全局开启
+        self.fake = False
 
     # ------------------------------------------------------------------
     def kill(self) -> None:
@@ -154,7 +157,7 @@ class BenchRunner:
         会在执行 bench 命令前在同一个 bash -lic shell 里先执行。
         """
         self._stop_flag.clear()
-        if os.environ.get("BENCHSCOPE_FAKE_BENCH") == "1":
+        if self.fake or os.environ.get("BENCHSCOPE_FAKE_BENCH") == "1":
             return self._run_fake(cmd, stream_cb)
 
         # 用模板指定的可执行文件替换命令头部

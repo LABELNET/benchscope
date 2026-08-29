@@ -1,7 +1,7 @@
 # benchscope Performance 任务执行页 — 双模式核心逻辑与联动说明
 
-> **版本**：v1.0.6  
-> **最后更新**：2026-08-28 15:00  
+> **版本**：v1.0.7  
+> **最后更新**：2026-08-30  
 > **文档状态**：Performance 任务执行页双模式（并发 / 阈值）核心逻辑策略与联动关系说明  
 > **前置文档**：[VERSION_1_0_5.md](../versions/VERSION_1_0_5.md)
 
@@ -17,6 +17,15 @@ Performance 任务执行页存在两种执行模式，由任务创建时的 `mod
 | 阈值模式 `threshold` | `mode = threshold` | 并入分组标记右侧（只读） | 处理 BestPerf | 处理 Best |
 
 两种模式下，**表格排序、本地 Best 标记逻辑完全一致**；差异仅在于：阈值模式额外显示任务阈值条件，并基于任务阈值标记 BestPerf。
+
+### 0.1 默认页（任务入口）介绍卡片（1.0.7）
+
+未选择任务时，`/performance` 默认页展示三张入口卡片（`feature-card`）：**Concurrency Testing / Threshold Search / Realtime Performance Charts**。
+
+- **Threshold Search 描述已补全**（1.0.7，i18n `featThresholdModeDesc` 中英双语）：
+  设置 TTFT/TPOT/Output throughput 阈值后自动寻找满足阈值要求的最大并发——逐档提升并发执行快速压测，
+  一旦任一指标跌破设定阈值即停止，并输出**最后达标并发档位**与对应指标。
+- **描述完整展示**（1.0.7）：`.feature-card .ant-card-meta-description` 取消 2 行截断（`-webkit-line-clamp: 2`），长描述（含 Threshold Search 机制说明）完整显示，不再被省略号截断。
 
 ---
 
@@ -137,6 +146,7 @@ bestRow.best = true
 - **Successful 百分比不显示小数点**（四舍五入为整数，如 `98%`）。
 - Perf 面板不显示 Requests 行（仅保留 Concurrency 行，inf/follow/数值规则不变）。
 - Perf 面板 Framework 行下新增 **Mode 行**：`Concurrency Mode`（并发模式）/ `Threshold Mode`（阈值模式），样式与 Framework 一致（不高亮）。
+- **Mock 运行标识（1.0.7）**：任务快照透出 `use_mock_env`（`task_manager.py::Task.snapshot()`）；Framework 行右侧显示橙色 **Mock** tag（`.mock-env-tag`，title 提示 `mockEnvTagHint`「仿真运行（mocks/ FAKE 模式），非真实引擎输出」），标识 FAKE 仿真任务。
 - **Realtime Data 分组标题行展示每组阈值条件**（`.group-threshold`，**仅阈值模式**）：分组标题行在 `label + 行数` 右侧追加**该组阈值条件文本**（按每组 case 生成（`groupThresholdTexts`，由 `theTask.cases` → `caseKeyOf(case)` → `caseThresholdText(case)`，与 Cases 面板同一口径，跟随 Groups 不跟随主任务），如 `TTFT-Mean ≤ 50ms · TPOT-Median ≤ 100ms · Output ≤ 200 tok/s`）；宽度不够伪隐藏（ellipsis + title 完整文本）；0 值项不显示
 - **表格导出 Excel**：Realtime Data 表格底部 Columns 右侧有 **下载按钮**（图标+文字），点击后将**当前表格内容**（含分组标题行、当前可见列、Best/BestPerf 标记）导出为 xlsx：
   - 通过 `POST /api/tasks/{task_id}/export` 由后端 `openpyxl` 生成

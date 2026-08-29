@@ -4,7 +4,7 @@
 > **目的**：存档 vLLM / SGLang **官方 bench 的性能测试核心逻辑**（实际拉取源码分析，含行号引用），
 > 作为自研引擎与自定义引擎实现的**事实依据**。  
 > **关联**：[BenchCore.md](./BenchCore.md)（自研引擎核心实现）· [BenchEngine.md](./BenchEngine.md)（引擎架构）·
-> [skills/bench-engine-authoring](../skills/bench-engine-authoring/SKILL.md)（自定义引擎技能）
+> [skills/bs-engine-create](../skills/bs-engine-create/SKILL.md)（自定义引擎技能）
 
 ---
 
@@ -214,9 +214,9 @@ delay_ts = [delay * normalize_factor for delay in delay_ts]       # L339
 | **入口（Input）** | 读取 `BuiltinOptions` / payload（base_url、model、endpoint、backend、dataset、concurrency、num_prompts、request_rate、timeout、warmups…） |
 | **处理（Core）** | 复制上游的负载生成 + 时间线采集 + 指标计算，保持口径一致 |
 | **出口（Output）** | 返回与 `parser.parse_metrics` 兼容的 dict（output_mean / total_mean / req_per_s / ttft_* / tpot_* / itl_* / successful_requests…），并提供 `raw` 文本（vLLM 风格，供日志与展示） |
-| **Mock** | 在 `mocks/` 实现仿真输出，文本必须匹配 `parser.py` 正则（见 [mock-core.md](../skills/bench-engine-authoring/references/mock-core.md)） |
+| **Mock** | 在 `mocks/` 实现仿真输出，文本必须匹配 `parser.py` 正则（见 [mock-core.md](../skills/bs-engine-create/references/mock-core.md)） |
 
 4. **校验导入**：`POST /api/benchs/import`（dry_run）或 `scripts/validate.sh`，全部通过方可导入。
 
-> 详见技能文档 [bench-engine-authoring](../skills/bench-engine-authoring/SKILL.md) 与其
-> [import-checklist.md](../skills/bench-engine-authoring/references/import-checklist.md)。
+> 详见技能文档 [bs-engine-create](../skills/bs-engine-create/SKILL.md) 与其
+> [import-checklist.md](../skills/bs-engine-create/references/import-checklist.md)。

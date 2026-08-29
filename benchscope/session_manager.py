@@ -128,6 +128,7 @@ class Session:
     updated_at: str = ""
     quality: str = ""
     enable_thinking: bool = True
+    provider_id: str = ""
     perf: dict = field(default_factory=dict)
 
     def to_dict(self):
@@ -141,6 +142,7 @@ class Session:
             "updated_at": self.updated_at,
             "quality": self.quality,
             "enable_thinking": self.enable_thinking,
+            "provider_id": self.provider_id,
             "perf": self.perf,
         }
 
@@ -200,6 +202,7 @@ class SessionManager:
                     updated_at=data.get("updated_at", ""),
                     quality=data.get("quality", ""),
                     enable_thinking=data.get("enable_thinking", True),
+                    provider_id=data.get("provider_id", ""),
                     perf=data.get("perf", {}) if isinstance(data.get("perf"), dict) else {},
                 )
                 self._sessions[session.session_id] = session
@@ -214,7 +217,7 @@ class SessionManager:
         with self._lock:
             return self._sessions.get(session_id)
 
-    def create_session(self, title: str = "", model: str = "", system_prompt: str = "") -> Session:
+    def create_session(self, title: str = "", model: str = "", system_prompt: str = "", provider_id: str = "") -> Session:
         with self._lock:
             now = datetime.now()
             session_id = f"sess-{now.strftime('%m%d-%H%M%S')}-{uuid.uuid4().hex[:6]}"
@@ -223,6 +226,7 @@ class SessionManager:
                 title=title or f"会话 {now.strftime('%m/%d %H:%M')}",
                 model=model,
                 system_prompt=system_prompt,
+                provider_id=provider_id,
                 created_at=now.strftime("%Y-%m-%d %H:%M:%S"),
                 updated_at=now.strftime("%Y-%m-%d %H:%M:%S"),
             )
@@ -278,7 +282,27 @@ class SessionManager:
             session.perf = perf if isinstance(perf, dict) else {}
             session.persist(self.sessions_dir / f"{session_id}.json")
 
-    def stream_chat(self, session_id: str, user_message: str, model: str = "", quality: str = "", enable_thinking: bool = True):
+    def _provider_api_config(self, provider_id: str) -> Optional[dict]:
+        """按 provider_id 解析 Provider 的 API 配置（base_url/endpoint/api_key/extra_headers）。"""
+        if not provider_id:
+            return None
+        try:
+            # list_providers() 返回 {"providers": [...], "active_provider": "..."}
+            providers = (self.config.list_providers() or {}).get("providers") or []
+        except Exception:
+            log.exception("list_providers failed")
+            return None
+        for p in providers:
+            if p.get("id") == provider_id:
+                return {
+                    "base_url": p.get("base_url", ""),
+                    "endpoint": p.get("endpoint", "/v1/chat/completions"),
+                    "api_key": p.get("api_key", ""),
+                    "extra_headers": p.get("extra_headers", {}) or {},
+                }
+        return None
+
+    def stream_chat(self, session_id: str, user_message: str, model: str = "", quality: str = "", enable_thinking: bool = True, provider_id: str = ""):
         """生成器：通过 OpenAI 兼容 API 流式转发对话。"""
         session = self.get_session(session_id)
         if not session:
@@ -289,12 +313,14 @@ class SessionManager:
         chat_model = model or session.model or "default"
         # 持久化对话配置到会话
         session.model = chat_model
+        session.provider_id = provider_id or session.provider_id
         if quality:
             session.quality = quality
         session.enable_thinking = enable_thinking
         self.add_message(session_id, "user", user_message, model=chat_model)
 
-        api_config = self.config.api or {}
+        # api 配置：优先所选 Provider，否则回退全局配置
+        api_config = self._provider_api_config(session.provider_id) or (self.config.api or {})
         base_url = api_config.get("base_url", "http://localhost:8000")
         api_key = api_config.get("api_key", "")
         endpoint = api_config.get("endpoint", "/v1/chat/completions")

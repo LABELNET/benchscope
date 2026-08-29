@@ -277,3 +277,94 @@ def test_preview_kinds(client, base_url, kind):
     r = client.post(f"{base_url}/api/tasks/preview", json=payload, timeout=10)
     assert r.status_code == 200, r.text
     assert len(r.json()["commands"]) > 0
+
+
+# ---------------- 阈值模式 Max Requests 强制结束 + mocks 环境（1.0.7） ----------------
+
+
+def test_threshold_max_requests_forced_finish(client, base_url):
+    """阈值模式 max_requests：下一次执行请求数超过上限 → 任务强制结束并标记 Finish。
+
+    max_requests=3：探测 1 → 2（2<=3 执行）→ 下一次 4 > 3 → 强制结束；
+    快照 forced_finish=True（前端显示 Finish 而非 Done），且不再探测 4。
+    阈值给极大值（永不违反）确保走满递增路径。
+    """
+    payload = {
+        **DEFAULT_PAYLOAD,
+        "mode": "threshold",
+        "engine_id": "benchscope",
+        "max_requests": 3,
+        "tpot_threshold_ms": 100000,  # 永不违反 → 持续倍增直到超限
+        "ttft_threshold_ms": 0,
+        "output_throughput_threshold": 0,
+    }
+    task_id = helpers.create_task(client, base_url, payload)
+    helpers.start_task(client, base_url, task_id)
+    snap = helpers.wait_task_terminal(client, base_url, task_id, timeout=120)
+
+    assert snap["status"] == "done", f"任务应正常结束: {snap['status']} {snap.get('error')}"
+    assert snap.get("forced_finish") is True, "下一次执行请求数超上限应标记 forced_finish（Finish）"
+    concs = [r.get("concurrency") for r in snap.get("rows", []) if r.get("concurrency")]
+    assert concs, "应至少执行了并发 1"
+    assert max(concs) <= 3, f"执行过的并发不应超过 max_requests=3: {concs}"
+    assert all(c not in concs for c in (4, 8)), f"超限并发不应被执行: {concs}"
+    client.delete(f"{base_url}/api/tasks/{task_id}", timeout=10)
+
+
+def test_native_engine_with_mock_env(client, base_url):
+    """原生引擎 + use_mock_env：无本地 vllm 环境也可用 mocks 仿真输出完成测试。"""
+    payload = {
+        **DEFAULT_PAYLOAD,
+        "engine_id": "vllm-0.23",
+        "use_mock_env": True,
+    }
+    task_id = helpers.create_task(client, base_url, payload)
+    helpers.start_task(client, base_url, task_id)
+    snap = helpers.wait_task_terminal(client, base_url, task_id, timeout=120)
+
+    assert snap["status"] == "done", f"mocks 环境下任务应完成: {snap['status']} {snap.get('error')}"
+    rows = [r for r in snap.get("rows", []) if r.get("metrics")]
+    assert rows, f"FAKE 输出应解析出指标行: {snap.get('rows', [])[:2]}"
+    assert snap.get("use_mock_env") is True, "快照应透出 use_mock_env=True（Mock 标识）"
+    client.delete(f"{base_url}/api/tasks/{task_id}", timeout=10)
+
+
+def test_native_engine_engine_mocks_config(client, base_url):
+    """引擎 mock 开关（config.engine_mocks，按 engine_id）→ 任务走 mocks 仿真，无需 use_mock_env。"""
+    # 先通过 config 打开 vllm-0.23 的 mock 开关
+    r = client.post(f"{base_url}/api/config",
+                    json={"engine_mocks": {"vllm-0.23": True}}, timeout=10)
+    assert r.status_code == 200, r.text
+    try:
+        payload = {**DEFAULT_PAYLOAD, "engine_id": "vllm-0.23"}  # 不传 use_mock_env
+        task_id = helpers.create_task(client, base_url, payload)
+        helpers.start_task(client, base_url, task_id)
+        snap = helpers.wait_task_terminal(client, base_url, task_id, timeout=120)
+        assert snap["status"] == "done", \
+            f"开启引擎 mock 开关后任务应完成: {snap['status']} {snap.get('error')}"
+        rows = [r for r in snap.get("rows", []) if r.get("metrics")]
+        assert rows, f"engine_mocks 开关应触发 FAKE 仿真并解析出指标: {snap.get('rows', [])[:2]}"
+    finally:
+        # 复原
+        client.post(f"{base_url}/api/config", json={"engine_mocks": {}}, timeout=10)
+    client.delete(f"{base_url}/api/tasks/{task_id}", timeout=10)
+
+
+def test_task_payload_api_overrides_global(client, base_url):
+    """任务 payload.api（创建时选择的 Provider 配置）优先于全局 api：
+    命令中的 base-url 应取 payload 值，而非回退全局 mock 地址。"""
+    payload = {
+        **DEFAULT_PAYLOAD,
+        "framework": "vllm",
+        "api": {"base_url": "http://127.0.0.1:9", "endpoint": "/v1/chat/completions"},
+    }
+    task_id = helpers.create_task(client, base_url, payload)
+    helpers.start_task(client, base_url, task_id)
+    snap = helpers.wait_task_terminal(client, base_url, task_id, timeout=120)
+
+    assert snap["status"] == "done", f"任务应完成: {snap['status']} {snap.get('error')}"
+    cmds = [r.get("cmd", "") for r in snap.get("rows", []) if isinstance(r, dict)]
+    assert cmds, "任务应产出含 cmd 的结果行"
+    assert any("--port 9" in c for c in cmds), f"payload.api 的 base_url 未进入命令: {cmds}"
+    assert all("--port 8001" not in c for c in cmds), f"不应回退全局 mock 地址: {cmds}"
+    client.delete(f"{base_url}/api/tasks/{task_id}", timeout=10)

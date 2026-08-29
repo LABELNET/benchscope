@@ -31,6 +31,9 @@ def point_to_mock(base_url: str):
     autouse 且 session 级 —— WebUI 测试不依赖 client fixture，单独增量跑
     tests/webui 时也必须先把 base_url 指向 mock，否则创建任务页模型列表
     502、Step1 校验不通过（此前增量跑 WebUI 需靠 API 测试先跑才间接配置）。
+
+    除全局 api.base_url 外，还将各 Provider 的 base_url 指向 mock：创建任务页
+    默认选中第一个 Provider 后需探测模型联动，Provider 必须可达（与全局指向一致）。
     """
     s = requests.Session()
 
@@ -44,6 +47,15 @@ def point_to_mock(base_url: str):
 
     r = s.post(f"{base_url}/api/config", json={"api": {"base_url": MOCK_URL}}, timeout=10)
     assert r.status_code == 200, f"设置 mock 推理地址失败: {r.status_code} {r.text}"
+
+    r = s.get(f"{base_url}/api/config/providers", timeout=10)
+    if r.status_code == 200:
+        for p in (r.json().get("providers") or []):
+            s.put(
+                f"{base_url}/api/config/providers/{p['id']}",
+                json={"base_url": MOCK_URL},
+                timeout=10,
+            )
 
 
 @pytest.fixture(scope="session")

@@ -1,0 +1,96 @@
+# bs-perfs-concurrency — 内置简单表单参数 schema
+#
+# 使用本技能时展示此表单，让用户填写后即可用 benchscope perf 快速压测。
+# 每个字段对应 benchscope perf 命令的一个 CLI 参数（见 type/name）。
+# 后端自研引擎 benchscope 无需本地 vLLM/SGLang 框架环境，仅需一个 OpenAI 兼容服务。
+
+form_title: benchscope perf — Concurrency 并发压测
+fields:
+  - key: model
+    label: 被测模型
+    name: --model
+    type: string
+    required: true
+    placeholder: e.g. Qwen2.5-7B
+    help: 推理服务中注册的模型名
+  - key: base_url
+    label: 服务地址 Base URL
+    name: --base-url
+    type: string
+    default: http://127.0.0.1:8000
+    placeholder: http://127.0.0.1:8000
+    help: 被测推理服务的地址
+  - key: api_key
+    label: API Key
+    name: --api-key
+    type: string
+    default: ""
+    help: 需要鉴权时填写，可为空
+  - key: backend
+    label: 接口协议
+    name: --backend
+    type: select
+    default: openai-chat
+    options: [openai-chat, openai]
+    help: openai-chat 用 /v1/chat/completions（对话模型）；openai 用 /v1/completions（基座模型）
+  - key: endpoint
+    label: 接口路径
+    name: --endpoint
+    type: string
+    default: /v1/chat/completions
+    help: 请求的接口路径
+  - key: concurrency
+    label: 并发数
+    name: --concurrency
+    type: int
+    default: 1
+    min: 1
+    help: 同时发起的请求并发数
+  - key: num_prompts
+    label: 请求总数
+    name: --num-prompts
+    type: int
+    default: 0
+    help: 总请求数；0 表示跟随并发数（每个 worker 一个请求）
+  - key: input_len
+    label: 输入长度
+    name: --input-len
+    type: int
+    default: 1024
+    help: 每个请求的输入 token 数
+  - key: output_len
+    label: 输出长度
+    name: --output-len
+    type: int
+    default: 1024
+    help: 每个请求的输出 token 数
+  - key: request_rate
+    label: 请求速率
+    name: --request-rate
+    type: string
+    default: inf
+    help: req/s；inf 表示不限速（全速压测）
+  - key: num_warmups
+    label: 预热请求数
+    name: --num-warmups
+    type: int
+    default: 0
+    help: 正式计时前的预热请求数（不计入指标）
+  - key: timeout
+    label: 单请求超时（秒）
+    name: --timeout
+    type: float
+    default: 600
+    help: 单个请求最大等待秒数，超时计为失败
+  - key: temperature
+    label: 采样温度
+    name: --temperature
+    type: float
+    default: 0.0
+    help: 压测建议固定为 0 以保证结果可复现
+  - key: seed
+    label: 随机种子
+    name: --seed
+    type: int
+    default: 0
+    help: 0 表示不固定

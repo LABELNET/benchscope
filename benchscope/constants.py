@@ -37,6 +37,10 @@ DEFAULT_CONFIG = {
         "api_key": "",
         "extra_headers": {},
     },
+    # 推理服务提供方（Settings → Providers）：可配置多个，激活的一个同步到 api 字段。
+    # 迁移：旧配置只有 api 时，自动生成一个名为 Default 的 Provider。
+    "providers": [],
+    "active_provider": "",
     "gpu": {"auto": True, "name": "", "count": 8},
     # 缓存目录体系（数据根目录为 data_dir，其余为各功能目录）
     "data_dir": "~/.benchscope",  # 数据根目录（服务端数据持久化 / 任务 / 会话等）
@@ -54,4 +58,7 @@ DEFAULT_CONFIG = {
         "vllm": "vllm bench serve",
         "sglang": "python -m sglang.bench_serving",
     },
+    # 引擎 mock 开关映射（跟 engine 走，Settings → Bench Engines 每个引擎卡片上的开关）：
+    #   {"<engine_id>": bool}；True 表示该引擎用 mock 数据/运行环境（无真实框架依赖也可跑）
+    "engine_mocks": {},
 }

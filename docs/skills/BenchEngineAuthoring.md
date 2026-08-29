@@ -1,7 +1,7 @@
-# 自定义 Bench 引擎技能 — bench-engine-authoring
+# 自定义 Bench 引擎技能 — bs-engine-create
 
-> **版本**：1.0.0　**技能目录**：[`skills/bench-engine-authoring/`](../../skills/bench-engine-authoring/)
-> **最后更新**：2026-08-29
+> **版本**：1.0.0　**技能目录**：[`skills/bs-engine-create/`](../../skills/bs-engine-create/)
+> **最后更新**：2026-08-30
 > **关联**：[Skills 体系总入口](./Readme.md) · [rules/BenchEngine.md](../rules/BenchEngine.md) ·
 > [rules/BenchUpstream.md](../rules/BenchUpstream.md)（上游源码分析）·
 > [rules/BenchCore.md](../rules/BenchCore.md)（自研引擎范例）
@@ -26,7 +26,7 @@
 ## 2. 技能包结构
 
 ```
-bench-engine-authoring/
+bs-engine-create/
 ├── SKILL.md                            # 技能主文档（AI 消费）
 ├── README.md                           # 说明（人消费）
 ├── references/
@@ -64,6 +64,10 @@ bench-engine-authoring/
    **全部通过才可导入**。
 7. **导入** —— Settings → Bench Engines → 右上角 **Upload Engine** → 上传引擎包
    （`.yaml` 引擎定义，或 `.tar.gz` 技能包），或调用 `POST /api/benchs/upload`。
+
+> **产物形态（1.0.7 起）**：Create Engine 提示词要求 AI 直接产出**压缩包**
+> `<framework>-<version>-engine.tar.gz`（含 `configs/benchs.yaml` / `configs/bench-params.yaml` /
+> `README.md`），**导入即上传该压缩包**，不再手贴 yaml 原文。
 
 > **界面入口（1.0.7）**：Settings → **Bench Engines** 右上角三个文字按钮 ——
 > **Create Engine**（本文档教程与可复制提示词）、**Upload Engine**（上传引擎包）、
@@ -110,7 +114,7 @@ curl -sL "https://api.github.com/repos/sgl-project/sglang/contents/python/sglang
 3. `calculate_metrics(...)` → **精确指标公式**与 duration 定义。
 
 > 两个参考版本的完整分析（带行号）存档于
-> [`references/upstream-analysis.md`](../../skills/bench-engine-authoring/references/upstream-analysis.md)
+> [`references/upstream-analysis.md`](../../skills/bs-engine-create/references/upstream-analysis.md)
 > 与 [`rules/BenchUpstream.md`](../rules/BenchUpstream.md)，**实现新引擎前先读**，其中给出可直接复用的已验证核心逻辑。
 
 **关键共识**（两上游一致，自研引擎已对齐）：
@@ -245,8 +249,8 @@ Steps:
 
 ## 11. 参考
 
-- [engine-schema.md](../../skills/bench-engine-authoring/references/engine-schema.md) — 引擎定义字段参考 + 完整示例
-- [mock-core.md](../../skills/bench-engine-authoring/references/mock-core.md) — mock 核心方法与缩放模型
-- [import-checklist.md](../../skills/bench-engine-authoring/references/import-checklist.md) — 校验规则与错误信息
-- [templates/](../../skills/bench-engine-authoring/templates/) — 可复制 yaml 模板
+- [engine-schema.md](../../skills/bs-engine-create/references/engine-schema.md) — 引擎定义字段参考 + 完整示例
+- [mock-core.md](../../skills/bs-engine-create/references/mock-core.md) — mock 核心方法与缩放模型
+- [import-checklist.md](../../skills/bs-engine-create/references/import-checklist.md) — 校验规则与错误信息
+- [templates/](../../skills/bs-engine-create/templates/) — 可复制 yaml 模板
 - [rules/BenchUpstream.md](../rules/BenchUpstream.md) — 上游核心逻辑分析（含优化项清单）

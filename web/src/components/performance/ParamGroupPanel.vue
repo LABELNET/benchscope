@@ -39,8 +39,8 @@
             :class="{ editing: editingKey === line.key }"
             @click="startEdit(line)"
           >
-            <span class="param-key" :title="specOf(line).label || line.key">
-              {{ specOf(line).label || line.key }}
+            <span class="param-key" :title="labelOf(line) || line.key">
+              {{ labelOf(line) || line.key }}
             </span>
             <div class="param-value">
               <!-- 有下拉选项：用 select 选择（选中后展示描述） -->
@@ -85,7 +85,7 @@
 
 <script setup>
 import { computed, nextTick, ref } from 'vue'
-import { t } from '@/i18n'
+import { i18nState, t } from '@/i18n'
 
 const props = defineProps({
   version: { type: String, default: '' },
@@ -95,21 +95,33 @@ const props = defineProps({
   specs: { type: Object, default: () => ({}) },
 })
 
-// 参数定义辅助：下拉选项 / 描述信息
+// 参数定义辅助：下拉选项 / 描述信息（按界面语言选择 _zh / 英文，默认英文，切换中文后显示中文）
+const isZh = computed(() => i18nState.locale === 'zh')
+function pick(obj, enKey, zhKey) {
+  if (!obj) return ''
+  return isZh.value ? obj[zhKey] || obj[enKey] || '' : obj[enKey] || obj[zhKey] || ''
+}
 function specOf(line) {
   return props.specs?.[line.key] || {}
+}
+function labelOf(line) {
+  const spec = specOf(line)
+  return pick(spec, 'label', 'label_zh') || ''
 }
 function optionsOf(line) {
   const opts = specOf(line).options || []
   return opts
     .filter((o) => o && typeof o === 'object')
-    .map((o) => ({ value: String(o.value), label: o.label || String(o.value) }))
+    .map((o) => ({
+      value: String(o.value),
+      label: pick(o, 'label', 'label_zh') || String(o.value),
+    }))
 }
 function descOf(line) {
   const spec = specOf(line)
   // 选中值有选项级描述时优先展示，否则展示参数说明
   const hit = (spec.options || []).find((o) => o && String(o.value) === String(line.value))
-  return (hit && hit.description) || spec.help || ''
+  return (hit && pick(hit, 'description', 'description_zh')) || pick(spec, 'help', 'help_zh') || ''
 }
 function onSelect(line, val) {
   line.value = String(val)

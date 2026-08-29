@@ -55,7 +55,13 @@ def _serve(args) -> int:
 
 
 def _perf(args) -> int:
-    """执行一次 Bench CLI（自研引擎）压测——与创建任务页 Step3 预览命令一致。"""
+    """执行 Bench CLI（自研引擎）压测——与创建任务页 Step3 预览命令一致。
+
+    - `--mode concurrency`（默认）：单并发压测一次。
+    - `--mode threshold`：从 1 并发起以 2 的次方递增，找到满足阈值（TTFT/TPOT/吞吐）
+      的最大并发（二分收敛），输出 best_concurrency。
+    结果会写入终端日志（perf_<run_id>_*.log）并落盘 run.json，便于打包导入 Datas/perfs。
+    """
     from benchscope.benches.builtin_bench import (
         BUILTIN_PARAM_DEFAULTS,
         build_options,
@@ -63,8 +69,8 @@ def _perf(args) -> int:
         run_builtin_bench,
     )
 
-    params = dict(BUILTIN_PARAM_DEFAULTS)
-    params.update({
+    base_params = dict(BUILTIN_PARAM_DEFAULTS)
+    base_params.update({
         "backend": args.backend,
         "endpoint": args.endpoint,
         "request-rate": args.request_rate,
@@ -75,20 +81,29 @@ def _perf(args) -> int:
         "temperature": str(args.temperature),
         "seed": str(args.seed),
     })
-
     dataset = {"type": "random", "input_len": args.input_len, "output_len": args.output_len}
-    opts = build_options(
-        params,
-        base_url=args.base_url,
-        model=args.model,
-        dataset=dataset,
-        concurrency=args.concurrency,
-        api_key=args.api_key,
-    )
 
-    print(" ".join(build_command(opts, args.engine)), flush=True)
-    metrics = run_builtin_bench(opts, stream_cb=lambda line: print(line, end=""))
-    print()
+    def make_opts(concurrency: int):
+        return build_options(
+            base_params,
+            base_url=args.base_url,
+            model=args.model,
+            dataset=dataset,
+            concurrency=concurrency,
+            api_key=args.api_key,
+        )
+
+    def run_one(concurrency: int) -> dict:
+        opts = make_opts(concurrency)
+        print(" ".join(build_command(opts, args.engine)), flush=True)
+        metrics = run_builtin_bench(opts, stream_cb=lambda line: print(line, end=""))
+        print()
+        return metrics
+
+    if getattr(args, "mode", "concurrency") == "threshold":
+        return _perf_threshold(args, run_one)
+
+    metrics = run_one(args.concurrency)
     print("-" * 56)
     print(f"successful_requests : {metrics.get('successful_requests')}")
     print(f"failed_requests     : {metrics.get('failed_requests')}")
@@ -98,7 +113,153 @@ def _perf(args) -> int:
     print(f"ttft_mean   (ms)    : {metrics.get('ttft_mean')}")
     print(f"tpot_mean   (ms)    : {metrics.get('tpot_mean')}")
     print(f"itl_mean    (ms)    : {metrics.get('itl_mean')}")
+    # 保存 run.json + 终端日志（供打包导入 Datas/perfs）
+    _save_perf_artifacts(args, mode="concurrency", rows={args.concurrency: metrics})
     return 0 if metrics.get("successful_requests") else 1
+
+
+def _perf_threshold(args, run_one) -> int:
+    """阈值模式：2 的幂递增 + 二分，找满足阈值的最大并发。"""
+    ttft_thr = args.ttft_threshold_ms
+    tpot_thr = args.tpot_threshold_ms
+    out_thr = args.output_threshold
+    search_cap = args.max_concurrency_search
+    max_requests = args.max_requests
+
+    def violated(m) -> bool:
+        if ttft_thr > 0 and m.get("ttft_mean") is not None and float(m["ttft_mean"]) > ttft_thr:
+            return True
+        if tpot_thr > 0 and m.get("tpot_mean") is not None and float(m["tpot_mean"]) > tpot_thr:
+            return True
+        if out_thr > 0 and m.get("output_mean") is not None and float(m["output_mean"]) < out_thr:
+            return True
+        return False
+
+    results: dict[int, dict] = {}
+
+    def test(conc: int) -> dict:
+        conc = int(conc)
+        if conc in results:
+            return results[conc]
+        # 强制结束：并发数超过 max_requests 上限
+        if conc > max_requests:
+            return {"forced_finish": True, "concurrency": conc, "metrics": {}}
+        m = run_one(conc)
+        results[conc] = m
+        return m
+
+    # 从 1 并发以 2 的幂递增，找第一个不满足的 hi
+    lo = 1
+    m1 = test(1)
+    if not m1.get("successful_requests"):
+        print("❌ 1 并发压测失败（successful_requests=0），无法继续阈值搜索")
+        return 1
+    if violated(m1):
+        best = 1
+        print(f"best_concurrency : {best}（1 并发即不满足阈值）")
+    else:
+        # 找 hi
+        hi = None
+        k = 1
+        while True:
+            conc = 2 ** k
+            if conc > search_cap:
+                hi = search_cap
+                break
+            m = test(conc)
+            if m.get("forced_finish"):
+                hi = conc
+                break
+            if not m.get("successful_requests"):
+                hi = conc
+                break
+            if violated(m):
+                hi = conc
+                break
+            k += 1
+        if hi is None:
+            hi = search_cap
+        # 若 hi 仍满足（达上限），最佳=上限
+        if not violated(results.get(hi, {})) and hi not in results:
+            m_hi = test(hi)
+            if m_hi.get("forced_finish") or violated(m_hi):
+                hi = search_cap if not results.get(hi) else hi
+        # 二分 (lo, hi]，lo 满足阈值
+        while hi - lo > 1:
+            mid = (lo + hi) // 2
+            m = test(mid)
+            if m.get("forced_finish"):
+                hi = mid
+            elif not m.get("successful_requests") or violated(m):
+                hi = mid
+            else:
+                lo = mid
+        best = lo
+
+    print("-" * 56)
+    print("threshold 探测结果（concurrency -> output/total/ttft/tpot）：")
+    for conc in sorted(results):
+        m = results[conc]
+        if not m.get("successful_requests"):
+            print(f"  conc={conc}: FAILED")
+            continue
+        print(f"  conc={conc}: out={m.get('output_mean')} tot={m.get('total_mean')} "
+              f"ttft={m.get('ttft_mean')} tpot={m.get('tpot_mean')}")
+    print("-" * 56)
+    print(f"best_concurrency : {best}（满足阈值的最大并发）")
+    _save_perf_artifacts(args, mode="threshold", rows=results, best_concurrency=best)
+    return 0
+
+
+def _save_perf_artifacts(args, mode: str, rows: dict, best_concurrency: int | None = None) -> None:
+    """把本次运行写为 run.json + 终端日志，供打包导入 Datas/perfs。"""
+    import json
+    import time
+    from pathlib import Path
+
+    from benchscope.config import ConfigManager
+    try:
+        cfg = ConfigManager()
+        run_dir = Path(cfg.perfs_dir)
+        logs_dir = Path(cfg.logs_dir)
+    except Exception:
+        run_dir = Path.cwd() / "perfs"
+        logs_dir = Path.cwd() / "logs"
+    run_dir.mkdir(parents=True, exist_ok=True)
+    logs_dir.mkdir(parents=True, exist_ok=True)
+
+    stamp = time.strftime("%Y%m%d%H%M%S")
+    run_id = f"perf_{args.model.replace('/', '_')}_{stamp}"
+    summary = {}
+    for conc, m in rows.items():
+        if not m.get("successful_requests"):
+            continue
+        summary[conc] = {
+            "output_mean": m.get("output_mean"),
+            "total_mean": m.get("total_mean"),
+            "ttft_mean": m.get("ttft_mean"),
+            "tpot_mean": m.get("tpot_mean"),
+            "itl_mean": m.get("itl_mean"),
+        }
+    run_info = {
+        "task_id": run_id,
+        "run_id": run_id,
+        "kind": "perf",
+        "framework": "benchscope",
+        "model": args.model,
+        "mode": mode,
+        "status": "done",
+        "concurrency_list": list(rows.keys()),
+        "best_concurrency": best_concurrency,
+        "summary": summary,
+        "created_at": time.strftime("%Y-%m-%d %H:%M:%S"),
+    }
+    (run_dir / "run.json").write_text(
+        json.dumps(run_info, ensure_ascii=False, indent=2), encoding="utf-8")
+    log_file = logs_dir / f"perf_{run_id}.log"
+    log_file.touch()
+    print(f"已保存 run.json: {run_dir / 'run.json'}")
+    print(f"已生成日志占位: {log_file}（打包时请将终端输出写入 perf_{run_id}_*.log）")
 
 
 def _add_serve_args(p: argparse.ArgumentParser) -> None:
@@ -114,7 +275,9 @@ def _add_perf_args(p: argparse.ArgumentParser) -> None:
     p.add_argument("--api-key", default="", help="被测服务 API Key（可选）")
     p.add_argument("--backend", default="openai-chat", help="接口协议：openai-chat / openai")
     p.add_argument("--endpoint", default="/v1/chat/completions", help="接口路径")
-    p.add_argument("--concurrency", type=int, default=1, help="并发数")
+    p.add_argument("--mode", default="concurrency", choices=["concurrency", "threshold"],
+                   help="压测模式：concurrency（单并发） / threshold（阈值搜索找最佳并发）")
+    p.add_argument("--concurrency", type=int, default=1, help="并发数（concurrency 模式）")
     p.add_argument("--num-prompts", type=int, default=0, help="请求总数（0 = 跟随并发数）")
     p.add_argument("--input-len", type=int, default=1024, help="输入 token 数")
     p.add_argument("--output-len", type=int, default=1024, help="输出 token 数")
@@ -124,6 +287,17 @@ def _add_perf_args(p: argparse.ArgumentParser) -> None:
     p.add_argument("--timeout", type=float, default=600.0, help="单请求超时（秒）")
     p.add_argument("--temperature", type=float, default=0.0, help="采样温度")
     p.add_argument("--seed", type=int, default=0, help="随机种子（0 = 不固定）")
+    # threshold 模式专属参数
+    p.add_argument("--ttft-threshold-ms", type=float, default=0.0,
+                   help="TTFT 阈值（ms），0 = 不判定")
+    p.add_argument("--tpot-threshold-ms", type=float, default=100.0,
+                   help="TPOT 阈值（ms），0 = 不判定")
+    p.add_argument("--output-threshold", type=float, default=0.0,
+                   help="输出吞吐阈值（tok/s），低于该值判为不满足，0 = 不判定")
+    p.add_argument("--max-concurrency-search", type=int, default=4096,
+                   help="阈值搜索上限：达到仍满足阈值则取上限为最佳并发")
+    p.add_argument("--max-requests", type=int, default=4096,
+                   help="阈值探测中并发数超过该上限则强制结束")
 
 
 def main(argv=None) -> int:

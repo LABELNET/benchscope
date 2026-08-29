@@ -16,7 +16,7 @@ import pytest
 REPO_ROOT = Path(__file__).resolve().parents[2]
 SKILLS_DIR = REPO_ROOT / "skills"
 
-EXPECTED_SKILLS = {"bench-engine-authoring", "vllm-bench-testing", "sglang-bench-testing"}
+EXPECTED_SKILLS = {"bs-engine-create", "bs-perfs-concurrency", "bs-perfs-threshold"}
 
 
 def _skill_dirs() -> list[Path]:
@@ -28,6 +28,7 @@ def test_skills_directory_layout():
     dirs = _skill_dirs()
     names = {p.name for p in dirs}
     assert EXPECTED_SKILLS.issubset(names), f"缺少技能: {EXPECTED_SKILLS - names}"
+    assert all(n.startswith("bs-") for n in names), "技能目录必须按 bs-<模块>-<目标> 命名"
 
     for d in dirs:
         assert (d / "SKILL.md").is_file(), f"{d.name} 缺少 SKILL.md"
@@ -92,7 +93,7 @@ def test_skill_package(skill_dir: Path):
 
 def test_bench_engine_authoring_contents():
     """自定义引擎技能必须包含：mock 核心方法说明、上游链接、提示词、导入校验清单。"""
-    d = SKILLS_DIR / "bench-engine-authoring"
+    d = SKILLS_DIR / "bs-engine-create"
     skill = (d / "SKILL.md").read_text(encoding="utf-8")
 
     # mock 核心逻辑方法与介绍
@@ -139,7 +140,7 @@ def test_bench_engine_authoring_contents():
 
 def test_validate_script_checks_definition():
     """validate.sh：合法配置通过；非法配置（kind 错误）返回非 0。"""
-    script = SKILLS_DIR / "bench-engine-authoring" / "scripts" / "validate.sh"
+    script = SKILLS_DIR / "bs-engine-create" / "scripts" / "validate.sh"
     assert script.is_file()
 
     # 合法：仓库默认配置
@@ -246,22 +247,22 @@ def test_bench_engine_authoring_doc():
 
 
 def test_bench_testing_doc():
-    """docs/skills/BenchTesting.md：vLLM / SGLang 性能测试技能说明。"""
+    """docs/skills/BenchTesting.md：benchscope perf 性能测试技能（并发 / 阈值）说明。"""
     doc = REPO_ROOT / "docs" / "skills" / "BenchTesting.md"
     assert doc.is_file(), "缺少 docs/skills/BenchTesting.md"
 
     text = doc.read_text(encoding="utf-8")
 
-    # 两个技能均须覆盖
-    assert "vllm-bench-testing" in text, "未覆盖 vLLM 技能"
-    assert "sglang-bench-testing" in text, "未覆盖 SGLang 技能"
+    # 两个 perf 技能均须覆盖
+    assert "bs-perfs-concurrency" in text, "未覆盖并发压测技能"
+    assert "bs-perfs-threshold" in text, "未覆盖阈值搜索技能"
 
-    # 引擎选择与环境校验（1.0.7 新增能力）
-    assert "Ready" in text and "Not Satisfied" in text, "应说明环境校验状态"
-    assert "benchscope" in text and "vllm-0.23" in text and "sglang-0.5.10" in text, "应列出内置引擎"
+    # benchscope perf 命令与表单
+    assert "benchscope perf" in text, "应说明 benchscope perf 命令"
+    assert "表单" in text or "form" in text, "应说明内置表单参数配置"
 
-    # 流程与产物
-    for kw in ("并发", "数据集", "benchmark-*.xlsx", "TPOT"):
+    # 流程与产物（保存任务/日志 + 压缩包 + Datas/perfs 导入）
+    for kw in ("Datas/perfs", "run.json", ".zip", "并发", "阈值"):
         assert kw in text, f"应说明 {kw}"
 
 
@@ -272,13 +273,35 @@ def test_docs_index_links_skills_section():
         assert f in text, f"docs/Readme.md 未登记 {f}"
 
 
+def test_skill_download_endpoint(client, base_url):
+    """GET /api/skills/{id}/download 返回技能版本包（tar.gz），未知技能返回 404。"""
+    import io
+    for name in EXPECTED_SKILLS:
+        r = client.get(f"{base_url}/api/skills/{name}/download", timeout=30)
+        assert r.status_code == 200, f"{name} 下载失败: {r.status_code} {r.text[:200]}"
+        # 响应为 gzip 且可解压为 tar.gz
+        assert "gzip" in r.headers.get("content-type", ""), \
+            f"{name} 下载 content-type 应为 gzip: {r.headers.get('content-type')}"
+        try:
+            import tarfile
+            with tarfile.open(fileobj=io.BytesIO(r.content), mode="r:gz") as tf:
+                names = tf.getnames()
+        except Exception as e:
+            raise AssertionError(f"{name} 产物无法解压: {e}")
+        assert any(n.endswith("SKILL.md") for n in names), f"{name} 包内缺 SKILL.md"
+
+    # 未知技能 → 404
+    r = client.get(f"{base_url}/api/skills/bs-does-not-exist/download", timeout=10)
+    assert r.status_code == 404
+
+
 def test_bench_engine_authoring_skill_upload_contract():
     """技能包（package.sh 产物）必须能被 /api/benchs/upload 识别导入。
 
     打包产物结构：技能目录原样打包（含 references/ templates/ 等），
     上传接口递归查找含 engines 段的 yaml（引擎定义）与 bench-params.yaml（参数说明）。
     """
-    skill_dir = SKILLS_DIR / "bench-engine-authoring"
+    skill_dir = SKILLS_DIR / "bs-engine-create"
     script = skill_dir / "scripts" / "package.sh"
     assert script.is_file(), "缺少 scripts/package.sh"
 

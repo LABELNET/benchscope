@@ -242,10 +242,10 @@ def test_perf_create_params_follow_engine(page):
     _visible(page, ".perf-create-page")
     _visible(page, ".bench-picker", timeout=15000)
 
-    # 默认自研引擎 → 进入 Step2
+    # 默认自研引擎 → 进入 Step2（等待环境校验完成：任一状态 tag 出现）
     page.wait_for_function(
-        "() => { const t = document.querySelector('.bench-picker .ant-tag');"
-        " return t && /Ready|Not Satisfied/.test(t.textContent); }",
+        "() => { const tags = [...document.querySelectorAll('.bench-picker .ant-tag')];"
+        " return tags.some(t => /Ready|Not Satisfied|Real|Mock/.test(t.textContent)); }",
         timeout=15000,
     )
     page.locator(".panel-footer button").filter(has_text="Next").first.click()
@@ -264,6 +264,31 @@ def test_perf_create_params_follow_engine(page):
     joined = " | ".join(keys)
     assert "Backend" in joined or "backend" in joined, f"缺少 Backend 参数: {joined[:200]}"
 
+    # 参数 label 与说明（help/选项描述）默认显示英文（不含中文）
+    keys = page.locator(".param-row").all_inner_texts()
+    joined_en = " | ".join(keys)
+    assert not any("\u4e00" <= ch <= "\u9fff" for ch in joined_en), \
+        f"默认语言应为英文，不应含中文: {joined_en[:200]}"
+    descs_en = " | ".join(page.locator(".param-desc").all_inner_texts())
+    assert any(ch.isascii() and ch.isalpha() for ch in descs_en), \
+        f"参数描述默认应为英文: {descs_en[:200]}"
+    assert not any("\u4e00" <= ch <= "\u9fff" for ch in descs_en), \
+        f"参数描述默认应为英文，不应含中文: {descs_en[:200]}"
+
+    # 切换界面语言为中文 → 参数 label 与描述显示中文（通过全局辅助切换语言）
+    page.evaluate("() => { window.__switchLocale && window.__switchLocale('zh') }")
+    page.wait_for_timeout(400)
+    keys_zh = " | ".join(page.locator(".param-row").all_inner_texts())
+    assert any("\u4e00" <= ch <= "\u9fff" for ch in keys_zh), \
+        f"切换中文后参数应含中文: {keys_zh[:200]}"
+    descs_zh = " | ".join(page.locator(".param-desc").all_inner_texts())
+    assert any("\u4e00" <= ch <= "\u9fff" for ch in descs_zh), \
+        f"切换中文后参数描述应含中文: {descs_zh[:200]}"
+
+    # 恢复英文，避免影响后续依赖默认英文的用例
+    page.evaluate("() => { window.__switchLocale && window.__switchLocale('en') }")
+    page.wait_for_timeout(200)
+
 
 def test_perf_create_engine_select_and_env_block(page):
     """创建页引擎选择：默认自研引擎（可用）；切到原生引擎且环境不满足时禁止进入下一步。"""
@@ -273,8 +298,8 @@ def test_perf_create_engine_select_and_env_block(page):
 
     # 等待环境校验完成（校验中为 spin，无状态标签）
     page.wait_for_function(
-        "() => { const t = document.querySelector('.bench-picker .ant-tag');"
-        " return t && /Ready|Not Satisfied/.test(t.textContent); }",
+        "() => { const tags = [...document.querySelectorAll('.bench-picker .ant-tag')];"
+        " return tags.some(t => /Ready|Not Satisfied|Real|Mock/.test(t.textContent)); }",
         timeout=15000,
     )
     # 默认引擎为自研 bench（无框架环境依赖，标签显示 Ready）
@@ -285,10 +310,10 @@ def test_perf_create_engine_select_and_env_block(page):
     page.locator(".bench-picker .ant-select").first.click()
     _visible(page, ".ant-select-dropdown", timeout=8000)
     page.locator(".ant-select-item-option").filter(has_text="vLLM 0.23").first.click()
-    # 等待环境校验完成（标签变为 Ready / Not Satisfied）
+    # 等待环境校验完成（标签变为 Ready / Not Satisfied / Real）
     page.wait_for_function(
-        "() => { const t = document.querySelector('.bench-picker .ant-tag');"
-        " return t && /Ready|Not Satisfied/.test(t.textContent); }",
+        "() => { const tags = [...document.querySelectorAll('.bench-picker .ant-tag')];"
+        " return tags.some(t => /Ready|Not Satisfied|Real|Mock/.test(t.textContent)); }",
         timeout=15000,
     )
     tags = page.locator(".bench-picker .ant-tag").all_inner_texts()
@@ -311,6 +336,12 @@ def test_datas_perfs_record_list(page):
     _visible(page, ".record-panel")
     # 导入按钮存在
     assert page.locator(".record-panel-title .icon-btn").count() >= 1
+    # 若有任务记录：每条记录在任务 ID 右侧显示 framework 高亮标记
+    page.wait_for_timeout(800)
+    if page.locator(".record-item").count() > 0:
+        first = page.locator(".record-item").first
+        assert first.locator(".record-framework").count() == 1, "每条记录应显示 framework 标记（任务 ID 右侧）"
+        assert first.locator(".record-framework").inner_text().strip(), "framework 标记不应为空"
 
 
 def test_threshold_cond_in_case_group(page):
@@ -465,18 +496,18 @@ def test_spa_fallback(page):
 
 
 def test_settings_environment_no_framework(page):
-    """Settings → Environment：仅保留 Base URL（OpenAI 接口）与 API Key，不再有 Framework 选择。"""
+    """Settings → Providers（原 Environment，1.0.7 改名）：Provider 面板保留 Base URL/API Key，不再有 Framework 选择。"""
     page.goto(f"{BASE_URL}/settings", wait_until="domcontentloaded")
     _visible(page, ".settings-page")
-    page.locator(".menu-item").filter(has_text="Environment").first.click()
-    _visible(page, ".panel-card", timeout=10000)
+    page.locator(".menu-item").filter(has_text="Providers").first.click()
+    _visible(page, ".provider-card", timeout=10000)
 
-    labels = page.locator(".panel-card .panel-label").all_inner_texts()
+    labels = page.locator(".provider-card .panel-label").all_inner_texts()
     joined = " | ".join(labels)
     assert "Base URL" in joined, f"应保留 Base URL: {joined}"
     assert "API Key" in joined, f"应保留 API Key: {joined}"
     assert "Framework" not in joined, f"不应再有 Framework 选项: {joined}"
-    assert page.locator(".panel-card .ant-radio-group").count() == 0, "不应再有框架单选组"
+    assert page.locator(".provider-card .ant-radio-group").count() == 0, "不应再有框架单选组"
 
 
 def test_settings_benches_english_only(page):
@@ -570,3 +601,288 @@ def test_all_pages_bottom_padding(page):
         " return el ? getComputedStyle(el).paddingBottom : null; }"
     )
     assert pad == "18px", f"页面底部应保留 18px: {pad}"
+
+
+# ---------------- 1.0.7 增量：Providers / 介绍卡片 / Conditions / mocks ----------------
+
+
+def test_settings_providers_panel(page):
+    """Settings → Providers：菜单与面板头均为 Providers（无 Envs）；
+    每个 Provider 一个面板（header 显示名称）；Add Provider 弹窗含必填 Provider Name。"""
+    page.goto(f"{BASE_URL}/settings", wait_until="domcontentloaded")
+    _visible(page, ".settings-page")
+
+    # 菜单显示 Providers
+    menu = page.locator(".menu-item").filter(has_text="Providers")
+    assert menu.count() == 1, "菜单应有 Providers 项"
+
+    menu.first.click()
+    _visible(page, ".providers-head-card", timeout=10000)
+
+    # 面板头：Providers（不是 Envs），含 Add Provider 按钮
+    head_text = page.locator(".providers-head-card").inner_text()
+    assert "Providers" in head_text, f"面板头应为 Providers: {head_text[:120]}"
+    assert "Envs" not in head_text, "不应再显示 Envs 字样"
+
+    # 迁移出的 Default Provider 面板存在，header 显示名称
+    _visible(page, ".provider-card")
+    names = page.locator(".prov-name").all_inner_texts()
+    assert any("Default" in n for n in names), f"应显示迁移的 Default Provider: {names}"
+
+    # Add Provider 弹窗：Provider Name 必填
+    page.locator(".providers-head-card button").filter(has_text="Add Provider").click()
+    _visible(page, ".provider-modal", timeout=8000)
+    modal = page.locator(".provider-modal:visible")
+    assert modal.locator(".panel-label").filter(has_text="Provider Name").count() >= 1
+    save_btn = modal.locator("button").filter(has_text="Save").first
+    assert save_btn.is_disabled(), "Provider Name 为空时 Save 应禁用（必填）"
+    modal.locator(".ant-modal-close").click()
+
+
+def test_create_page_conditions_no_rate_and_max_requests(page):
+    """创建任务：Conditions 无 Request Rate 配置；阈值模式显示 Max Requests（默认 4096）。"""
+    # 并发模式：无 Request Rate 行
+    page.goto(f"{BASE_URL}/performance/create?mode=concurrency", wait_until="domcontentloaded")
+    _visible(page, ".perf-create-page")
+    _visible(page, ".condition-panel", timeout=15000)
+    cond_text = page.locator(".condition-panel").inner_text()
+    assert "Request Rate" not in cond_text, f"Conditions 不应再含 Request Rate: {cond_text[:200]}"
+
+    # 阈值模式：Max Requests 默认 4096
+    page.goto(f"{BASE_URL}/performance/create?mode=threshold", wait_until="domcontentloaded")
+    _visible(page, ".condition-panel", timeout=15000)
+    maxreq = page.locator(".maxreq-panel input")
+    assert maxreq.count() == 1, "阈值模式应有 Max Requests 输入框（面板形式 .maxreq-panel）"
+    assert maxreq.input_value() == "4096", f"默认应为 4096: {maxreq.input_value()}"
+
+
+def test_create_page_mock_env_option(page):
+    """创建页：不显示 Use Mock Environment 勾选（mock 由 Bench Engines 每引擎开关控制），
+    引擎选择后显示 Mock/Real 状态 tag。"""
+    page.goto(f"{BASE_URL}/performance/create?mode=concurrency", wait_until="domcontentloaded")
+    _visible(page, ".bench-picker", timeout=15000)
+    page.wait_for_function(
+        "() => { const tags = [...document.querySelectorAll('.bench-picker .ant-tag')];"
+        " return tags.some(t => /Ready|Not Satisfied|Real|Mock/.test(t.textContent)); }",
+        timeout=15000,
+    )
+
+    # 默认选中 Bench CLI（第一个内置引擎）→ 不显示 Use Mock Environment 勾选
+    assert page.locator(".mock-env-row").count() == 0, "创建页不应显示 Use Mock Environment 勾选"
+
+    # 选择 vllm-0.23（原生引擎）→ 同样不显示，且显示 Mock/Real 状态 tag
+    engine_sel = page.locator(".bench-picker .ant-select").first
+    engine_sel.click()
+    page.locator(".ant-select-item-option").filter(has_text="vLLM 0.23").first.click()
+    page.wait_for_timeout(800)
+    assert page.locator(".mock-env-row").count() == 0, "任何引擎创建页均不应显示 Use Mock Environment"
+    assert page.locator(".bench-picker .ant-tag", has_text="Real").count() >= 1, "应显示 Real 状态 tag"
+
+
+def test_create_page_base_provider_select(page):
+    """创建任务 Base 面板：标题 Provider（无 Framework 行）；Provider 下拉默认选中第一个；模型联动。"""
+    page.goto(f"{BASE_URL}/performance/create?mode=concurrency", wait_until="domcontentloaded")
+    _visible(page, ".base-env-panel", timeout=15000)
+    panel_text = page.locator(".base-env-panel").inner_text()
+    assert "Framework" not in panel_text, f"Base 面板不应再有 Framework 行: {panel_text[:200]}"
+
+    # Provider 下拉存在且默认选中第一个（异步加载，等待选中值出现）
+    provider_sel = page.locator(".base-env-panel .ant-select").first
+    # 无任何 Provider 配置时跳过；有配置则必须默认选中第一项
+    page.wait_for_function(
+        "() => { const s = document.querySelector('.base-env-panel .ant-select .ant-select-selection-item');"
+        " return s && s.textContent.trim() !== ''; }",
+        timeout=15000,
+    )
+    selected = provider_sel.locator(".ant-select-selection-item").first
+    selected_text = selected.inner_text().strip()
+    assert selected_text, "应默认选中第一个 Provider"
+    # 展开下拉：第一个选项应与默认选中项一致
+    provider_sel.click()
+    page.wait_for_timeout(500)
+    first_option = page.locator(".ant-select-dropdown:visible .ant-select-item-option").first
+    assert first_option.inner_text().strip() == selected_text, "默认选中项应为 Providers 第一个"
+    page.keyboard.press("Escape")
+
+    # 模型下拉存在（联动所选 Provider）
+    model_sel = page.locator(".base-env-panel .ant-select").nth(1)
+    model_sel.click()
+    page.wait_for_timeout(300)
+    assert page.locator(".ant-select-dropdown:visible .ant-select-item-option").count() >= 1, "模型下拉应有候选项（联动 Provider）"
+    page.keyboard.press("Escape")
+
+
+def test_settings_providers_no_activate_with_status(page):
+    """Settings → Providers：无 Activate 按钮/Active 标签；状态与模型显示在各 Provider 面板内。"""
+    page.goto(f"{BASE_URL}/settings", wait_until="domcontentloaded")
+    _visible(page, ".settings-page")
+    page.locator(".menu-item").filter(has_text="Providers").first.click()
+    _visible(page, ".provider-card", timeout=10000)
+
+    card = page.locator(".provider-card").first
+    card_text = card.inner_text()
+    assert "Activate" not in card_text, "Provider 面板不应再有 Activate 按钮"
+    assert "Active" not in card_text, "Provider 面板不应再有 Active 标签"
+
+    # 状态显示在面板内（online/offline）
+    assert card.locator(".env-status").count() >= 1, "Provider 面板应显示在线状态"
+    # 模型行：等待探测完成（在线显示模型标签 / 离线显示「暂无模型」）
+    page.wait_for_function(
+        "() => { const c = document.querySelector('.provider-card');"
+        " return c && (c.querySelector('.provider-model-tag') || c.querySelector('.no-model')); }",
+        timeout=15000,
+    )
+    card = page.locator(".provider-card").first
+    assert card.locator(".provider-model-tag, .no-model").count() >= 1, "模型行应显示模型标签或暂无模型"
+
+
+def test_sessions_provider_select_header_color(page):
+    """Sessions：输入栏有 Provider 下拉；header 颜色标记所选模型状态（默认红色）。"""
+    page.goto(f"{BASE_URL}/sessions", wait_until="domcontentloaded")
+    _visible(page, ".sessions-page")
+    page.locator(".new-session-btn").click()
+    _visible(page, ".chat-header", timeout=10000)
+
+    # 输入栏：Provider 下拉在模型下拉左侧
+    selects = page.locator(".input-right .ant-select")
+    assert selects.count() >= 2, f"输入栏应有 Provider+模型下拉: {selects.count()}"
+    provider_sel = selects.nth(0)
+    provider_sel.click()
+    page.wait_for_timeout(300)
+    assert page.locator(".ant-select-item-option").count() >= 1, "Provider 下拉应有候选项"
+    page.keyboard.press("Escape")
+
+    # header 颜色：初始未探测/离线为红色（chat-bad）；在线则绿色（chat-ok）
+    header = page.locator(".chat-header")
+    cls = header.get_attribute("class") or ""
+    assert "chat-bad" in cls or "chat-ok" in cls, f"header 应标记状态颜色: {cls}"
+
+
+def test_mock_env_tag_in_task_detail(page):
+    """use_mock_env 任务：Performance 详情 Perf 面板 framework 行旁显示 Mock 标识。"""
+    import requests as req
+
+    snap = helpers.create_and_run_task(
+        req,
+        BASE_URL,
+        {"engine_id": "vllm-0.23", "use_mock_env": True},
+        timeout=120,
+    )
+    task_id = snap["task_id"]
+    try:
+        page.goto(f"{BASE_URL}/performance", wait_until="domcontentloaded")
+        _visible(page, ".perf-detail")
+        tag = page.locator(".mock-env-tag")
+        tag.wait_for(state="visible", timeout=10000)
+        assert "Mock" in tag.inner_text(), f"应显示 Mock 标识: {tag.inner_text()}"
+    finally:
+        req.delete(f"{BASE_URL}/api/tasks/{task_id}", timeout=10)
+
+
+def test_perf_landing_intro_cards(page):
+    """Performance 默认页介绍卡片：并发测试 / 阈值搜索 / 实时可视化。"""
+    page.goto(f"{BASE_URL}/performance", wait_until="domcontentloaded")
+    _visible(page, ".perf-intro", timeout=15000)
+
+    titles = page.locator(".feature-card .ant-card-meta-title").all_inner_texts()
+    joined = " | ".join(titles)
+    assert "Concurrency Testing" in joined, f"缺并发测试卡片: {joined}"
+    assert "Threshold Search" in joined, f"缺阈值搜索卡片: {joined}"
+    assert "Realtime Performance Charts" in joined, f"缺实时图表卡片: {joined}"
+    assert "Multi-Framework" not in joined, f"旧文案应移除: {joined}"
+
+    # Threshold Search 描述已补全（逐步搜索机制）
+    thr = page.locator(".feature-card").filter(has_text="Threshold Search")
+    desc = thr.inner_text()
+    assert "逐步" in desc or "step" in desc.lower(), f"Threshold 描述应含逐步搜索机制: {desc}"
+
+
+def _open_settings_tab(page, text, wait_sel):
+    """切到 Settings 指定栏并等待内容区就绪。"""
+    page.goto(f"{BASE_URL}/settings", wait_until="domcontentloaded")
+    _visible(page, ".settings-page")
+    page.locator(".menu-item").filter(has_text=text).first.click()
+    _visible(page, wait_sel, timeout=15000)
+
+
+def test_settings_models_panel(page):
+    """Settings → Models：分类在顶部，面板化三分区（Header=模型名+操作；内容=描述/精度/链接；footer=下载命令）。"""
+    _open_settings_tab(page, "Models", ".cat-chip")
+    # 顶部分类：厂商组分类 chip 可点击
+    assert page.locator(".cat-bar .cat-chip").count() >= 2, "顶部分类应显示厂商分类 chip"
+    # 选择前端 modelCatalog 有数据的厂商 DeepSeek（DeepSeek-V3 含 homepage/精度/下载命令）
+    page.locator(".cat-chip").filter(has_text="DeepSeek").first.click()
+    page.wait_for_timeout(500)
+    card = page.locator(".model-panel-card").first
+    # Header 左侧模型名 + 右侧操作高亮链接
+    assert "DeepSeek-V3" in card.locator(".ant-card-head-title").inner_text(), "面板 Header 应为模型名称"
+    action = card.locator(".mp-action").first
+    assert action.is_visible(), "Header 右侧应显示操作高亮链接"
+    # 内容区：描述 + 精度 tags + 访问链接（三分区 body）
+    assert card.locator(".card-body").count() >= 1, "面板应含内容（body）分区"
+    assert card.locator(".mp-intro").inner_text().strip(), "面板应含模型描述"
+    assert card.locator(".mp-tags .ant-tag").count() >= 1, "应显示精度列表"
+    assert card.locator(".mp-link").count() >= 1, "应显示访问链接"
+    # footer 分区：下载命令（可复制）
+    assert card.locator(".card-footer").count() >= 1, "面板应含 footer 分区"
+    assert card.locator(".mp-cmd").count() >= 1, "footer 应显示下载命令"
+
+
+def test_settings_datasets_panel(page):
+    """Settings → Datasets：分类在顶部，面板化三分区（Header=名称+下载按钮；内容=描述/链接；footer=下载命令）。"""
+    _open_settings_tab(page, "Datasets", ".ds-panel-card")
+    # 顶部分类：All Categories + 各分类 chip
+    assert page.locator(".cat-bar .cat-chip").count() >= 2, "顶部分类应显示分类 chip"
+    card = page.locator(".ds-panel-card").first
+    assert card.locator(".ant-card-head-title").inner_text().strip(), "面板 Header 应为数据集名称"
+    assert card.locator(".ant-card-head .ant-btn").count() >= 1, "Header 右侧应显示下载按钮"
+    assert card.locator(".card-body").count() >= 1, "面板应含内容（body）分区"
+    assert card.locator(".ds-desc").inner_text().strip(), "应含数据集描述"
+    assert card.locator(".ds-link").count() >= 1, "应显示访问链接"
+    assert card.locator(".card-footer").count() >= 1, "面板应含 footer 分区"
+    assert card.locator(".ds-cmd").count() >= 1, "footer 应显示下载命令"
+
+
+def test_settings_skills_panel(page):
+    """Settings → Skills：内置技能清单面板（名称+id / 版本号 / 描述 / 特性 / 使用说明 / 提示词 / footer 文字按钮）。"""
+    _open_settings_tab(page, "Skills", ".skill-card")
+    card = page.locator(".skill-card").first
+    assert card.locator(".skill-name").inner_text().strip(), "Header 左侧应显示技能名称"
+    assert card.locator(".ant-tag").first.inner_text().strip(), "应显示技能 id tag"
+    assert "v" in card.locator(".skill-version").inner_text(), "Header 右侧应显示版本号"
+    assert card.locator(".skill-desc").inner_text().strip(), "应含功能描述"
+    assert card.locator(".skill-ul li").count() >= 1, "应含功能特性列表"
+    assert card.locator(".skill-ol li").count() >= 1, "应含使用说明列表"
+    assert card.locator(".skill-prompt").inner_text().strip(), "应含提示词"
+    # footer 文字按钮：仅 Download / Copy Prompt 两个
+    footer_btns = card.locator(".skill-footer button")
+    assert footer_btns.count() == 2, f"footer 应仅 Download/Copy Prompt 两个文字按钮: {footer_btns.count()}"
+    texts = footer_btns.all_inner_texts()
+    joined = " | ".join(texts)
+    assert "Download" in joined and ("Copy" in joined or "Prompt" in joined), \
+        f"footer 按钮应包含 Download 与 Copy Prompt: {joined}"
+
+
+def test_settings_benches_mock_switch(page):
+    """Settings → Bench Engines：每个引擎卡片有 Mock 开关（默认关闭）；切换后刷新环境状态标记 Mock/Real。"""
+    # 先通过 API 确保第一个引擎（Bench CLI）mock 关闭，避免其他测试残留影响
+    import requests as req
+    first_id = req.get(f"{BASE_URL}/api/benchs").json()["engines"][0]["id"]
+    req.post(f"{BASE_URL}/api/benchs/{first_id}/mock", json={"enabled": False}, timeout=10)
+
+    _open_settings_tab(page, "Bench Engines", ".bench-card")
+    cards = page.locator(".bench-card")
+    assert cards.count() >= 3, f"引擎卡片应 ≥3: {cards.count()}"
+    first = cards.first
+    sw = first.locator(".bench-mock .ant-switch")
+    assert sw.count() == 1, "每个引擎卡片应有 Mock 开关"
+    assert "ant-switch-checked" not in (sw.first.get_attribute("class") or ""), "Mock 开关默认应关闭"
+    try:
+        # 打开 Mock 开关 → 刷新出 Mock 状态
+        sw.first.click()
+        page.wait_for_timeout(800)
+        assert first.locator(".ant-tag", has_text="Mock").count() >= 1, "打开 Mock 后应显示 Mock 状态 tag"
+    finally:
+        # 恢复关闭，避免影响其他依赖真实环境的用例
+        req.post(f"{BASE_URL}/api/benchs/{first_id}/mock", json={"enabled": False}, timeout=10)
+        page.wait_for_timeout(400)

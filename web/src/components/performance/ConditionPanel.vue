@@ -56,16 +56,7 @@
         <span class="cond-hint">{{ t('requestCountsHint') }}</span>
       </div>
 
-      <div class="cond-row">
-        <span class="cond-label">{{ t('requestRate') }}</span>
-        <span class="cond-field">
-          <a-radio-group v-model:value="g.rateMode" button-style="solid">
-            <a-radio-button value="inf">Inf</a-radio-button>
-            <a-radio-button value="follow">Follow</a-radio-button>
-          </a-radio-group>
-          <span v-if="g.rateMode === 'follow'" class="cond-hint">{{ t('followHint') }}</span>
-        </span>
-      </div>
+      <!-- Request Rate 已移至 Step2 引擎参数（request-rate，默认 Inf），不再在 Conditions 配置 -->
 
       <template v-if="mode === 'threshold'">
         <div class="cond-row">

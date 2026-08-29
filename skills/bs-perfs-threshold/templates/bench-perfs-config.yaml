@@ -1,0 +1,113 @@
+# bs-perfs-threshold — 内置简单表单参数 schema
+#
+# 使用本技能时展示此表单，让用户填写后即可用 benchscope perf --mode threshold 快速压测。
+# 每个字段对应 benchscope perf 命令的一个 CLI 参数（见 type/name）。
+# 后端自研引擎 benchscope 无需本地 vLLM/SGLang 框架环境，仅需一个 OpenAI 兼容服务。
+
+form_title: benchscope perf — Threshold 阈值搜索压测
+fields:
+  - key: model
+    label: 被测模型
+    name: --model
+    type: string
+    required: true
+    placeholder: e.g. Qwen2.5-7B
+    help: 推理服务中注册的模型名
+  - key: base_url
+    label: 服务地址 Base URL
+    name: --base-url
+    type: string
+    default: http://127.0.0.1:8000
+    placeholder: http://127.0.0.1:8000
+    help: 被测推理服务的地址
+  - key: api_key
+    label: API Key
+    name: --api-key
+    type: string
+    default: ""
+    help: 需要鉴权时填写，可为空
+  - key: backend
+    label: 接口协议
+    name: --backend
+    type: select
+    default: openai-chat
+    options: [openai-chat, openai]
+    help: openai-chat 用 /v1/chat/completions；openai 用 /v1/completions
+  - key: endpoint
+    label: 接口路径
+    name: --endpoint
+    type: string
+    default: /v1/chat/completions
+    help: 请求的接口路径
+  - key: input_len
+    label: 输入长度
+    name: --input-len
+    type: int
+    default: 1024
+    help: 每个请求的输入 token 数
+  - key: output_len
+    label: 输出长度
+    name: --output-len
+    type: int
+    default: 1024
+    help: 每个请求的输出 token 数
+  - key: request_rate
+    label: 请求速率
+    name: --request-rate
+    type: string
+    default: inf
+    help: req/s；inf 表示不限速
+  - key: num_warmups
+    label: 预热请求数
+    name: --num-warmups
+    type: int
+    default: 0
+    help: 正式计时前的预热请求数（不计入指标）
+  - key: timeout
+    label: 单请求超时（秒）
+    name: --timeout
+    type: float
+    default: 600
+    help: 单个请求最大等待秒数
+  - key: temperature
+    label: 采样温度
+    name: --temperature
+    type: float
+    default: 0.0
+    help: 压测建议固定为 0
+  - key: seed
+    label: 随机种子
+    name: --seed
+    type: int
+    default: 0
+    help: 0 表示不固定
+  - key: ttft_threshold_ms
+    label: TTFT 阈值（ms）
+    name: --ttft-threshold-ms
+    type: float
+    default: 0
+    help: 首 token 延迟上限，0 表示不判定
+  - key: tpot_threshold_ms
+    label: TPOT 阈值（ms）
+    name: --tpot-threshold-ms
+    type: float
+    default: 100
+    help: 每 token 延迟上限
+  - key: output_threshold
+    label: 吞吐阈值（tok/s）
+    name: --output-threshold
+    type: float
+    default: 0
+    help: 输出吞吐下限，低于该值判为不满足；0 表示不判定
+  - key: max_concurrency_search
+    label: 搜索上限
+    name: --max-concurrency-search
+    type: int
+    default: 4096
+    help: 达到上限仍满足阈值则取上限为最佳
+  - key: max_requests
+    label: 最大请求数
+    name: --max-requests
+    type: int
+    default: 4096
+    help: 探测中并发数超过该上限则强制结束（Finish）

@@ -1,139 +1,113 @@
-# 性能测试技能 — vllm-bench-testing / sglang-bench-testing
+# benchscope perf 压测技能 — bs-perfs-concurrency / bs-perfs-threshold
 
-> **版本**：1.1.0（两者同步）
-> **技能目录**：[`skills/vllm-bench-testing/`](../../skills/vllm-bench-testing/) ·
-> [`skills/sglang-bench-testing/`](../../skills/sglang-bench-testing/)
-> **最后更新**：2026-08-29
+> **版本**：1.0.0（两者同步）
+> **技能目录**：[`skills/bs-perfs-concurrency/`](../../skills/bs-perfs-concurrency/) ·
+> [`skills/bs-perfs-threshold/`](../../skills/bs-perfs-threshold/)
+> **最后更新**：2026-08-30
 > **关联**：[Skills 体系总入口](./Readme.md) · [BenchEngineAuthoring.md](./BenchEngineAuthoring.md)（新增引擎版本走该技能）
 
 ---
 
 ## 1. 用途与触发场景
 
-对 **vLLM / SGLang 推理服务**执行性能测试：产出吞吐与延迟数据（TTFT / TPOT / ITL / output & total tok/s），
-并留存日志与表格用于对比与验收。
+用 **benchscope** 自研引擎的 **`benchscope perf`** 命令，对一个 OpenAI 兼容推理服务执行性能压测，
+并提供**内置简单表单**让用户快速填写参数即可开跑；运行后保存任务与日志数据并**打包成 zip**，
+可在网页 **Datas/perfs** 一键导入查看历史记录。
 
-**触发场景**：需要压测数据、需要可复现的压测配置、需要留档（日志 + xlsx 汇总）用于对比或验收。
+两个技能按**压测模式**区分：
 
-> **需要新增引擎版本时**（如「添加 vllm 0.24」）→ 改用
-> [bench-engine-authoring](./BenchEngineAuthoring.md) 技能。
+| 技能 | 模式 | 目的 |
+| --- | --- | --- |
+| [bs-perfs-concurrency](../skills/../skills/bs-perfs-concurrency/) | `benchscope perf`（并发） | 在指定并发（或多个并发）下测吞吐与延迟 |
+| [bs-perfs-threshold](../skills/../skills/bs-perfs-threshold/) | `benchscope perf --mode threshold`（阈值） | 自动搜索满足 TTFT / TPOT / 吞吐阈值下的**最大并发**（best_concurrency） |
+
+**触发场景**：想用 benchscope 快速压测并发性能、想找满足延迟/吞吐阈值的最大并发、
+需要产出**可导入 Datas/perfs 的压缩包**归档结果。
 
 **前置条件**：
 
 - `pip install benchscope`（≥ 1.0.7，自研引擎依赖 aiohttp）；
-- 原生引擎需要本地框架 CLI（`vllm --version` / `python -m sglang.bench_serving`），
-  **或使用内置 `benchscope` 引擎（无需任何本地框架）**；
-- 可达的 OpenAI 兼容端点（`/v1/models`、`/v1/chat/completions`）。
+- 一个**可访问的 OpenAI 兼容服务**（`/v1/chat/completions` 或 `/v1/completions`），
+  自研引擎**无需本地 vLLM / SGLang 框架环境**；
+- （可选）`BENCHSCOPE_FAKE_BENCH=1` 走 mock 仿真，无真实服务也能演示。
 
 ---
 
-## 2. 引擎选择与环境校验（benchscope ≥ 1.0.7）
+## 2. 内置表单参数配置
 
-引擎**按版本管理**，且在配置参数前先做环境校验：
+使用技能时会展示一个**简单表单**（字段见各技能 `templates/bench-perfs-config.yaml`），
+让用户按需填写即可快速测试。核心字段：
 
-| 引擎 | kind | 命令 | 环境要求 |
+| 表单字段 | CLI 参数 | 默认 | 说明 |
 | --- | --- | --- | --- |
-| `benchscope` | builtin（进程内 aiohttp + SSE） | 无 | **无** —— 可对任意本地/远端 OpenAI 兼容服务压测 |
-| `vllm-0.23` | vllm（子进程 CLI） | `vllm bench serve` | `torch>=2.0` + `vllm>=0.23,<0.24` |
-| `sglang-0.5.10` | sglang（子进程 CLI） | `python -m sglang.bench_serving` | `torch` + `sglang>=0.5.10,<0.6` |
-| 自定义 `<framework>-<ver>` | 对应 kind | 对应 CLI | `torch` + 该版本框架包 |
-
-**强制规则**：
-
-- 原生引擎**必须**通过环境校验（torch + 框架版本 spec + CLI 可用性），否则**「下一步」被阻断**并展示安装提示；
-- 内置 `benchscope` 引擎**无框架依赖**，始终可用；
-- 引擎定义为 **yaml 驱动**（`configs/benchs.yaml`），可在 Settings → Bench 引擎新增版本。
-
-**操作**：Performance → Create → Step 1 → 选择**测试引擎** → 等待环境标签（`Ready` / `Not Satisfied`）→ 进入参数配置。
-
----
-
-## 3. 配置
-
-### 3.1 服务（Settings → 服务设置）
-
-| 字段 | 取值 |
-| --- | --- |
-| Base URL | `http://<host>:<port>`（如 `http://192.168.1.67:8000`） |
-| Endpoint | `/v1/chat/completions` |
-| API Key | 服务端要求鉴权时填写，否则留空 |
-| GPU | 通过 `nvidia-smi` 自动探测，否则手工填名称/数量 |
-| logs_dir / datasets_dir | `./logs`、`./datasets` |
-| TPOT 阈值（ms） | 用于高亮 best/最接近的行，如 `100` |
-| bench 命令模板 | vLLM：`vllm bench serve`；SGLang：`python -m sglang.bench_serving` |
-
-### 3.2 框架参数（测试配置 → 框架参数）
-
-表单字段映射到各自 CLI flag：
-
-- **vLLM**：`--backend openai-chat` · `--endpoint /v1/chat/completions` · `--host` · `--port` ·
-  `--tokenizer <model>` · `--trust-remote-code` · `--ignore-eos` · `--burstiness 1.0` · `--seed 0` ·
-  `--num-warmups 0` · `--metric-percentiles 99`；采样 `--temperature 0.0` · `--top-p 1.0` ·
-  `--top-k -1` · `--min-p 0.0`；高级 `--sharegpt-output-len 128` · `--no-stream` ·
-  `--disable-tqdm` · `--save-result` · `--profile`
-- **SGLang**：对应 `sglang.bench_serving` 的等价参数（在自由编辑区补充其余 flag）
-
-任意额外 flag 均可通过自由编辑区追加（如 `--frequency-penalty 0.0`、`--repetition-penalty 1.0`）。
-
-### 3.3 数据集
-
-- **random** —— 选择输入/输出长度对（默认 `3K/1K`=`3072/1024`、`1K/1K`=`1024/1024`、`256/256`），可自定义长度对；
-- **sharegpt** —— 从 ModelScope 自动下载 `gliang1001/ShareGPT_V3_unfiltered_cleaned_split`
-  （JSON 数组流式转换为 jsonl，缓存于 `datasets/sharegpt/`）；
-- **custom** —— 上传 jsonl 或指定服务本地 jsonl 路径（行为同 ShareGPT）。
-
-### 3.4 并发与速率
-
-- 并发列表可编辑，默认 `1,4,8,16,32,40,64,128`；
-- `--max-concurrency` = `--num-prompts` = 每个并发值；
-- 请求速率：`inf`（不限，推荐）或指定 `req/s`。
+| 被测模型 | `--model` | 必填 | 服务中的模型名 |
+| 服务地址 | `--base-url` | `http://127.0.0.1:8000` | 推理服务 Base URL |
+| API Key | `--api-key` | 空 | 需要鉴权时填写 |
+| 并发数 | `--concurrency` | `1` | 并发模式专用 |
+| 输入/输出长度 | `--input-len` / `--output-len` | `1024` / `1024` | 每请求 token 数 |
+| 请求速率 | `--request-rate` | `inf` | `req/s`；`inf` 不限速 |
+| 预热请求 | `--num-warmups` | `0` | 不计入指标 |
+| 单请求超时 | `--timeout` | `600` | 秒 |
+| 采样温度 / 种子 | `--temperature` / `--seed` | `0.0` / `0` | 压测建议固定 |
+| TTFT / TPOT / 吞吐阈值 | `--ttft-threshold-ms` / `--tpot-threshold-ms` / `--output-threshold` | `0`/`100`/`0` | 阈值模式专用 |
+| 搜索上限 / 最大请求数 | `--max-concurrency-search` / `--max-requests` | `4096` / `4096` | 阈值模式专用 |
 
 ---
 
-## 4. 测试流程
+## 3. 执行 benchscope perf
 
-1. 启动：`benchscope` → 打开 `http://127.0.0.1:8080`；
-2. 确认顶部导航**服务**与**环境**在线，模型列表从 `/v1/models` 加载；
-3. **Settings** 配置 Base URL / GPU / 模板；用**测试连接**验证；
-4. 测试环境面板：从 `/v1/models` 选择**模型**（离线时可手工输入）；
-5. **测试配置**：选择数据集、并发列表、请求速率、GPU 数量、TPOT 阈值、框架参数；
-6. **命令预览**检查完整命令 → **测试进度 → 开始测试**；
-7. 观察**测试进度**（进度环、当前 case@并发、实时日志尾部），可**取消测试**；
-8. **测试结果**按并发流式产出每行结果（双语表格）与六条曲线
-   （Output 吞吐、Total 吞吐、TTFT mean、TPOT mean、TTFT P99、TPOT P99 vs 并发）；
-9. 无框架 CLI 的离线/演示运行：`BENCHSCOPE_FAKE_BENCH=1 python -m benchscope`。
-
-**参考命令形态（vLLM）**：
+### 3.1 并发模式（bs-perfs-concurrency）
 
 ```bash
-vllm bench serve \
-  --max-concurrency 8 --num-prompts 8 \
-  --random-input-len 1024 --random-output-len 1024 \
-  --model <model> --tokenizer <model> \
-  --host <host> --port 8000 --trust-remote-code \
-  --backend openai-chat --dataset-name random \
-  --endpoint /v1/chat/completions --ignore-eos \
-  --request-rate inf
-# sharegpt/custom:  --dataset-name sharegpt --dataset-path <jsonl> --sharegpt-output-len 128
+benchscope perf --model "<MODEL>" --base-url "<BASE_URL>" \
+  --concurrency <CONC> --num-prompts <N> \
+  --input-len 1024 --output-len 1024 --request-rate inf \
+  --num-warmups 0 --timeout 600 --temperature 0.0 --seed 0
+```
+
+### 3.2 阈值模式（bs-perfs-threshold）
+
+```bash
+benchscope perf --model "<MODEL>" --base-url "<BASE_URL>" \
+  --mode threshold --input-len 1024 --output-len 1024 \
+  --ttft-threshold-ms 0 --tpot-threshold-ms 100 --output-threshold 0 \
+  --max-concurrency-search 4096 --max-requests 4096
+```
+
+阈值模式自动从 **1 并发**起以 **2 的次方递增**（1,2,4,8,…），找到不满足阈值的点后在区间内**二分**，
+收敛出**满足阈值的最大并发（best_concurrency）**，与网页 Performance 阈值模式逻辑一致。
+
+---
+
+## 4. 保存任务/日志，生成可导入 Datas/perfs 的压缩包
+
+为让结果能在网页 **Datas/perfs** 导入，须把本次运行打包为一个**扁平 zip**（不含目录）：
+
+```
+<run_id>.zip
+├── run.json                       # 必须：{"task_id":"<run_id>","kind":"perf","mode":...,
+│                                  #        "model":...,"status":"done","best_concurrency":N,"summary":{...}}
+├── perf_<run_id>_<时间戳>.log     # 终端输出日志（前缀必须是 perf_）
+├── metrics.json                   # 可选：结构化指标
+└── 其他文件                        # 可选
+```
+
+- `run.json` 必须含 `task_id`（= run_id）与 `kind: "perf"`；日志文件名前缀必须是 `perf_`。
+- `benchscope perf`（`_perf`/`_perf_threshold`）已自动落盘 `run.json` 与日志占位
+  （写入 `perfs_dir` / `logs_dir`），技能在此基础上补齐终端日志后 `zip` 打包即可。
+
+```bash
+cd <打包目录> && zip <run_id>.zip run.json perf_<run_id>_*.log metrics.json
 ```
 
 ---
 
-## 5. 日志与产物
+## 5. 在网页 Datas/perfs 导入
 
-每次运行生成 `logs/<MMDD-HHMMSS>/`：
-
-| 产物 | 说明 |
-| --- | --- |
-| `<model>_<case>_X<gpu>.log` | 原始 bench 日志（每个 case，各并发追加） |
-| `<model>_X<gpu>.log` | 均值汇总 CSV：`并发数,Output Token,Peak Output Token,Total Token,TTFT,TPOT,ITL` |
-| `<model>_X<gpu>_p99.log` | P99 汇总 CSV（同列，TTFT/TPOT/ITL 为 P99） |
-| `benchmark-*.xlsx` | 两个 sheet：**均值 Mean** / **P99**；列：`GPU, 模型, 精度, 推理框架, 输入长度, 输出长度, 并发数, Output, Peak Output, Total, TTFT, ITL, TPOT, 单用户`（`单用户 = 1000 / TPOT`） |
-
-**解析指标**（mean + P99）：`output` · `peakoutput` · `total` · `ttft` · `tpot` · `itl`，另含 `req_per_s`；
-best 并发高亮 = TPOT 最接近且不超过阈值的行。
-
-**日志管理**页（或 Logs 视图）列出各次运行，可预览/下载原始日志，**均值分析** / **P99 分析** 标签展示表格 + 六条曲线。
+1. 启动 benchscope（`benchscope serve` 或 `python -m benchscope`），打开网页；
+2. 进入 **Datas** → **Perfs** → **导入备份**，选择 `<run_id>.zip`；
+3. 导入成功后在 Perfs 记录中可见该任务，可查看日志 / 指标 / 重新导出。
+   - 若提示「已存在」，说明 `run_id` 已导入过（换 `run_id` 或先删除旧记录）。
 
 ---
 
@@ -141,11 +115,11 @@ best 并发高亮 = TPOT 最接近且不超过阈值的行。
 
 | 现象 | 原因与处理 |
 | --- | --- |
-| 「未找到命令执行环境：vllm」 | 框架 CLI 缺失；安装它或修正 bench 命令模板（绝对路径 / conda 环境） |
-| 推理服务离线 | Base URL/端点不可达；用**测试连接**检查 `/v1/models` |
-| 数据集下载失败 | ModelScope 不可达；预置 `datasets/sharegpt/` 或改用 custom 数据集 |
-| 无模型可选 | 服务离线；勾选**离线强制开始**并手工填写模型名 |
+| `--model` 必填 | 表单模型名为空，提示用户补全 |
+| 服务不可达 | 检查 `--base-url` / `/v1/models`，先 `curl` 验证 |
 | 指标全为 0 | 输出文本不匹配 `parser.py` 正则（FAKE 模式检查 `mocks/` 输出格式） |
+| zip 导入失败（缺 run.json） | zip 内缺扁平的 `run.json` 或 `task_id` 为空 |
+| 最佳并发=1（阈值） | 1 并发即不满足阈值，检查服务性能或阈值是否过严 |
 
 ---
 
@@ -153,5 +127,4 @@ best 并发高亮 = TPOT 最接近且不超过阈值的行。
 
 | 版本 | 日期 | 变更 |
 | --- | --- | --- |
-| 1.1.0 | 2026-08-29 | 补 `version` frontmatter；新增「引擎选择与环境校验」章节（环境要求表 + 阻断规则）；新增 README.md 与 package.sh；章节重编号 |
-| 1.0.0 | — | 初版：vLLM / SGLang 性能测试流程与参数说明 |
+| 1.0.0 | 2026-08-30 | 初版：benchscope perf 并发/阈值压测技能（内置表单 + 打包导入 Datas/perfs） |

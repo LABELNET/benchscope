@@ -26,6 +26,7 @@ class ChatRequest(BaseModel):
     model: str = ""
     quality: str = ""
     enable_thinking: bool = True
+    provider_id: str = ""
 
 
 @router.get("")
@@ -79,7 +80,7 @@ def chat(session_id: str, req: ChatRequest):
         raise HTTPException(status_code=404, detail="Session not found")
 
     def event_stream():
-        for chunk in state.sessions.stream_chat(session_id, req.message, model=req.model, quality=req.quality, enable_thinking=req.enable_thinking):
+        for chunk in state.sessions.stream_chat(session_id, req.message, model=req.model, quality=req.quality, enable_thinking=req.enable_thinking, provider_id=req.provider_id):
             yield f"data: {chunk}\n\n"
 
     return StreamingResponse(event_stream(), media_type="text/event-stream")

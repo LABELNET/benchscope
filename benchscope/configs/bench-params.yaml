@@ -6,353 +6,514 @@
 # 结构：
 #   <params_key>:                 # vllm / sglang / benchscope（引擎定义中的 params_key，缺省取 kind）
 #     <yaml_key>:                 # 与参数 yaml 中的 key 一致（连字符形式）
-#       label: 参数名
-#       help: 参数说明
+#       label: 参数名（英文，默认语言）
+#       label_zh: 参数名（中文，随界面语言切换时使用）
+#       help: 参数说明（英文）
+#       help_zh: 参数说明（中文）
 #       type: str | int | float | bool | select
 #       options:                  # 可选（下拉）；每项含选项级描述
 #         - value: 取值
-#           label: 展示名
-#           description: 选中该值后展示的描述
+#           label: 展示名（英文）
+#           label_zh: 展示名（中文）
+#           description: 选中该值后展示的描述（英文）
+#           description_zh: 描述（中文）
 #
 # 说明：无 options 的参数按 type 渲染为输入框 / 开关，仅展示 help 描述。
+#       前端根据界面语言（默认英文，切换中文后显示中文）选择 _zh 或英文字段：
+#       英文用 label/help/description，中文用 label_zh/help_zh/description_zh（缺省回退英文）。
 
 # ---------------- Bench CLI（自研引擎，params_key = benchscope） ----------------
 # 参数清单与 benchscope-default.yaml 一一对应（default 提供取值，本节提供说明与可选值）。
 benchscope:
   backend:
-    label: 后端 Backend
-    help: Bench CLI 请求被测服务使用的接口协议
+    label: Backend
+    label_zh: 后端
+    help: Protocol used by Bench CLI to request the inference service
+    help_zh: Bench CLI 请求被测服务使用的接口协议
     type: select
     options:
       - value: openai-chat
         label: openai-chat
-        description: 请求 /v1/chat/completions 接口，以 messages 形式发送，适用于对话（instruct / chat）模型
+        description: Calls /v1/chat/completions with the messages format; for chat (instruct/chat) models
+        description_zh: 请求 /v1/chat/completions 接口，以 messages 形式发送，适用于对话（instruct / chat）模型
       - value: openai
         label: openai
-        description: 请求 /v1/completions 接口，以 prompt 形式发送，适用于基座（base / completion）模型
+        description: Calls /v1/completions with the prompt format; for base (completion) models
+        description_zh: 请求 /v1/completions 接口，以 prompt 形式发送，适用于基座（base / completion）模型
   endpoint:
-    label: 接口 Endpoint
-    help: 被测服务的接口路径
+    label: Endpoint
+    label_zh: 接口
+    help: API path of the target service
+    help_zh: 被测服务的接口路径
     type: select
     options:
       - value: /v1/chat/completions
         label: /v1/chat/completions
-        description: 对话补全接口，配合 backend=openai-chat 使用
+        description: Chat completion endpoint; use with backend=openai-chat
+        description_zh: 对话补全接口，配合 backend=openai-chat 使用
       - value: /v1/completions
         label: /v1/completions
-        description: 文本补全接口，配合 backend=openai 使用
+        description: Text completion endpoint; use with backend=openai
+        description_zh: 文本补全接口，配合 backend=openai 使用
   request-rate:
-    label: 请求速率 Request Rate
-    help: 每秒发起的请求数；inf 表示全速压测
+    label: Request Rate
+    label_zh: 请求速率
+    help: Requests per second; inf means full speed
+    help_zh: 每秒发起的请求数；inf 表示全速压测
     type: select
     options:
       - value: inf
-        label: inf（全速）
-        description: 不限速，worker 完成一个请求后立即发起下一个，用于测量服务最大吞吐能力
+        label: inf (full speed)
+        label_zh: inf（全速）
+        description: No rate limit; the worker starts the next request as soon as one finishes, to measure peak throughput
+        description_zh: 不限速，worker 完成一个请求后立即发起下一个，用于测量服务最大吞吐能力
       - value: "10"
         label: 10 req/s
-        description: 每秒 10 个请求，用于固定负载下测量延迟（排队效应较小）
+        description: 10 requests per second under fixed load; small queuing effect
+        description_zh: 每秒 10 个请求，用于固定负载下测量延迟（排队效应较小）
       - value: "50"
         label: 50 req/s
-        description: 每秒 50 个请求，中等压力，观察延迟随负载的变化
+        description: 50 requests per second; moderate load to observe latency growth
+        description_zh: 每秒 50 个请求，中等压力，观察延迟随负载的变化
       - value: "100"
         label: 100 req/s
-        description: 每秒 100 个请求，较高压力，用于定位服务的吞吐拐点
+        description: 100 requests per second; high load to locate the throughput tipping point
+        description_zh: 每秒 100 个请求，较高压力，用于定位服务的吞吐拐点
   num-prompts:
-    label: 请求总数 Num Prompts
-    help: 该并发下发送的请求总数；0 表示跟随并发数（每个 worker 一个请求）
+    label: Num Prompts
+    label_zh: 请求总数
+    help: Total requests to send at this concurrency; 0 follows the concurrency, one request per worker
+    help_zh: 该并发下发送的请求总数；0 表示跟随并发数（每个 worker 一个请求）
     type: int
     options:
       - value: "0"
-        label: 0（跟随并发数）
-        description: 请求数等于并发数，压测时长最短，适合快速摸底
+        label: 0 (follow concurrency)
+        label_zh: 0（跟随并发数）
+        description: Requests equal the concurrency; shortest run, good for a quick check
+        description_zh: 请求数等于并发数，压测时长最短，适合快速摸底
       - value: "100"
         label: 100
-        description: 固定发送 100 个请求，样本量适中，结果较稳定
+        description: Fixed 100 requests; moderate sample size and stable results
+        description_zh: 固定发送 100 个请求，样本量适中，结果较稳定
       - value: "1000"
         label: 1000
-        description: 大样本量，统计指标（尤其 P99）更可信，但耗时较长
+        description: Large sample size; metrics (especially P99) are more reliable, but it takes longer
+        description_zh: 大样本量，统计指标（尤其 P99）更可信，但耗时较长
   num-warmups:
-    label: 预热请求数 Warmups
-    help: 正式计时前先发送的预热请求数（不计入指标），用于消除冷启动影响
+    label: Warmups
+    label_zh: 预热请求数
+    help: Warm-up requests sent before timing starts; excluded from metrics, to remove cold-start effects
+    help_zh: 正式计时前先发送的预热请求数（不计入指标），用于消除冷启动影响
     type: int
     options:
       - value: "0"
-        label: 0（不预热）
-        description: 不做预热，首请求包含冷启动开销，TTFT 可能偏高
+        label: 0 (no warm-up)
+        label_zh: 0（不预热）
+        description: No warm-up; the first request includes cold start, so TTFT may be high
+        description_zh: 不做预热，首请求包含冷启动开销，TTFT 可能偏高
       - value: "3"
         label: 3
-        description: 少量预热，消除首次编译 / 权重加载等一次性开销
+        description: Light warm-up; removes one-time compile / weight-loading costs
+        description_zh: 少量预热，消除首次编译 / 权重加载等一次性开销
       - value: "10"
         label: 10
-        description: 充分预热，适合需要稳定可比数据的场景
+        description: Full warm-up; for scenarios needing stable comparable data
+        description_zh: 充分预热，适合需要稳定可比数据的场景
   chars-per-token:
-    label: 字符 / Token 比
-    help: 构造指定输入长度时的近似换算比（字符数 ÷ 该值 ≈ token 数）
+    label: Chars/Token
+    label_zh: 字符 / Token 比
+    help: Approximate chars per token used to build input lengths; chars / this value ≈ tokens
+    help_zh: 构造指定输入长度时的近似换算比（字符数 ÷ 该值 ≈ token 数）
     type: select
     options:
       - value: "4"
-        label: 4（英文默认）
-        description: 英文文本经验值，约 4 个字符对应 1 个 token
+        label: 4 (English default)
+        label_zh: 4（英文默认）
+        description: Rule of thumb for English text; about 4 chars per token
+        description_zh: 英文文本经验值，约 4 个字符对应 1 个 token
       - value: "2"
-        label: 2（中文默认）
-        description: 中文文本经验值，约 1.5~2 个字符对应 1 个 token
+        label: 2 (Chinese default)
+        label_zh: 2（中文默认）
+        description: Rule of thumb for Chinese text; about 1.5-2 chars per token
+        description_zh: 中文文本经验值，约 1.5~2 个字符对应 1 个 token
   timeout:
-    label: 单请求超时（秒）
-    help: 单个请求的最长等待时间，超时计为失败
+    label: Timeout (s)
+    label_zh: 单请求超时（秒）
+    help: Max wait time per request; a timeout counts as a failure
+    help_zh: 单个请求的最长等待时间，超时计为失败
     type: select
     options:
       - value: "600"
-        label: 600s（默认）
-        description: 长文本生成场景建议保留较大超时，避免长请求被误判为失败
+        label: 600s (default)
+        label_zh: 600s（默认）
+        description: Keep a large timeout for long generations to avoid false failures
+        description_zh: 长文本生成场景建议保留较大超时，避免长请求被误判为失败
       - value: "60"
         label: 60s
-        description: 短输出场景，快速失败以便及时定位问题
+        description: For short outputs; fails fast for quick diagnosis
+        description_zh: 短输出场景，快速失败以便及时定位问题
   temperature:
-    label: 采样温度 Temperature
-    help: 采样温度；压测时建议固定为 0 以保证结果可复现
+    label: Temperature
+    label_zh: 采样温度
+    help: Sampling temperature; fix it to 0 for reproducible benchmarks
+    help_zh: 采样温度；压测时建议固定为 0 以保证结果可复现
     type: float
   seed:
-    label: 随机种子 Seed
-    help: 固定随机种子以复现 prompt 构造与打散顺序；0 表示不固定
-    type: int
+    label: Seed
+    label_zh: 随机种子
+    help: Fixed seed to reproduce prompt construction and shuffle order; 0 means random
+    help_zh: 固定随机种子以复现 prompt 构造与打散顺序；0 表示不固定
 
 # ---------------- vLLM 原生 bench ----------------
 vllm:
   backend:
-    label: 后端 Backend
-    help: vLLM bench 请求推理服务使用的后端协议
+    label: Backend
+    label_zh: 后端
+    help: Backend protocol used by vLLM bench
+    help_zh: vLLM bench 请求推理服务使用的后端协议
     type: select
     options:
       - value: openai-chat
         label: openai-chat
-        description: 使用 /v1/chat/completions 接口（messages 形式），适用于 instruct / chat 模型
+        description: Uses /v1/chat/completions with the messages format; for instruct/chat models
+        description_zh: 使用 /v1/chat/completions 接口（messages 形式），适用于 instruct / chat 模型
       - value: openai
         label: openai
-        description: 使用 /v1/completions 接口（prompt 形式），适用于 base 模型
+        description: Uses /v1/completions with the prompt format; for base models
+        description_zh: 使用 /v1/completions 接口（prompt 形式），适用于 base 模型
   endpoint:
-    label: 接口 Endpoint
-    help: 请求的具体接口路径
+    label: Endpoint
+    label_zh: 接口
+    help: Specific API path for requests
+    help_zh: 请求的具体接口路径
     type: select
     options:
       - value: /v1/chat/completions
         label: /v1/chat/completions
-        description: 对话补全接口
+        description: Chat completion endpoint
+        description_zh: 对话补全接口
       - value: /v1/completions
         label: /v1/completions
-        description: 文本补全接口
+        description: Text completion endpoint
+        description_zh: 文本补全接口
   trust-remote-code:
     label: trust-remote-code
-    help: 允许加载 HuggingFace 仓库中的远程代码（部分模型的 tokenizer 需要）
+    label_zh: 信任远程代码
+    help: Allow loading remote code from HuggingFace repos; needed by some tokenizers
+    help_zh: 允许加载 HuggingFace 仓库中的远程代码（部分模型的 tokenizer 需要）
     type: bool
     options:
       - value: "true"
-        label: 开启
-        description: 允许执行远程代码；使用自定义 tokenizer 的模型需开启，注意仅信任来源可信的模型
+        label: Enable
+        label_zh: 开启
+        description: Allow remote code; enable for custom-tokenizer models; only trust models from reputable sources
+        description_zh: 允许执行远程代码；使用自定义 tokenizer 的模型需开启，注意仅信任来源可信的模型
       - value: "false"
-        label: 关闭
-        description: 不加载远程代码，更安全；标准 tokenizer 模型推荐关闭
+        label: Disable
+        label_zh: 关闭
+        description: Do not load remote code; safer; recommended for standard-tokenizer models
+        description_zh: 不加载远程代码，更安全；标准 tokenizer 模型推荐关闭
   ignore-eos:
-    label: 忽略 EOS ignore-eos
-    help: 忽略结束符，强制生成到最大长度
+    label: ignore-eos
+    label_zh: 忽略 EOS
+    help: Ignore the EOS token and generate to the maximum length
+    help_zh: 忽略结束符，强制生成到最大长度
     type: bool
     options:
       - value: "true"
-        label: 开启（忽略 EOS）
-        description: 忽略 EOS，每个请求都生成到 max tokens，输出长度一致，吞吐对比更公平（压测推荐）
+        label: Enable (ignore EOS)
+        label_zh: 开启（忽略 EOS）
+        description: Ignore EOS; all requests generate to max tokens with equal lengths, so throughput comparison is fairer (recommended)
+        description_zh: 忽略 EOS，每个请求都生成到 max tokens，输出长度一致，吞吐对比更公平（压测推荐）
       - value: "false"
-        label: 关闭（遵守 EOS）
-        description: 模型可提前结束生成，更贴近真实业务，但输出长度不一致会干扰吞吐对比
+        label: Disable (respect EOS)
+        label_zh: 关闭（遵守 EOS）
+        description: The model may stop early; closer to real usage, but unequal lengths distort throughput comparison
+        description_zh: 模型可提前结束生成，更贴近真实业务，但输出长度不一致会干扰吞吐对比
   burstiness:
-    label: 突发因子 Burstiness
-    help: 请求到达的突发程度，1.0 表示泊松到达
+    label: Burstiness
+    label_zh: 突发因子
+    help: Burstiness of request arrivals; 1.0 means Poisson arrival
+    help_zh: 请求到达的突发程度，1.0 表示泊松到达
     type: select
     options:
       - value: "1"
-        label: "1.0（泊松到达）"
-        description: 请求按泊松过程到达，最贴近真实流量分布（推荐）
+        label: 1.0 (Poisson)
+        label_zh: 1.0（泊松到达）
+        description: Requests arrive as a Poisson process; closest to real traffic (recommended)
+        description_zh: 请求按泊松过程到达，最贴近真实流量分布（推荐）
       - value: "0.5"
-        label: "0.5（较均匀）"
-        description: 请求间隔更均匀，抖动小，结果方差更低
+        label: 0.5 (more even)
+        label_zh: 0.5（较均匀）
+        description: More even request intervals; less jitter and lower variance
+        description_zh: 请求间隔更均匀，抖动小，结果方差更低
       - value: "2"
-        label: "2.0（突发）"
-        description: 请求成批突发到达，用于测试服务在突发流量下的表现
+        label: 2.0 (bursty)
+        label_zh: 2.0（突发）
+        description: Requests arrive in bursts; tests behavior under bursty traffic
+        description_zh: 请求成批突发到达，用于测试服务在突发流量下的表现
   seed:
-    label: 随机种子 Seed
-    help: 固定随机种子以保证结果可复现
+    label: Seed
+    label_zh: 随机种子
+    help: Fixed seed for reproducible results
+    help_zh: 固定随机种子以保证结果可复现
     type: int
   num-warmups:
-    label: 预热请求数 Warmups
-    help: 正式计时前的预热请求数（不计入指标）
+    label: Warmups
+    label_zh: 预热请求数
+    help: Warm-up requests before timing starts; excluded from metrics
+    help_zh: 正式计时前的预热请求数（不计入指标）
     type: int
     options:
       - value: "0"
-        label: 0（不预热）
-        description: 不做预热，首请求含冷启动开销，TTFT 可能偏高
+        label: 0 (no warm-up)
+        label_zh: 0（不预热）
+        description: No warm-up; the first request includes cold start, so TTFT may be high
+        description_zh: 不做预热，首请求含冷启动开销，TTFT 可能偏高
       - value: "3"
         label: 3
-        description: 少量预热，消除一次性开销
+        description: Light warm-up; removes one-time costs
+        description_zh: 少量预热，消除一次性开销
       - value: "10"
         label: 10
-        description: 充分预热，适合需要稳定可比数据的场景
+        description: Full warm-up; for scenarios needing stable comparable data
+        description_zh: 充分预热，适合需要稳定可比数据的场景
   metric-percentiles:
-    label: 百分位 Percentiles
-    help: 需要统计的百分位（逗号分隔）
+    label: Percentiles
+    label_zh: 百分位
+    help: Percentiles to report, comma-separated
+    help_zh: 需要统计的百分位（逗号分隔）
     type: select
     options:
       - value: "99"
-        label: "99"
-        description: 仅统计 P99，输出更精简
+        label: 99
+        description: Report P99 only; more concise output
+        description_zh: 仅统计 P99，输出更精简
       - value: "50,90,99"
-        label: "50,90,99"
-        description: 统计 P50 / P90 / P99，便于观察长尾分布
+        label: 50,90,99
+        description: Report P50/P90/P99 to observe the long-tail distribution
+        description_zh: 统计 P50 / P90 / P99，便于观察长尾分布
   temperature:
-    label: 采样温度 Temperature
-    help: 采样温度，压测建议设为 0 保证可复现
+    label: Temperature
+    label_zh: 采样温度
+    help: Sampling temperature; use 0 for reproducible benchmarks
+    help_zh: 采样温度，压测建议设为 0 保证可复现
     type: float
   top-p:
     label: top-p
-    help: 核采样概率阈值
+    label_zh: Top-P
+    help: Nucleus sampling probability threshold
+    help_zh: 核采样概率阈值
     type: float
   top-k:
     label: top-k
-    help: Top-K 采样，-1 表示不启用
+    label_zh: Top-K
+    help: Top-K sampling; -1 disables it
+    help_zh: Top-K 采样，-1 表示不启用
     type: int
   min-p:
     label: min-p
-    help: 最小概率采样阈值，0 表示不启用
+    label_zh: 最小概率 Min-P
+    help: Min-P sampling threshold; 0 disables it
+    help_zh: 最小概率采样阈值，0 表示不启用
     type: float
   frequency-penalty:
-    label: 频率惩罚
-    help: 按 token 出现频率施加惩罚，压测通常设为 0
+    label: Frequency Penalty
+    label_zh: 频率惩罚
+    help: Penalize tokens by their frequency; usually 0 in benchmarks
+    help_zh: 按 token 出现频率施加惩罚，压测通常设为 0
     type: float
   presence-penalty:
-    label: 存在惩罚
-    help: 按 token 是否出现过施加惩罚，压测通常设为 0
+    label: Presence Penalty
+    label_zh: 存在惩罚
+    help: Penalize tokens by their presence; usually 0 in benchmarks
+    help_zh: 按 token 是否出现过施加惩罚，压测通常设为 0
     type: float
   sharegpt-output-len:
-    label: ShareGPT 输出长度
-    help: 使用 sharegpt 数据集时的平均输出 token 数
+    label: Output Len
+    label_zh: ShareGPT 输出长度
+    help: Average output token count when using the sharegpt dataset
+    help_zh: 使用 sharegpt 数据集时的平均输出 token 数
     type: int
   no-stream:
-    label: 禁用流式输出
-    help: 关闭流式；开启后无法测量 TTFT 与 ITL
+    label: Disable Stream
+    label_zh: 禁用流式
+    help: Disable streaming; TTFT and ITL become unavailable
+    help_zh: 关闭流式；开启后无法测量 TTFT 与 ITL
     type: bool
     options:
       - value: "false"
-        label: 关闭（使用流式）
-        description: 保持流式输出，可测量 TTFT / ITL（压测推荐）
+        label: Off (streaming)
+        label_zh: 关闭（使用流式）
+        description: Keep streaming output; can measure TTFT/ITL (recommended)
+        description_zh: 保持流式输出，可测量 TTFT / ITL（压测推荐）
       - value: "true"
-        label: 开启（非流式）
-        description: 关闭流式，只能测 E2E 延迟，无法测 TTFT / ITL
+        label: On (no streaming)
+        label_zh: 开启（非流式）
+        description: Disable streaming; only E2E latency is measurable, no TTFT/ITL
+        description_zh: 关闭流式，只能测 E2E 延迟，无法测 TTFT / ITL
   disable-tqdm:
-    label: 禁用进度条
-    help: 关闭进度条输出，日志更干净
+    label: Disable Progress
+    label_zh: 禁用进度条
+    help: Disable the progress bar for cleaner logs
+    help_zh: 关闭进度条输出，日志更干净
     type: bool
   save-result:
-    label: 保存结果 save-result
-    help: 将详细结果保存为文件
+    label: save-result
+    label_zh: 保存结果
+    help: Save detailed results to a file
+    help_zh: 将详细结果保存为文件
     type: bool
     options:
       - value: "false"
-        label: 关闭
-        description: 不保存详细结果，仅输出汇总指标
+        label: Disable
+        label_zh: 关闭
+        description: Do not save details; summary metrics only
+        description_zh: 不保存详细结果，仅输出汇总指标
       - value: "true"
-        label: 开启
-        description: 保存每个请求的详细结果，便于离线分析长尾请求
+        label: Enable
+        label_zh: 开启
+        description: Save per-request details for offline long-tail analysis
+        description_zh: 保存每个请求的详细结果，便于离线分析长尾请求
   profile:
-    label: 性能剖析 profile
-    help: 启用 torch profiler 采集，会显著降低性能
+    label: profile
+    label_zh: 性能剖析
+    help: Enable the torch profiler; it significantly lowers performance
+    help_zh: 启用 torch profiler 采集，会显著降低性能
     type: bool
     options:
       - value: "false"
-        label: 关闭
-        description: 不启用剖析，压测数据准确
+        label: Disable
+        label_zh: 关闭
+        description: Profiling off; benchmark data stays accurate
+        description_zh: 不启用剖析，压测数据准确
       - value: "true"
-        label: 开启
-        description: 启用 profiler，仅用于定位性能瓶颈，此时吞吐数据不可用
+        label: Enable
+        label_zh: 开启
+        description: Enable the profiler only for locating bottlenecks; throughput data becomes unusable
+        description_zh: 启用 profiler，仅用于定位性能瓶颈，此时吞吐数据不可用
 
 # ---------------- SGLang 原生 bench ----------------
 sglang:
   backend:
-    label: 后端 Backend
-    help: SGLang bench 请求推理服务使用的后端协议
+    label: Backend
+    label_zh: 后端
+    help: Backend protocol used by SGLang bench
+    help_zh: SGLang bench 请求推理服务使用的后端协议
     type: select
     options:
       - value: openai
         label: openai
-        description: 使用 OpenAI 兼容接口（/v1/completions 或 /v1/chat/completions），通用性最好
+        description: Uses the OpenAI-compatible API (/v1/completions or /v1/chat/completions); most portable
+        description_zh: 使用 OpenAI 兼容接口（/v1/completions 或 /v1/chat/completions），通用性最好
       - value: sglang
         label: sglang
-        description: 使用 SGLang 原生接口（/generate），可启用 SGLang 特有功能
+        description: Uses the native SGLang API (/generate); enables SGLang-specific features
+        description_zh: 使用 SGLang 原生接口（/generate），可启用 SGLang 特有功能
   apply-chat-template:
-    label: 应用聊天模板
-    help: 按模型的 chat template 构造请求（sharegpt / 自定义数据集时需要）
+    label: Apply Chat Template
+    label_zh: 应用聊天模板
+    help: Build requests with the model's chat template; needed for sharegpt / custom datasets
+    help_zh: 按模型的 chat template 构造请求（sharegpt / 自定义数据集时需要）
     type: bool
     options:
       - value: "true"
-        label: 开启
-        description: 自动套用模型 chat template，真实还原线上请求格式（对话模型推荐）
+        label: Enable
+        label_zh: 开启
+        description: Apply the chat template automatically for a realistic request format (recommended for chat models)
+        description_zh: 自动套用模型 chat template，真实还原线上请求格式（对话模型推荐）
       - value: "false"
-        label: 关闭
-        description: 直接发送原始文本，适用于 base 模型或需要自定义格式时
+        label: Disable
+        label_zh: 关闭
+        description: Send raw text; for base models or custom formats
+        description_zh: 直接发送原始文本，适用于 base 模型或需要自定义格式时
   disable-ignore-eos:
-    label: 不忽略 EOS
-    help: 开启后模型可提前结束生成；关闭（默认）则忽略 EOS 生成到最大长度
+    label: Don't Ignore EOS
+    label_zh: 不忽略 EOS
+    help: When on, the model may stop early; when off (default), EOS is ignored and it generates to the max length
+    help_zh: 开启后模型可提前结束生成；关闭（默认）则忽略 EOS 生成到最大长度
     type: bool
     options:
       - value: "false"
-        label: 关闭（忽略 EOS）
-        description: 忽略 EOS，生成长度一致，吞吐对比更公平（压测推荐）
+        label: Off (ignore EOS)
+        label_zh: 关闭（忽略 EOS）
+        description: Ignore EOS; equal output lengths give a fairer throughput comparison (recommended)
+        description_zh: 忽略 EOS，生成长度一致，吞吐对比更公平（压测推荐）
       - value: "true"
-        label: 开启（遵守 EOS）
-        description: 模型可提前结束，更贴近真实业务，但输出长度不一致
+        label: On (respect EOS)
+        label_zh: 开启（遵守 EOS）
+        description: The model may stop early; closer to real usage, but output lengths vary
+        description_zh: 模型可提前结束，更贴近真实业务，但输出长度不一致
   seed:
-    label: 随机种子 Seed
-    help: 固定随机种子以保证结果可复现
+    label: Seed
+    label_zh: 随机种子
+    help: Fixed seed for reproducible results
+    help_zh: 固定随机种子以保证结果可复现
     type: int
   warmup-requests:
-    label: 预热请求数 Warmups
-    help: 正式计时前的预热请求数
+    label: Warmups
+    label_zh: 预热请求数
+    help: Warm-up requests before timing starts
+    help_zh: 正式计时前的预热请求数
     type: int
     options:
       - value: "0"
-        label: 0（不预热）
-        description: 不做预热，首请求含冷启动开销
+        label: 0 (no warm-up)
+        label_zh: 0（不预热）
+        description: No warm-up; the first request includes cold start
+        description_zh: 不做预热，首请求含冷启动开销
       - value: "3"
         label: 3
-        description: 少量预热，消除一次性开销
+        description: Light warm-up; removes one-time costs
+        description_zh: 少量预热，消除一次性开销
       - value: "10"
         label: 10
-        description: 充分预热，适合稳定可比场景
+        description: Full warm-up; for stable comparable runs
+        description_zh: 充分预热，适合稳定可比场景
   tokenize-prompt:
-    label: 预分词 tokenize-prompt
-    help: 客户端预先对 prompt 分词，可更精确控制输入长度
+    label: Tokenize Prompt
+    label_zh: 预分词
+    help: Tokenize prompts client-side for more precise input-length control
+    help_zh: 客户端预先对 prompt 分词，可更精确控制输入长度
     type: bool
   flush-cache:
-    label: 刷新缓存 flush-cache
-    help: 每次运行前清空 radix cache，避免前缀缓存影响结果
+    label: Flush Cache
+    label_zh: 刷新缓存
+    help: Flush the radix cache before each run to avoid prefix-cache effects on results
+    help_zh: 每次运行前清空 radix cache，避免前缀缓存影响结果
     type: bool
     options:
       - value: "false"
-        label: 关闭
-        description: 保留 radix cache，贴近线上真实命中缓存的情况
+        label: Disable
+        label_zh: 关闭
+        description: Keep the radix cache; closer to real online cache-hit behavior
+        description_zh: 保留 radix cache，贴近线上真实命中缓存的情况
       - value: "true"
-        label: 开启
-        description: 清空缓存后压测，结果更稳定可比（对比不同配置时推荐）
+        label: Enable
+        label_zh: 开启
+        description: Flush the cache first; more stable and comparable results (recommended for comparisons)
+        description_zh: 清空缓存后压测，结果更稳定可比（对比不同配置时推荐）
   print-requests:
-    label: 打印请求
-    help: 打印请求内容，用于调试
+    label: Print Requests
+    label_zh: 打印请求
+    help: Print request payloads for debugging
+    help_zh: 打印请求内容，用于调试
     type: bool
   disable-tqdm:
-    label: 禁用进度条
-    help: 关闭进度条输出，日志更干净
+    label: Disable Progress
+    label_zh: 禁用进度条
+    help: Disable the progress bar for cleaner logs
+    help_zh: 关闭进度条输出，日志更干净
     type: bool
   sharegpt-output-len:
-    label: ShareGPT 输出长度
-    help: 使用 sharegpt 数据集时的平均输出 token 数
+    label: Output Len
+    label_zh: ShareGPT 输出长度
+    help: Average output token count when using the sharegpt dataset
+    help_zh: 使用 sharegpt 数据集时的平均输出 token 数
     type: int
   sharegpt-context-len:
-    label: ShareGPT 上下文长度
-    help: sharegpt 数据集的最大上下文长度，超出则截断
+    label: Context Len
+    label_zh: ShareGPT 上下文长度
+    help: Max context length for the sharegpt dataset; longer inputs are truncated
+    help_zh: sharegpt 数据集的最大上下文长度，超出则截断
     type: int

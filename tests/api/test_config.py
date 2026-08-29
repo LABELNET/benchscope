@@ -148,3 +148,97 @@ def test_builtin_datasets(client, base_url):
     for ds in data["datasets"]:
         assert ds["id"]
         assert "status" in ds
+
+
+# ---------------- Providers（推理服务提供方，1.0.7） ----------------
+
+
+def test_providers_migration_and_list(client, base_url):
+    """旧配置（仅 api）启动时自动迁移出名为 Default 的 Provider 并激活。"""
+    r = client.get(f"{base_url}/api/config/providers", timeout=10)
+    assert r.status_code == 200, r.text
+    data = r.json()
+    providers = data["providers"]
+    assert isinstance(providers, list) and providers, "应至少迁移出一个 Provider"
+    assert data["active_provider"], "应有激活的 Provider"
+    names = [p["name"] for p in providers]
+    assert "Default" in names, f"迁移 Provider 应命名为 Default: {names}"
+    # 激活项与 api 字段同步（重新激活以排除 point_to_mock fixture 直接改 api 的干扰）
+    active = next(p for p in providers if p["id"] == data["active_provider"])
+    r = client.post(f"{base_url}/api/config/providers/{active['id']}/activate", timeout=10)
+    assert r.status_code == 200, r.text
+    api = client.get(f"{base_url}/api/config", timeout=10).json()["api"]
+    assert api["base_url"] == active["base_url"], "激活 Provider 应同步 api.base_url"
+
+
+def test_providers_crud_and_activate(client, base_url):
+    """Provider 增改删 + 激活：激活项同步到 api；删除激活项后回退到剩余首个。"""
+    # 新增
+    r = client.post(f"{base_url}/api/config/providers",
+                    json={"name": "CRUD Test", "base_url": "http://10.0.0.9:8000", "api_key": "sk-x"},
+                    timeout=10)
+    assert r.status_code == 200, r.text
+    data = r.json()
+    pid = data["provider"]["id"]
+    assert data["provider"]["name"] == "CRUD Test"
+
+    # 更新
+    r = client.put(f"{base_url}/api/config/providers/{pid}",
+                   json={"name": "CRUD Renamed", "base_url": "http://10.0.0.10:8000"}, timeout=10)
+    assert r.status_code == 200, r.text
+    assert r.json()["provider"]["base_url"] == "http://10.0.0.10:8000"
+
+    # 激活 → api 同步
+    r = client.post(f"{base_url}/api/config/providers/{pid}/activate", timeout=10)
+    assert r.status_code == 200, r.text
+    api = client.get(f"{base_url}/api/config", timeout=10).json()["api"]
+    assert api["base_url"] == "http://10.0.0.10:8000", "激活后 api.base_url 应同步"
+
+    # name 置空 → 400
+    r = client.put(f"{base_url}/api/config/providers/{pid}", json={"name": "  "}, timeout=10)
+    assert r.status_code == 400, f"空 name 应拒绝: {r.status_code}"
+
+    # 删除激活项 → 回退到剩余首个
+    r = client.delete(f"{base_url}/api/config/providers/{pid}", timeout=10)
+    assert r.status_code == 200, r.text
+    data = r.json()
+    assert all(p["id"] != pid for p in data["providers"])
+    if data["providers"]:
+        assert data["active_provider"] == data["providers"][0]["id"]
+
+    # 删除不存在的 → 404
+    r = client.delete(f"{base_url}/api/config/providers/{pid}", timeout=10)
+    assert r.status_code == 404
+
+
+def test_engine_mocks_config_update(client, base_url):
+    """引擎 mock 开关配置（Settings → Bench Engines，每引擎一个）：写入 config.engine_mocks 映射。"""
+    r = client.get(f"{base_url}/api/config", timeout=10)
+    assert "engine_mocks" in r.json(), "默认 config 应含 engine_mocks 映射"
+
+    r = client.post(f"{base_url}/api/config",
+                    json={"engine_mocks": {"vllm-0.23": True, "sglang-0.5.10": False}},
+                    timeout=10)
+    assert r.status_code == 200, r.text
+    mocks = r.json().get("engine_mocks", {})
+    assert mocks.get("vllm-0.23") is True
+    assert mocks.get("sglang-0.5.10") is False
+
+    # 复原
+    client.post(f"{base_url}/api/config", json={"engine_mocks": {}}, timeout=10)
+
+
+def test_skills_list(client, base_url):
+    """内置技能清单（Settings → Skills）：返回技能面板所需字段（名称/版本/描述/特性/使用说明/提示词）。"""
+    r = client.get(f"{base_url}/api/skills", timeout=10)
+    assert r.status_code == 200, r.text
+    skills = r.json().get("skills", [])
+    assert len(skills) >= 3, f"应至少返回 3 个内置技能: {len(skills)}"
+    for s in skills:
+        assert s.get("name"), "技能名"
+        assert s.get("version"), "版本号"
+        assert s.get("description"), "功能描述"
+        assert isinstance(s.get("features"), list) and s["features"], "功能特性"
+        assert isinstance(s.get("usage"), list) and len(s["usage"]) >= 2, "使用说明（下载安装 / 复制提示词）"
+        assert s.get("prompt"), "提示词应非空（滚动显示）"
+        assert s.get("download", {}).get("path"), "下载路径"

@@ -43,6 +43,12 @@ class CreateTaskRequest(BaseModel):
     # 引擎参数清单（Step2 编辑后的内容，随引擎切换；来自 /api/benchs/{id}/params-yaml）
     # 自研引擎据此构造执行选项与预览命令；原生引擎据此附加 --key=value 参数
     engine_params_yaml: str = ""
+    # mocks 环境联调（原生引擎 vllm/sglang 未安装时）：True → FAKE 模式生成仿真输出
+    use_mock_env: bool = False
+    # 阈值模式：最大请求数上限（默认 4096）；下一次执行请求数超过上限 → 强制结束（Finish）
+    max_requests: int = 4096
+    # 任务所选 Provider 的 API 配置（创建页 Base 面板选择 Provider 后内联，优先于全局 api）
+    api: dict = {}
 
 
 class UpdateThresholdRequest(BaseModel):

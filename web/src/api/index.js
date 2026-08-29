@@ -35,12 +35,22 @@ export const api = {
   getBenchEngine: (engineId) => http.get(`/api/benchs/${engineId}`),
   getBenchParams: (engineId) => http.get(`/api/benchs/${engineId}/params`),
   checkBenchEnv: (engineId) => http.get(`/api/benchs/${engineId}/env-check`),
+  setEngineMock: (engineId, enabled) => http.post(`/api/benchs/${engineId}/mock`, { enabled }),
   getBenchsYaml: () => http.get('/api/benchs/config/yaml'),
   saveBenchsYaml: (content, mockOutput) => http.put('/api/benchs/config/yaml', { content, mock_output: mockOutput }),
   importBenchs: (content, mockOutput, apply) => http.post('/api/benchs/import', {
     content, mock_output: mockOutput, dry_run: !apply, apply: !!apply,
   }),
   getBenchAuthoring: () => http.get('/api/benchs/authoring'),
+  // 内置技能清单（Settings → Skills）
+  getSkills: () => http.get('/api/skills'),
+  downloadSkill: (id) => http.get(`/api/skills/${id}/download`, { responseType: 'blob' }),
+  // Providers（推理服务提供方）：多 Provider 管理，激活项同步到 api
+  listProviders: () => http.get('/api/config/providers'),
+  addProvider: (data) => http.post('/api/config/providers', data),
+  updateProvider: (id, data) => http.put(`/api/config/providers/${id}`, data),
+  deleteProvider: (id) => http.delete(`/api/config/providers/${id}`),
+  activateProvider: (id) => http.post(`/api/config/providers/${id}/activate`),
   // 引擎参数清单（随引擎切换，每个引擎一套）
   getBenchParamsYaml: (engineId) => http.get(`/api/benchs/${engineId}/params-yaml`),
   saveBenchParamsYaml: (engineId, content) =>

@@ -30,7 +30,7 @@ Datas 为 1.0.6 新增的主导航页（位于 Sessions 之后），采用**副�
 - **左栏（固定 280px 记录面板 Records）**：
   - header 左侧标题 **Records**，右侧图标依次为 **导入**、**刷新**；导入图标 tooltip 文案为 **「导入 record / Import Record」**
   - 导入：点击后右侧弹出导入面板（a-drawer）——点击上传按钮选择备份导出的 zip 包 → 上传（进度条）→ 后端解压并校验任务 ID 一致性：已存在 → 显示「任务已存在，无需导入」；不存在 → 显示「导入成功」并刷新列表；点击关闭图标取消导入
-  - 列表按时间**倒序**；每项显示 Run ID + **状态高亮文字**（无边框，done 绿 / running 蓝 / error 红 / stopped 橙）+ model + 时间；hover 显示完整模型名称；列表可滚动，**底部预留 16px 空间**
+  - 列表按时间**倒序**；每项显示 Run ID + **framework 高亮标记**（1.0.7：`.record-framework`，位于任务 ID 右侧，蓝色小字 `font-size:9px` + 浅蓝底，数据来自 run.json 的 `framework_name`）+ **状态高亮文字**（无边框，done 绿 / running 蓝 / error 红 / stopped 橙）+ model + 时间；hover 显示完整模型名称；列表可滚动，**底部预留 16px 空间**
   - **路由联动选中**：进入页面或 `route.query.run_id` 变化时，在记录列表中匹配对应任务并自动选中（`selectRun`）——Dashboard Perf Records 的「详情」即通过 `?run_id=` 跳转至此
 - **右栏（可滚动详情区）**：未选中时显示默认提示「请选择任务」；选中后展示 5 行布局
 

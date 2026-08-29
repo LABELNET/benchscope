@@ -2,7 +2,10 @@
 # benchscope 一键发布脚本
 #
 # 用法:
-#   ./scripts/release.sh 1.0.4                        # 升版本并完整发布（build + PyPI upload + GitHub Release + git tag + push）
+#   ./scripts/release.sh 1.0.4                        # 升版本并发布
+#       发布规则：仅 Z（补丁）更新（如 1.0.4->1.0.5）→ 不推送 PyPI，只推送 GitHub tag + release；
+#                X.Y（主/次）更新（如 1.0.x->1.1.0）→ 推送 PyPI + GitHub tag + release
+#       即：build + (X.Y 变化时)PyPI upload + GitHub Release + git tag + push
 #   ./scripts/release.sh 1.0.4 --notes notes.md       # 指定 GitHub Release 说明文件（缺省自动从 VERSION_x_y_z.md 提取迭代摘要）
 #   ./scripts/release.sh 1.0.4 --dry-run              # 只升版本/构建/校验，不上传也不提交（用于试跑）
 #   ./scripts/release.sh --help
@@ -64,6 +67,20 @@ fi
 OLD="$(grep -E '^version = ' pyproject.toml | head -1 | sed -n 's/.*"\(.*\)".*/\1/p')"
 echo "版本: ${OLD} -> ${NEW}"
 
+# 发布规则：
+#   仅 Z（补丁）更新（如 1.0.4 -> 1.0.5）：不推送 PyPI，只推送 GitHub tag + release
+#   X.Y（主/次）更新（如 1.0.x -> 1.1.0 或 2.0.0）：推送 PyPI + GitHub tag + release
+# 取 X.Y 前两段（稳定提取主/次版本，兼容 dev 后缀如 1.0.7.dev0）
+OLD_MM="$(echo "$OLD" | awk -F. '{print $1"."$2}')"
+NEW_MM="$(echo "$NEW" | awk -F. '{print $1"."$2}')"
+if [ "$OLD_MM" = "$NEW_MM" ]; then
+  NEED_PYPI=0
+  echo "==> 补丁版本（仅 Z 变化: ${OLD} -> ${NEW}）：跳过 PyPI 上传，仅推送 GitHub tag + release"
+else
+  NEED_PYPI=1
+  echo "==> 主/次版本变化（X.Y: ${OLD_MM} -> ${NEW_MM}）：完整发布 = PyPI + GitHub tag + release"
+fi
+
 # ---------- 版本同步 ----------
 sed -i "s/^version = \".*\"/version = \"$NEW\"/" pyproject.toml
 sed -i "s/__version__ = \".*\"/__version__ = \"$NEW\"/" benchscope/__init__.py
@@ -89,25 +106,29 @@ if [ "$DRY_RUN" -eq 1 ]; then
   exit 0
 fi
 
-# ---------- 发布到 PyPI ----------
-# 加固：twine 自身 --retries + 外循环重试 + 单次超时，抵御瞬时网络抖动（SSL EOF 等）
-UPLOAD_RETRIES="${TWINE_UPLOAD_RETRIES:-3}"
-UPLOAD_TIMEOUT="${TWINE_UPLOAD_TIMEOUT:-180}"
-UPLOAD_OK=0
-for i in $(seq 1 "$UPLOAD_RETRIES"); do
-  echo "==> 上传 PyPI (第 ${i}/${UPLOAD_RETRIES} 次) ..."
-  if timeout "$UPLOAD_TIMEOUT" python3 -m twine upload \
-      --non-interactive --disable-progress-bar dist/*; then
-    UPLOAD_OK=1
-    break
-  else
-    echo "  本次上传未成功，稍后重试..." >&2
-    sleep 5
+# ---------- 发布到 PyPI（仅主/次版本 X.Y 变化时推送；补丁 Z 变化跳过） ----------
+if [ "$NEED_PYPI" -eq 1 ]; then
+  # 加固：twine 自身 --retries + 外循环重试 + 单次超时，抵御瞬时网络抖动（SSL EOF 等）
+  UPLOAD_RETRIES="${TWINE_UPLOAD_RETRIES:-3}"
+  UPLOAD_TIMEOUT="${TWINE_UPLOAD_TIMEOUT:-180}"
+  UPLOAD_OK=0
+  for i in $(seq 1 "$UPLOAD_RETRIES"); do
+    echo "==> 上传 PyPI (第 ${i}/${UPLOAD_RETRIES} 次) ..."
+    if timeout "$UPLOAD_TIMEOUT" python3 -m twine upload \
+        --non-interactive --disable-progress-bar dist/*; then
+      UPLOAD_OK=1
+      break
+    else
+      echo "  本次上传未成功，稍后重试..." >&2
+      sleep 5
+    fi
+  done
+  if [ "$UPLOAD_OK" -ne 1 ]; then
+    echo "错误: PyPI 上传在 ${UPLOAD_RETRIES} 次尝试后仍失败，已中止（未打 tag/未推送）。" >&2
+    exit 1
   fi
-done
-if [ "$UPLOAD_OK" -ne 1 ]; then
-  echo "错误: PyPI 上传在 ${UPLOAD_RETRIES} 次尝试后仍失败，已中止（未打 tag/未推送）。" >&2
-  exit 1
+else
+  echo "==> 补丁版本（仅 Z 变化）：跳过 PyPI 上传（产物 dist/ 仍在本地产出）"
 fi
 
 # ---------- git 提交 + 打 tag + 推送 ----------
@@ -135,14 +156,44 @@ elif [ -f "$VER_DOC" ]; then
   python3 - "$VER_DOC" > "$NOTES_TMP" <<'PYEOF'
 import re, sys
 src = open(sys.argv[1], encoding="utf-8").read()
-items = [m.group(1) for m in re.finditer(r"^### 迭代[^\n]*", src, re.M)]
-lines = []
-for it in items:
-    t = it.lstrip("#").strip()
-    lines.append(f"- {t}")
-print("## 迭代记录\n")
-print("\n".join(lines))
-print("\n详细版本说明见仓库 `docs/versions/`。")
+
+# 按 "### 迭代" 分块，每块 = 迭代标题 + 该迭代的变更内容功能清单
+blocks = re.split(r"(?m)^### ", src)
+out = []
+for b in blocks:
+    if not b.strip():
+        continue
+    first_line = b.splitlines()[0].strip()
+    title = f"### {first_line}"
+    # 提取 "**变更内容**" 块内的功能清单项（仅一级变更项：数字编号或行首无序，排除缩进子项）
+    body = b[b.find("**变更内容**"):]
+    # 截断到验证 / TODO 块，避免把验证明细或 TODO 清单混入功能清单
+    cut = len(body)
+    for mark in ("**验证", "**TODO 状态**", "## 4."):
+        j = body.find(mark)
+        if j != -1 and j < cut:
+            cut = j
+    body = body[:cut]
+    feat_lines = []
+    for line in body.splitlines():
+        if not line.strip():
+            continue
+        # 一级项：行首为数字编号（1. / 2. ...）或无序列表（- **），缩进的子项以空格开头则跳过
+        is_top = line.startswith(("1.", "2.", "3.", "4.", "5.", "6.", "7.", "8.", "9.", "- "))
+        if is_top:
+            s = re.sub(r"^\d+\.\s", "- ", line.strip())
+            feat_lines.append(s)
+    if feat_lines:
+        out.append(title)
+        out.extend(feat_lines)
+        out.append("")
+
+print("## 版本更新功能清单\n")
+if out:
+    print("\n".join(out).rstrip())
+else:
+    print("（无迭代记录，请手动补充说明。）")
+print("\n---\n详细版本说明见仓库 `docs/versions/`。")
 PYEOF
 else
   echo "# benchscope v${NEW}" > "$NOTES_TMP"
@@ -200,5 +251,9 @@ create_github_release
 
 echo ""
 echo "✅ 发布完成: benchscope v${NEW}"
-echo "   PyPI:    https://pypi.org/project/benchscope/${NEW}/"
+if [ "$NEED_PYPI" -eq 1 ]; then
+  echo "   PyPI:    https://pypi.org/project/benchscope/${NEW}/"
+else
+  echo "   PyPI:    （补丁版本，按发布规则已跳过推送）"
+fi
 echo "   GitHub:  https://github.com/LABELNET/benchscope/releases/tag/v${NEW}"

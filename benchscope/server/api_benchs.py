@@ -48,16 +48,69 @@ AUTHORING_SKILL = {
     "description": "自定义 bench 引擎（vllm/sglang/其他版本）配置与代码生成、导入校验技能",
 }
 from benchscope.bench_params import get_option_description, param_specs_for_engine
+from benchscope.server.state import state
 
 log = logging.getLogger("benchscope.api_benchs")
 
 router = APIRouter(prefix="/api/benchs", tags=["benchs"])
 
 
+def _inject_engine_mock(engine: dict) -> dict:
+    """把该引擎的 mock 开关状态注入摘要：
+    - mock: bool（引擎卡片 mock 开关是否开启）
+    - mock_state: "mock" | "real"
+    mock 开启时环境校验视为通过（无真实框架依赖也可跑），env.ok=True 并标记 mock。
+    """
+    engine_mocks = state.config.get("engine_mocks") or {}
+    mock = bool(engine_mocks.get(engine.get("id")))
+    env = engine.get("env") or {"ok": True, "checks": []}
+    if mock:
+        env = {
+            "ok": True,
+            "mock": True,
+            "mock_state": "mock",
+            "checks": [
+                {"name": "mock-environment", "required": "-", "installed": "mock", "ok": True,
+                 "hint": "Mock 环境：使用仿真数据与运行环境，跳过真实框架依赖校验"}
+            ],
+        }
+    else:
+        env = dict(env)
+        env["mock"] = False
+        env["mock_state"] = "real"
+    out = dict(engine)
+    out["mock"] = mock
+    out["mock_state"] = "mock" if mock else "real"
+    out["env"] = env
+    return out
+
+
 @router.get("")
 def list_bench_engines():
-    """全部内置引擎（含介绍 / 对比表 / 环境校验结果）+ 默认引擎 id。"""
-    return list_engines(with_env=True)
+    """全部内置引擎（含介绍 / 对比表 / 环境校验结果 + mock 状态）+ 默认引擎 id。"""
+    data = list_engines(with_env=True)
+    data["engines"] = [_inject_engine_mock(e) for e in data.get("engines", [])]
+    return data
+
+
+class MockPatch(BaseModel):
+    enabled: bool
+
+
+@router.post("/{engine_id}/mock")
+def set_engine_mock(engine_id: str, patch: MockPatch):
+    """设置指定引擎的 mock 开关（默认关闭）：True → 该引擎用 mock 数据/运行环境。"""
+    from benchscope.benchs import get_engine
+    if get_engine(engine_id) is None:
+        raise HTTPException(status_code=404, detail=f"未知引擎: {engine_id}")
+    engine_mocks = dict(state.config.get("engine_mocks") or {})
+    if patch.enabled:
+        engine_mocks[engine_id] = True
+    else:
+        engine_mocks.pop(engine_id, None)
+    # 用整体替换（set）而非递归合并（update），确保移除 key 也能生效
+    state.config.set("engine_mocks", engine_mocks)
+    return _inject_engine_mock(engine_summary(get_engine(engine_id), with_env=True))
 
 
 @router.get("/authoring")
@@ -163,8 +216,13 @@ def update_benchs_yaml(payload: dict):
 
 
 def _authoring_prompt() -> str:
-    """生成「让 AI 生成自定义引擎」的提示词（前端可一键复制）。"""
-    return """Task: create a BenchScope custom bench engine definition for <FRAMEWORK> version <VERSION>.
+    """生成「让 AI 生成自定义引擎压缩包」的提示词（前端可一键复制）。
+
+    产物为 tar.gz 引擎包（<framework>-<version>-engine.tar.gz），
+    经 Settings → Upload Engine 导入（POST /api/benchs/upload 校验合并）。
+    """
+    return """Task: create a BenchScope custom bench engine PACKAGE for <FRAMEWORK> version <VERSION>.
+The deliverable is a gzipped tarball: <framework>-<version>-engine.tar.gz
 
 Steps:
 1) Read the upstream bench entrypoint at the pinned tag and enumerate the REAL
@@ -172,20 +230,26 @@ Steps:
    - vLLM:   https://github.com/vllm-project/vllm/blob/v<VERSION>/vllm/benchmarks/serve.py
    - SGLang: https://github.com/sgl-project/sglang/blob/v<VERSION>/python/sglang/bench_serving.py
    Do NOT reuse parameters from another version.
-2) Emit TWO yaml artifacts:
-   a) an engine entry for configs/benchs.yaml:
-      - id: <framework>-<version>   kind: vllm|sglang|builtin   params_key: <key>
-      - name / description / highlights / requires (torch + framework, with version spec)
-   b) a parameter section for configs/bench-params.yaml under key <params_key>:
-      for each parameter: label, help, type, and options — EVERY option MUST have a
-      non-empty description explaining what that value does.
+2) Build the package with EXACTLY this layout:
+   <framework>-<version>-engine/
+   ├── configs/
+   │   ├── benchs.yaml        # engine entry: id: <framework>-<version>, kind: vllm|sglang|builtin,
+   │   │                      # params_key: <key>, name/description/highlights (+ *_zh bilingual),
+   │   │                      # requires (torch + framework, with version spec)
+   │   └── bench-params.yaml  # section <params_key>: for each parameter label/help/type/options —
+   │                          # EVERY option MUST have a non-empty description
+   └── README.md              # one-paragraph summary + how to import
+   Bilingual rule: default text in English, Chinese in *_zh fields
+   (name_zh/description_zh/highlights_zh, dimension_zh/values_zh).
 3) If the engine needs mock/simulation output, generate it following the mock core
    contract (mocks/ only), scaling throughput/latency with concurrency and matching
    the parser regexes exactly.
-4) Validate against the import checklist (yaml / engines / id / kind / requires /
-   params_key exists / option descriptions / mock output) and fix all failures
-   before presenting the result.
-5) Output the final, importable yaml in one code block."""
+4) Validate the yaml against the import checklist (yaml / engines / id / kind /
+   requires / params_key exists / option descriptions) and fix all failures.
+5) Package it:
+   tar -czf <framework>-<version>-engine.tar.gz -C . <framework>-<version>-engine
+6) Reply with the tar.gz file (do NOT print loose yaml). The user imports it via
+   Settings → Bench Engines → Upload Engine (POST /api/benchs/upload)."""
 
 
 @router.get("/{engine_id}/params")
@@ -260,4 +324,21 @@ def check_engine_env(engine_id: str):
     result = check_env(engine)
     result["engine_id"] = engine_id
     result["kind"] = engine.get("kind")
+    # mock 开关开启时：环境视为通过（无真实框架依赖也可跑），并标记 mock 状态
+    engine_mocks = state.config.get("engine_mocks") or {}
+    if bool(engine_mocks.get(engine_id)):
+        result = {
+            "ok": True,
+            "mock": True,
+            "mock_state": "mock",
+            "engine_id": engine_id,
+            "kind": engine.get("kind"),
+            "checks": [
+                {"name": "mock-environment", "required": "-", "installed": "mock", "ok": True,
+                 "hint": "Mock 环境：使用仿真数据与运行环境，跳过真实框架依赖校验"}
+            ],
+        }
+    else:
+        result["mock"] = False
+        result["mock_state"] = "real"
     return result

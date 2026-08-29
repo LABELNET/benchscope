@@ -171,6 +171,9 @@ class Task:
     created_at: str = ""
     kind: str = "perf"  # perf（性能测试）| eval（精度测试）
     log_path: Optional[Path] = None  # 终端输出日志（logs_dir 下 perf/eval_runID_*.log）
+    # 阈值模式强制结束标记：下一次执行的请求数超过 max_requests 上限时置位，
+    # 任务直接结束（不再探测后续并发 / 后续 case），前端显示「Finish」而非 Done
+    forced_finish: bool = False
     _persist_path: Optional[Path] = None
 
     def snapshot(self, include_rows: bool = True) -> dict:
@@ -199,6 +202,8 @@ class Task:
             "tpot_statistic": self.payload.get("tpot_statistic", "mean"),
             "mode": self.payload.get("mode", "concurrency"),
             "output_throughput_threshold": self.payload.get("output_throughput_threshold", 0),
+            "forced_finish": bool(self.forced_finish),
+            "use_mock_env": bool(self.payload.get("use_mock_env", False)),
             "dataset": self.payload.get("dataset", {}),
         }
         if include_rows:
@@ -376,6 +381,11 @@ class TaskManager:
         framework = task.framework
         tmpl = (self.config.get("bench_commands") or {}).get(framework, "")
         runner = BenchRunner(command_template=tmpl)
+        # mock 开关：任务级 use_mock_env，或 Bench Engines 每个引擎卡片的 mock 开关（按 engine_id）
+        engine_id = (task.payload or {}).get("engine_id") or (task.payload or {}).get("engine")
+        engine_mocks = self.config.get("engine_mocks") or {}
+        engine_mock = bool(engine_mocks.get(engine_id))
+        runner.fake = bool((task.payload or {}).get("use_mock_env")) or engine_mock
         self._runners[task.task_id] = runner
 
         model_name = sanitize_name(Path(task.model).name or task.model)
@@ -405,7 +415,7 @@ class TaskManager:
             cases_done = 0
             mode = task.payload.get("mode", "concurrency")
             for case in task.cases:
-                if runner._stop_flag.is_set():
+                if runner._stop_flag.is_set() or task.forced_finish:
                     break
                 case_label = case["label"]
                 detail_path = task.run_dir / f"{model_name}_{case_label}_X{gpu_count}.log"
@@ -472,7 +482,8 @@ class TaskManager:
     def _run_one(self, runner, task, case, concurrency, detail_fp, full_log_fp, meta):
         ds = dict(task.payload.get("dataset", {}))
         ds.update({"input_len": case.get("input_len"), "output_len": case.get("output_len"), "path": case.get("path")})
-        api = dict(self.config.api)
+        # api 优先取任务所选 Provider 的配置（payload.api），否则回退全局配置
+        api = dict(task.payload.get("api") or self.config.api)
 
         def stream(line: str):
             detail_fp.write(line)
@@ -541,7 +552,11 @@ class TaskManager:
         tpot_thr = _case_thr("tpot_threshold_ms", 0.0)
         ttft_thr = _case_thr("ttft_threshold_ms", 0.0)
         out_thr = _case_thr("output_throughput_threshold", 0.0)
-        max_conc = int(payload.get("max_concurrency_search") or 4096)
+        # 搜索上限（旧字段）：到达上限仍满足阈值 → 上限即最佳并发，正常结束
+        search_cap = int(payload.get("max_concurrency_search") or 4096)
+        # 最大请求数上限（默认 4096）：探测中下一次执行的请求数（= 并发数）超过上限时，
+        # 直接结束整个任务并标记强制结束（Finish），而不是把上限当作最佳并发继续跑完
+        max_requests = int(payload.get("max_requests") or 4096)
         # 阈值统计量：mean / median / p99（每组独立选择，默认 mean）
         ttft_key = f"ttft_{case.get('ttft_statistic') or payload.get('ttft_statistic') or 'mean'}"
         tpot_key = f"tpot_{case.get('tpot_statistic') or payload.get('tpot_statistic') or 'mean'}"
@@ -598,16 +613,32 @@ class TaskManager:
             rows_in_case += 1
             return row
 
+        def force_finish():
+            """下一次执行的请求数超过上限 → 标记强制结束并广播。"""
+            task.forced_finish = True
+            task.persist()
+            task.persist_run_json()
+            self.hub.broadcast({"type": "task_snapshot", "task_id": task.task_id, "task": task.snapshot()})
+
         # 从 1 并发开始
         if runner._stop_flag.is_set():
+            return
+        if max_requests < 1:
+            force_finish()  # 上限非法（<1）：无法执行任何请求，直接强制结束
             return
         lo = 1
         row = run_conc(lo)
         if violated(row):
             return  # 情景1：1 并发已超阈值，最佳并发为 1
-        # 2 的次方递增
-        while not runner._stop_flag.is_set() and lo * 2 <= max_conc:
-            hi = lo * 2
+        # 2 的次方递增；下一次执行请求数（= 并发数）超过 max_requests → 强制结束整个任务
+        while not runner._stop_flag.is_set():
+            nxt = lo * 2
+            if nxt > max_requests:
+                force_finish()
+                return
+            if nxt > search_cap:
+                return  # 到达搜索上限仍满足 → 上限为最佳并发（旧语义，正常结束）
+            hi = nxt
             row = run_conc(hi)
             if violated(row):
                 # 二分 (lo, hi]：lo 满足阈值，hi 超阈值
@@ -620,7 +651,6 @@ class TaskManager:
                         lo = mid
                 return
             lo = hi
-        # 到达上限仍满足 → 上限为最佳
 
     def _annotate_best(self, rows, task):
         """按每组（case）自己的阈值与 statistic 标注最佳并发（xlsx 导出用）。
