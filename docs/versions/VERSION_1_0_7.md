@@ -906,8 +906,6 @@ mocks 勾选放行、介绍卡片新文案）。
 
 ## 版本功能清单（Release Notes）
 
-以下为 v1.0.7 实现功能的总结清单（先英文清单、后中文清单；用于 GitHub Release 说明，勿直接搬迭代记录）。
-
 ### Feature Highlights
 
 - **Create task: bilingual parameters that switch with UI language** (English by default, switch to Chinese via UI language; label / help / options / description all have `_zh` bilingual)
@@ -929,8 +927,6 @@ mocks 勾选放行、介绍卡片新文案）。
 - **技能版本约定 + 版本包下载**（技能有版本、更新自动递增、发版本包到本地；`GET /api/skills/{id}/download` 服务可下载）
 - **Skills 页可滚动 + 一个技能一个说明文档**（滚动条最右、卡片靠左；docs/skills 每技能独立 `<BsXxxYyy>.md` 说明，内容与按钮随语言切换）
 - **Datas/perfs 记录 framework 标记**（每条记录任务 ID 右侧显示蓝色小字 framework 标记）
-
----
 
 ## 5. 相关文档
 

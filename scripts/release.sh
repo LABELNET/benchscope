@@ -153,10 +153,9 @@ if [ -n "$NOTES_FILE" ]; then
   cp "$NOTES_FILE" "$NOTES_TMP"
 elif [ -f "$VER_DOC" ]; then
   echo "==> 读取 ${VER_DOC} 中的「版本功能清单（Release Notes）」区块作为 Release 说明 ..."
-  echo "# benchscope v${NEW}" > "$NOTES_TMP"
-  echo "" >> "$NOTES_TMP"
-  # 不做机械提取：功能清单由 AI 读取版本内容后总结（先英文后中文）维护在 VERSION 文档该区块
-  if ! python3 - "$VER_DOC" >> "$NOTES_TMP" <<'PYEOF'
+  # 不做机械提取：功能清单由 AI 读取版本内容后总结（先英文后中文）维护在 VERSION 文档该区块；
+  # 说明只含功能清单本身，不追加标题/说明段。
+  if ! python3 - "$VER_DOC" > "$NOTES_TMP" <<'PYEOF'
 import re, sys
 src = open(sys.argv[1], encoding="utf-8").read()
 m = re.search(r"(?ms)^##\s*版本功能清单（Release Notes）\s*\n(.*?)(?=^##\s|\Z)", src)
@@ -173,8 +172,7 @@ PYEOF
     echo "   填入「版本功能清单（Release Notes）」区块，或通过 --notes 提供说明文件。" >&2
   fi
 else
-  echo "# benchscope v${NEW}" > "$NOTES_TMP"
-  echo "（未提供 --notes，也无对应 VERSION 文档，请用 AI 总结功能清单后通过 --notes 提供。）" >> "$NOTES_TMP"
+  echo "（未提供 --notes，也无对应 VERSION 文档，请用 AI 总结功能清单后通过 --notes 提供。）" > "$NOTES_TMP"
 fi
 
 create_github_release() {
