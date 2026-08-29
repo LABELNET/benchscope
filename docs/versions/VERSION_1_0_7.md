@@ -918,7 +918,6 @@ mocks 勾选放行、介绍卡片新文案）。
 - **Skill versioning + version-package download** (skills are versioned, auto-increment on update, release to local; `GET /api/skills/{id}/download` downloads the package)
 - **Skills page scrollable + one-skill-one-doc** (scrollbar on far right, cards left-aligned; each skill has its own `<BsXxxYyy>.md` in docs/skills, content & buttons switch with language)
 - **Perfs records show framework badge** (each record shows a small blue framework badge right of the task ID)
-- **Release rules by version number** (patch Z: skip PyPI, only GitHub tag + release; minor/major X.Y: PyPI + tag + release; Release notes are a bilingual feature list)
 
 ### 功能清单
 
@@ -930,7 +929,6 @@ mocks 勾选放行、介绍卡片新文案）。
 - **技能版本约定 + 版本包下载**（技能有版本、更新自动递增、发版本包到本地；`GET /api/skills/{id}/download` 服务可下载）
 - **Skills 页可滚动 + 一个技能一个说明文档**（滚动条最右、卡片靠左；docs/skills 每技能独立 `<BsXxxYyy>.md` 说明，内容与按钮随语言切换）
 - **Datas/perfs 记录 framework 标记**（每条记录任务 ID 右侧显示蓝色小字 framework 标记）
-- **发布规则按版本号区分**（补丁 Z 更新不推 PyPI、只推 GitHub tag + release；主/次 X.Y 更新推 PyPI + tag + release；Release 说明为按功能总结的中英功能清单）
 
 ---
 
