@@ -1,7 +1,7 @@
 # docs 文档目录
 
 > **文档状态**：benchscope 文档体系说明与维护约定  
-> **最后更新**：2026-08-31 03:30:00
+> **最后更新**：2026-08-31 04:00:00
 
 本目录组织项目全部技术文档。**开发更新功能时，必须同步更新对应文档**（见文末「维护约定」）。
 
@@ -88,4 +88,4 @@ Skills（给 AI 消费的技能包）的**说明文档归口**；技能可分发
 >
 > **时间记录规则（重要）**：**所有迭代变更记录的时间必须记录精确时间——年-月-日 时:分:秒**（含 commit 号，取自提交/落地时刻），禁止仅写日期；主导航相关变更另须在 `prds/TopBar.md` §5 追加记录（同样精确到秒）。
 >
-> **git 提交规范（强制）**：提交描述一律使用**英文**、**简短总结**（Conventional Commits，如 `feat:` / `fix:` / `docs:` / `refactor:` / `test:` 前缀），禁止中文或冗长描述；发布后同步 docs 状态也按此规范提交（如 `docs: mark vX.Y.Z as released`）。**不自动 push**——只执行 `git commit`，推送远端须用户明确发出指令后才执行。详见 `rules/Development.md` §4。
+> **git 提交规范（强制）**：提交描述一律使用**英文**、**简短总结**（Conventional Commits，如 `feat:` / `fix:` / `docs:` / `refactor:` / `test:` 前缀），禁止中文或冗长描述；发布后同步 docs 状态也按此规范提交（如 `docs: mark vX.Y.Z as released`）。**不自动 commit 与 push**——每个任务默认不做自动 `git commit` 和 `git push`，所有提交/推送须用户明确发出指令后才执行。详见 `rules/Development.md` §4。

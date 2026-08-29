@@ -57,7 +57,7 @@ python -m benchscope.cli --port 8081 --no-browser                            # �
    - **软件依赖变更（新增/升级/移除）** → 同步 `docs/rules/Software.md` §2 技术栈与 §3 依赖清单
 3. **测试（强制）**：生成/更新对应 tests（API → `tests/api/`，WebUI → `tests/webui/`），运行 `check-i18n` + 构建 + `./tests/run_tests.sh` 全量通过。
 4. 提交（**git 提交规范，强制**）：提交描述一律使用**英文**，**简短总结**变更（Conventional Commits 风格，如 `feat:` / `fix:` / `docs:` / `refactor:` / `test:` 前缀），如 `feat: add per-engine mock switch`。正文可补充要点，但保持简洁。禁止中文或冗长描述。
-5. **不自动 push（强制）**：AI 只执行 `git commit`，**不得自动 `git push`**——推送远端需用户明确发出指令后才执行（如「push」「推送」「提交到远端」等）。
+5. **不自动 commit 与 push（强制）**：**每个任务默认不做自动 `git commit` 和 `git push`**——所有提交与推送都需用户明确发出指令后才执行（如「提交」「commit」「push」「推送」等）。任务完成后仅完成代码/文档改动并汇报，等待用户指令再提交/推送。
 
 ## 5. 发布（Release checklist）
 
