@@ -3,7 +3,7 @@
 > **版本**：1.0.0（两者同步）
 > **技能目录**：[`skills/bs-perfs-concurrency/`](../../skills/bs-perfs-concurrency/) ·
 > [`skills/bs-perfs-threshold/`](../../skills/bs-perfs-threshold/)
-> **最后更新**：2026-08-30
+> **最后更新**：2026-08-31
 > **关联**：[Skills 体系总入口](./Readme.md) · [BenchEngineAuthoring.md](./BenchEngineAuthoring.md)（新增引擎版本走该技能）
 
 ---

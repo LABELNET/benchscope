@@ -146,7 +146,7 @@ tar -tzf "$ARCHIVE" >/dev/null && echo "✅ 产物校验通过（可解压）"
 
 | 技能 | 用途 | 版本 | 文档 |
 | --- | --- | --- | --- |
-| [bs-engine-create](../../skills/bs-engine-create/) | 创建自定义 bench 引擎压缩包（vllm/sglang/其他版本）；导入时校验 + mock 数据验证 + 功能动态注册 | 1.1.0 | [BenchEngineAuthoring.md](./BenchEngineAuthoring.md) |
+| [bs-engine-create](../../skills/bs-engine-create/) | 创建自定义 bench 引擎压缩包（vllm/sglang/其他版本）；导入时校验 + mock 数据验证 + 功能动态注册 | 1.2.0 | [BenchEngineAuthoring.md](./BenchEngineAuthoring.md) |
 | [bs-perfs-concurrency](../../skills/bs-perfs-concurrency/) | 安装 benchscope 并用 `benchscope perf` 进行并发（concurrency）压测；内置表单 + 生成可导入 Datas/perfs 的 zip | 1.0.0 | [BenchTesting.md](./BenchTesting.md) |
 | [bs-perfs-threshold](../../skills/bs-perfs-threshold/) | 安装 benchscope 并用 `benchscope perf --mode threshold` 进行阈值搜索压测；内置表单 + 生成可导入 Datas/perfs 的 zip | 1.0.0 | [BenchTesting.md](./BenchTesting.md) |
 

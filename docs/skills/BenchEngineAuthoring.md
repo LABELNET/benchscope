@@ -1,7 +1,7 @@
 # 自定义 Bench 引擎技能 — bs-engine-create
 
-> **版本**：1.0.0　**技能目录**：[`skills/bs-engine-create/`](../../skills/bs-engine-create/)
-> **最后更新**：2026-08-30
+> **版本**：1.2.0　**技能目录**：[`skills/bs-engine-create/`](../../skills/bs-engine-create/)
+> **最后更新**：2026-08-31
 > **关联**：[Skills 体系总入口](./Readme.md) · [rules/BenchEngine.md](../rules/BenchEngine.md) ·
 > [rules/BenchUpstream.md](../rules/BenchUpstream.md)（上游源码分析）·
 > [rules/BenchCore.md](../rules/BenchCore.md)（自研引擎范例）
@@ -164,6 +164,16 @@ Mock（仿真）代码**唯一归属 `mocks/`**（`tests/` 不携带 mock 代码
    - SGLang 风格：`Time to first token (TTFT) mean (ms):`、`Time per output token (TPOT) p99 (ms):`、`Inter-token latency (ITL) mean (ms):`
 2. **指标必须直观缩放**：并发越高 → 吞吐越高、延迟越高。
    复用 `_scale_stats()` 保证数据自洽，并支持 `seed` 以复现。
+
+### 6.3 Mock 数据动态注册（每引擎 Mock 开关，1.2.0）
+
+- **每个引擎有独立 Mock 开关**（Settings → Bench Engines 卡片上，默认关闭，配置存于 `config.engine_mocks`，按 `engine_id` 记忆），不再使用 Settings → Debug（已移除）。
+- 自定义引擎导入后即可为其开/关 Mock：
+  - **开启**：环境校验**直接通过**（标记 `Mock`），创建任务走 `mocks/` 仿真数据/运行环境（FAKE 模式），
+    无需安装真实框架或启动服务即可跑通「环境校验 → 创建任务 → 命令预览 → 运行 → 指标解析」认证链路；
+  - **关闭**：恢复真实环境校验（`Real`），需满足 `requires` 依赖。
+- **mock 数据来源**：引擎包内 `mocks/`（§6）；mock 输出必须匹配 `parser.py` 正则，否则指标全 0。
+- **动态性**：开/关即时生效并热刷新环境状态，无需重启服务；创建任务选择该引擎时同步刷新 mock/real 状态。
 
 ---
 
