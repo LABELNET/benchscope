@@ -213,28 +213,164 @@ def load_benchs_yaml_text() -> str:
     return BENCHS_YAML.read_text(encoding="utf-8")
 
 
-def save_benchs_yaml_text(content: str) -> None:
-    """保存 benchs.yaml（用户自定义引擎 / 版本扩展）。
+# mock 输出必须包含的指标行（对应 parser.py 的解析正则；缺失会导致指标全 0）
+_MOCK_REQUIRED_LINES = (
+    "Output token throughput",
+    "Serving Benchmark Result",
+)
 
-    校验：必须是合法 yaml、顶层为 dict、engines 为非空列表且每项含 id；
-    校验失败抛 ValueError（不写文件）。
+
+def validate_benchs_yaml(content: str, mock_output: str = "") -> dict:
+    """逐项校验引擎定义，返回 {ok, checks: [{item, ok, message}]}。
+
+    校验项（与 skills/bench-engine-authoring/references/import-checklist.md 一致）：
+      1. yaml         YAML 合法且顶层为对象
+      2. engines      engines 为非空列表、每项含 id、id 唯一
+      3. kind         kind ∈ {builtin, vllm, sglang}
+      4. requires     原生引擎须声明 torch + 框架包且带版本 spec
+      5. params_key   引用的键在 configs/bench-params.yaml 中存在
+      6. option_desc  参数集中每个 option 必须有非空 description
+      7. mock         （可选）mock 输出包含解析器要求的指标行
     """
+    checks: list[dict] = []
+
+    def add(item: str, ok: bool, message: str):
+        checks.append({"item": item, "ok": ok, "message": message})
+
+    # 1. YAML
     try:
         data = yaml.safe_load(content or "")
     except yaml.YAMLError as e:
-        raise ValueError(f"YAML 格式错误：{e}") from e
+        add("yaml", False, f"YAML 格式错误：{e}")
+        return {"ok": False, "checks": checks}
     if not isinstance(data, dict):
-        raise ValueError("配置顶层必须是对象（含 engines / comparison 键）")
+        add("yaml", False, "配置顶层必须是对象（含 engines / comparison 键）")
+        return {"ok": False, "checks": checks}
+    add("yaml", True, "YAML 解析通过")
+
+    # 2. engines
     engines = data.get("engines")
     if not isinstance(engines, list) or not engines:
-        raise ValueError("engines 必须是非空列表")
+        add("engines", False, "engines 必须是非空列表")
+        return {"ok": False, "checks": checks}
+    seen: set = set()
+    id_ok = True
     for i, e in enumerate(engines):
         if not isinstance(e, dict) or not e.get("id"):
-            raise ValueError(f"engines[{i}] 缺少 id 字段")
+            add("engines", False, f"engines[{i}] 缺少 id 字段")
+            id_ok = False
+            break
+        eid = e["id"]
+        if eid in seen:
+            add("engines", False, f"engines[{i}] id 重复：{eid}")
+            id_ok = False
+            break
+        seen.add(eid)
+    if id_ok:
+        add("engines", True, f"{len(engines)} 个引擎（{', '.join(seen)}）")
+
+    # 3. kind
+    kinds_ok = True
+    for i, e in enumerate(engines):
+        if not isinstance(e, dict):
+            continue
+        if e.get("kind") not in ("builtin", "vllm", "sglang"):
+            add("kind", False, f"engines[{i}]（{e.get('id')}）的 kind 必须是 builtin / vllm / sglang")
+            kinds_ok = False
+            break
+    if kinds_ok:
+        add("kind", True, "kind 合法")
+
+    # 4. requires（原生引擎）
+    req_ok = True
+    for i, e in enumerate(engines):
+        if not isinstance(e, dict):
+            continue
         kind = e.get("kind")
-        if kind not in ("builtin", "vllm", "sglang"):
-            raise ValueError(f"engines[{i}]（{e.get('id')}）的 kind 必须是 builtin / vllm / sglang")
+        if kind == "builtin":
+            continue
+        requires = e.get("requires") or []
+        names = {r.get("name") for r in requires if isinstance(r, dict)}
+        needed = {"torch", kind}
+        if not needed.issubset(names):
+            add("requires", False,
+                f"engines[{i}]（{e.get('id')}）原生引擎必须声明 torch 与 {kind} 环境要求")
+            req_ok = False
+            break
+        missing_spec = [r.get("name") for r in requires if isinstance(r, dict) and not r.get("spec")]
+        if missing_spec:
+            add("requires", False,
+                f"engines[{i}]（{e.get('id')}）环境要求 {', '.join(missing_spec)} 缺少 spec")
+            req_ok = False
+            break
+    if req_ok:
+        add("requires", True, "原生引擎环境要求完整")
+
+    # 5. params_key 存在性
+    try:
+        from benchscope.bench_params import load_all_param_specs
+
+        all_params = load_all_param_specs()
+    except Exception:
+        all_params = {}
+    pkey_ok = True
+    for i, e in enumerate(engines):
+        if not isinstance(e, dict):
+            continue
+        pkey = e.get("params_key") or e.get("kind")
+        if pkey and pkey not in all_params:
+            add("params_key", False,
+                f"engines[{i}]（{e.get('id')}）的 params_key “{pkey}” 在 bench-params.yaml 中不存在")
+            pkey_ok = False
+            break
+    if pkey_ok:
+        add("params_key", True, "params_key 均已定义")
+
+    # 6. 选项描述完整性
+    desc_ok = True
+    for key, section in all_params.items():
+        if not isinstance(section, dict):
+            continue
+        for pname, spec in section.items():
+            if not isinstance(spec, dict):
+                continue
+            for opt in spec.get("options") or []:
+                if isinstance(opt, dict) and not (opt.get("description") or "").strip():
+                    add("option_desc", False,
+                        f"参数 {key}/{pname} 的选项 {opt.get('value')} 缺少 description")
+                    desc_ok = False
+                    break
+            if not desc_ok:
+                break
+        if not desc_ok:
+            break
+    if desc_ok:
+        add("option_desc", True, "选项描述完整")
+
+    # 7. mock 输出（可选）
+    if mock_output:
+        missing = [line for line in _MOCK_REQUIRED_LINES if line not in mock_output]
+        if missing:
+            add("mock", False, f"mock 输出缺少必需指标行：{', '.join(missing)}")
+        else:
+            add("mock", True, "mock 输出包含必需指标行")
+
+    ok = all(c["ok"] for c in checks)
+    return {"ok": ok, "checks": checks}
+
+
+def save_benchs_yaml_text(content: str, mock_output: str = "") -> dict:
+    """保存 benchs.yaml（用户自定义引擎 / 版本扩展），保存前逐项校验。
+
+    全部校验通过才写文件；任一项失败抛 ValueError（不写文件）。
+    返回校验结果 {ok, checks}。
+    """
+    result = validate_benchs_yaml(content, mock_output)
+    if not result["ok"]:
+        failed = "; ".join(c["message"] for c in result["checks"] if not c["ok"])
+        raise ValueError(f"引擎定义校验失败：{failed}")
     BENCHS_YAML.write_text(content, encoding="utf-8")
+    return result
 
 
 def list_engines(with_env: bool = True) -> dict:

@@ -247,6 +247,25 @@ N         输出 token 数        → 服务端 usage.completion_tokens（stream
 
 ---
 
+## 8.0 自定义引擎扩展（skills + 导入校验）
+
+**用户扩展路径**（Settings → Bench 引擎 → 添加自定义版本）：
+
+1. 复制**AI 提示词**（`GET /api/benchs/authoring` 返回）给任意 AI 助手，替换框架与版本；
+2. AI 按 **上游 tag 固定链接**读取该版本真实参数，生成引擎定义与参数描述：
+   - vLLM：`https://github.com/vllm-project/vllm/blob/v<VERSION>/vllm/benchmarks/serve.py`
+   - SGLang：`https://github.com/sgl-project/sglang/blob/v<VERSION>/python/sglang/bench_serving.py`
+3. 粘贴定义 → **先校验**（7 项）→ 全部通过后「导入」按钮才可用 → 导入生效。
+
+**校验项**（`validate_benchs_yaml`，与技能 `scripts/validate.sh` 规则一致）：
+yaml 合法 · engines 非空且 id 唯一 · kind ∈ {builtin,vllm,sglang} · 原生引擎 requires 含 torch+框架且带 spec · params_key 存在 · option_desc 完整 · mock 输出含必需指标行。**任一项失败不写磁盘**。
+
+**技能**：`skills/bench-engine-authoring/`（含 mock 核心方法说明、校验清单、模板、离线 `validate.sh`、打包脚本）。规范见 `skills/Readme.md`。
+
+**⚠️ 路由陷阱**：`/api/benchs` 的静态路由（`/authoring` `/import` `/config/yaml`）必须注册在 `/{engine_id}` **之前**，否则被参数路由拦截返回 404。
+
+---
+
 ## 8.1 实施落地说明（2026-08-28）
 
 | 阶段 | 落地内容 | 关键文件 |

@@ -1,0 +1,36 @@
+# ── 模板：引擎条目（追加到 configs/benchs.yaml 的 engines: 下）──
+# 用法：复制本段，替换 <> 占位符，追加到 engines 列表；并在 comparison[*].values 中补该引擎取值。
+
+  # ── 原生引擎（指定版本）模板 ──
+  - id: <framework>-<version>            # 例：vllm-0.24 / sglang-0.4.6
+    kind: <vllm|sglang>                  # 决定执行方式：子进程执行原生 CLI
+    framework: <vllm|sglang>
+    version: "<version>"                 # 例："0.24"
+    params_key: <framework>-<version>    # 必须在 bench-params.yaml 中存在同名段
+    name: <展示名>                        # 例：vLLM Bench（原生 v0.24）
+    description: >-
+      <引擎介绍：来源、执行方式、环境要求、适用场景>
+    highlights:
+      - <特点 1>
+      - <特点 2>
+      - <特点 3>
+    requires:
+      - name: torch
+        spec: ">=2.0"
+        hint: "请安装 torch：pip install 'torch>=2.0'"
+      - name: <framework>                # vllm 或 sglang
+        spec: ">='<version>',<'<next-version>'"   # 例：">=0.24,<0.25"
+        hint: "请安装 <framework> <version>：pip install '<framework>>=<version>,<next-version>'"
+
+# ── 自研引擎模板（无环境依赖）──
+  - id: <custom-id>
+    kind: builtin                        # 自研：进程内执行，无框架依赖
+    framework: builtin
+    version: stable
+    params_key: <custom-id>              # 需在 bench-params.yaml 中定义
+    name: <展示名>
+    description: >-
+      <引擎介绍>
+    highlights:
+      - <特点 1>
+    requires: []                         # 自研引擎无框架环境要求（环境校验恒通过）

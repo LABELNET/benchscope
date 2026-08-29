@@ -180,6 +180,37 @@ conc= 8  out_tps= 517.8  req/s=16.18  ttft=2.92ms  tpot=15.83ms  ok=8
 - [x] P5 — Settings Bench 栏增强（benchs.yaml 查看/编辑 + 保存校验，用户可扩展引擎）
 - [x] P6 — 架构文档（Architecture.md 引擎分层）+ 核心实现存档（BenchCore.md）
 
+### 迭代 6（2026-08-29 10:01:26）：自定义引擎 skills 体系 + 导入校验落地
+
+> **完成时间**：2026-08-29 10:01:26
+
+**功能概述**：
+- **skills 项目规范制定**（新增 `skills/Readme.md`）：目录结构（SKILL.md / README.md / references / templates / scripts）、frontmatter 规范（name/description/**version**）、正文结构、README 规范、**打包规范**（每个技能强制 `scripts/package.sh`，产物 `<name>-<version>.tar.gz` + 可解压校验）
+- **新增技能 `skills/bench-engine-authoring/`**（自定义 bench 引擎开发）：
+  - `SKILL.md`：工作流（确认版本 → **按 tag 读上游真实参数** → 生成两份 yaml → mock 逻辑 → 校验 → 导入）、**上游链接**（vLLM `vllm/benchmarks/serve.py`、SGLang `python/sglang/bench_serving.py`，含 `{version}` 模板）、**mock 核心方法与介绍**（`_scale_stats` / `generate_vllm_output` / `generate_sglang_output` / `_sse_stream` / `_count_tokens` 等 + 两条硬规则：输出匹配 parser 正则、指标随并发缩放）、**可复制 AI 提示词**、导入校验清单、自检项
+  - `references/`：`engine-schema.md`（字段参考+示例）、`mock-core.md`（mock 核心方法详解）、`import-checklist.md`（校验项/API/排错）
+  - `templates/`：`benchs-engine-entry.yaml`、`bench-params-section.yaml`
+  - `scripts/`：`package.sh`（打包+产物校验）、**`validate.sh`（离线校验引擎定义，无需启动服务）**
+  - `README.md`：用途 / 使用方式 / 目录结构 / 打包 / 关键约定 / 维护记录
+- **优化已有 skills**（`vllm-bench-testing` / `sglang-bench-testing` → v1.1.0）：补 `version` frontmatter、新增「引擎选择与环境校验」章节（含环境要求表与阻断规则）、README.md、package.sh，章节重编号
+- **后端导入校验**（`benchscope/benchs.py`）：新增 `validate_benchs_yaml()`——**7 项校验**（yaml / engines / id 唯一 / kind / requires（原生须 torch+框架带 spec）/ params_key 存在 / option_desc 完整 / mock 输出），`save_benchs_yaml_text()` 改为**校验通过才写文件**
+- **API**（`api_benchs.py`）：`POST /api/benchs/import`（`dry_run` 预校验 / `apply` 写入，返回逐项 checks）、`GET /api/benchs/authoring`（技能信息 + 上游链接模板 + **可复制提示词**）、`PUT /api/benchs/config/yaml` 返回校验明细
+- **前端**（Settings → Bench 引擎栏）：新增「**添加自定义版本**」面板——上游 GitHub 链接（可点击）、**AI 提示词一键复制**、引擎定义导入区（先「校验」→ 全部通过后「导入」按钮才可用 → 导入成功刷新列表），校验结果逐项展示（OK/FAIL + 原因）
+
+**实现策略**：引擎定义与代码解耦（yaml 驱动）；校验逻辑前后端一致（后端 `validate_benchs_yaml` 与技能 `validate.sh` 规则对齐）；静态路由（`/authoring` `/import` `/config/yaml`）**必须注册在 `/{engine_id}` 之前**，否则被参数路由拦截 404。
+
+**验证**：`./tests/run_tests.sh` 全量通过——**API 92/92**（新增 `tests/api/test_skills.py` 10 项：目录结构 / frontmatter 规范 / 三个技能打包产物校验 / 自定义引擎技能内容完整性 / validate.sh 正反例 / Readme 清单）、**WebUI 20/20**；i18n 一致、构建通过；三技能打包均通过（bench-engine-authoring-1.0.0 / vllm-bench-testing-1.1.0 / sglang-bench-testing-1.1.0）。
+
+**修复记录**：
+- `/api/benchs/authoring` 返回 404 —— 静态路由注册在 `/{engine_id}` 之后被拦截 → 调整注册顺序（已在代码注释标注该陷阱）
+- 旧测试 `test_benchs_yaml_get_and_save` 因新增校验项（params_key / requires 完整性）失败 → 更新测试用自定义配置使其满足全部校验
+- 清理遗留：删除废弃模块 `benchscope/benchs/params.py`（与 `benchs.py` 同名冲突）
+
+**TODO 状态**：
+- [x] 技能 — skills 项目规范 + bench-engine-authoring 技能 + 已有 skills 规范化
+- [x] 导入 — 7 项校验 + /api/benchs/import（dry_run/apply）+ /api/benchs/authoring
+- [x] 前端 — Settings「添加自定义版本」面板（提示词复制 + 上游链接 + 校验后导入）
+
 ## 4. TODO 清单
 
 - [x] **版本初始化**：VERSION_1_0_7.md + 版本号 `1.0.7.dev0` + Roadmap/Readme 同步 + 开发模式启动（2026-08-28 完成）
@@ -189,7 +220,9 @@ conc= 8  out_tps= 517.8  req/s=16.18  ttft=2.92ms  tpot=15.83ms  ok=8
 - [x] **P3 参数体系**：configs/bench-params.yaml（37 项参数描述 + 选项级描述）+ /api/benchs/*/params + 前端下拉描述面板（2026-08-28 完成）
 - [x] **P4 自研引擎**：LoadGenerator / Requester / MetricsCollector + task_manager 集成（2026-08-28 完成）
 - [x] **P5 Settings Bench 栏**：内置引擎列表 + 介绍 + 对比表 + 环境状态 + benchs.yaml 查看/编辑（2026-08-28 完成）
-- [x] **P6 测试与文档**：tests/api 78 + tests/webui 20 + Architecture.md / Software.md / BenchCore.md 同步（2026-08-28 完成）
+- [x] **P6 测试与文档**：tests/api 92 + tests/webui 20 + Architecture.md / Software.md / BenchCore.md 同步（2026-08-29 完成）
+- [x] **Skills 体系**：skills 项目规范（结构/frontmatter/打包）+ `bench-engine-authoring` 自定义引擎技能（mock 核心方法 + 上游链接 + 提示词）+ 已有 vllm/sglang skills 规范化至 v1.1.0（2026-08-29 完成）
+- [x] **导入校验**：7 项校验（yaml/engines/id/kind/requires/params_key/option_desc/mock）+ `POST /api/benchs/import`（dry_run 预校验 / apply 写入）+ Settings「添加自定义版本」面板（提示词复制 + GitHub 链接 + 校验后导入）（2026-08-29 完成）
 
 ---
 

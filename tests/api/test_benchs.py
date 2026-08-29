@@ -87,6 +87,9 @@ def test_native_engine_env_check_reports_missing(client, base_url):
 def test_benchs_yaml_get_and_save(client, base_url):
     """引擎定义 yaml：可读；保存需校验（非法内容 400 且不写文件）；合法内容生效后还原。
 
+    校验项：yaml / engines / id / kind / requires / params_key / option_desc（详见
+    skills/bench-engine-authoring/references/import-checklist.md）。
+
     注意：该测试会临时修改 configs/benchs.yaml，务必在 finally 中还原。
     """
     from benchscope.benchs import load_benchs_yaml_text, save_benchs_yaml_text
@@ -116,11 +119,16 @@ def test_benchs_yaml_get_and_save(client, base_url):
         assert r.status_code == 400, "非法 yaml 应返回 400"
 
         # 合法：新增一个自定义引擎 → 保存成功且出现在清单中
+        # 注意：须满足全部校验项（自研引擎带 params_key；原生引擎声明 torch + 框架）
         custom = (
             "engines:\n"
-            "  - id: benchscope\n    kind: builtin\n    name: BenchScope Bench（自研）\n    requires: []\n"
-            "  - id: vllm-0.99\n    kind: vllm\n    version: '0.99'\n    name: Custom vLLM\n"
-            "    requires:\n      - name: torch\n        spec: '>=2.0'\n"
+            "  - id: benchscope\n    kind: builtin\n    params_key: benchscope\n"
+            "    name: BenchScope Bench（自研）\n    requires: []\n"
+            "  - id: vllm-0.99\n    kind: vllm\n    version: '0.99'\n    params_key: vllm\n"
+            "    name: Custom vLLM\n"
+            "    requires:\n"
+            "      - {name: torch, spec: '>=2.0'}\n"
+            "      - {name: vllm, spec: '>=0.99,<1.0'}\n"
         )
         r = client.put(f"{base_url}/api/benchs/config/yaml", json={"content": custom}, timeout=10)
         assert r.status_code == 200, f"合法配置应保存成功: {r.text}"
@@ -135,6 +143,124 @@ def test_benchs_yaml_get_and_save(client, base_url):
         save_benchs_yaml_text(original)
         restored = load_benchs_yaml_text()
         assert restored == original, "测试结束必须还原原始配置"
+
+
+def test_import_dry_run_valid(client, base_url):
+    """/api/benchs/import dry_run：合法定义逐项校验通过，applied=False（不写文件）。"""
+    from benchscope.benchs import load_benchs_yaml_text
+
+    original = load_benchs_yaml_text()
+    try:
+        content = (
+            "engines:\n"
+            "  - id: benchscope\n    kind: builtin\n    params_key: benchscope\n    requires: []\n"
+            "  - id: vllm-0.24\n    kind: vllm\n    version: '0.24'\n    params_key: vllm\n"
+            "    requires:\n      - {name: torch, spec: '>=2.0'}\n      - {name: vllm, spec: '>=0.24,<0.25'}\n"
+        )
+        r = client.post(
+            f"{base_url}/api/benchs/import",
+            json={"content": content, "dry_run": True, "apply": False},
+            timeout=15,
+        )
+        assert r.status_code == 200, r.text
+        data = r.json()
+        assert data["ok"] is True, data
+        assert data["applied"] is False, "dry_run 不应写入文件"
+        items = {c["item"] for c in data["checks"]}
+        # 七项校验齐全
+        for key in ("yaml", "engines", "kind", "requires", "params_key", "option_desc"):
+            assert key in items, f"缺少校验项 {key}: {items}"
+        assert all(c["ok"] for c in data["checks"]), data["checks"]
+        assert load_benchs_yaml_text() == original, "dry_run 不应修改文件"
+    finally:
+        from benchscope.benchs import save_benchs_yaml_text
+        save_benchs_yaml_text(original)
+
+
+def test_import_invalid_rejected(client, base_url):
+    """/api/benchs/import：非法定义被拒绝（ok=False + 失败明细），不写文件。"""
+    from benchscope.benchs import load_benchs_yaml_text, save_benchs_yaml_text
+
+    original = load_benchs_yaml_text()
+    cases = [
+        ("kind 非法", "engines:\n  - id: x\n    kind: unknown-kind\n", "kind"),
+        ("缺 requires", "engines:\n  - id: vllm-0.24\n    kind: vllm\n    params_key: vllm\n", "requires"),
+        (
+            "params_key 不存在",
+            "engines:\n  - id: vllm-0.24\n    kind: vllm\n    params_key: nope\n"
+            "    requires:\n      - {name: torch, spec: '>=2.0'}\n      - {name: vllm, spec: '>=0.24'}\n",
+            "params_key",
+        ),
+        ("id 重复", "engines:\n  - {id: a, kind: builtin}\n  - {id: a, kind: builtin}\n", "engines"),
+        ("非 yaml", "a: [1,\n  b: ::\n", "yaml"),
+    ]
+    try:
+        for label, content, expect_item in cases:
+            r = client.post(
+                f"{base_url}/api/benchs/import",
+                json={"content": content, "dry_run": True},
+                timeout=15,
+            )
+            assert r.status_code == 200, f"{label}: {r.text}"
+            data = r.json()
+            assert data["ok"] is False, f"{label} 应校验失败: {data}"
+            failed = [c for c in data["checks"] if not c["ok"]]
+            assert any(c["item"] == expect_item for c in failed), f"{label} 失败项应含 {expect_item}: {failed}"
+            assert load_benchs_yaml_text() == original, f"{label} 不应修改文件"
+    finally:
+        save_benchs_yaml_text(original)
+
+
+def test_import_apply_writes_config(client, base_url):
+    """/api/benchs/import apply=true：校验通过后写入并生效（测试结束还原）。"""
+    from benchscope.benchs import load_benchs_yaml_text, save_benchs_yaml_text
+
+    original = load_benchs_yaml_text()
+    try:
+        content = (
+            "engines:\n"
+            "  - id: benchscope\n    kind: builtin\n    params_key: benchscope\n    requires: []\n"
+            "  - id: sglang-0.4.6\n    kind: sglang\n    version: '0.4.6'\n    params_key: sglang\n"
+            "    requires:\n      - {name: torch, spec: '>=2.0'}\n      - {name: sglang, spec: '==0.4.6'}\n"
+        )
+        r = client.post(
+            f"{base_url}/api/benchs/import",
+            json={"content": content, "dry_run": False, "apply": True},
+            timeout=15,
+        )
+        assert r.status_code == 200, r.text
+        data = r.json()
+        assert data["ok"] is True and data["applied"] is True, data
+        assert "sglang-0.4.6" in [e["id"] for e in data["engines"]]
+
+        # 清单 API 反映新引擎
+        r = client.get(f"{base_url}/api/benchs", timeout=10)
+        assert "sglang-0.4.6" in [e["id"] for e in r.json()["engines"]]
+    finally:
+        save_benchs_yaml_text(original)
+        assert load_benchs_yaml_text() == original
+
+
+def test_authoring_guide_api(client, base_url):
+    """/api/benchs/authoring：技能信息 + 上游链接模板 + 可复制提示词。"""
+    r = client.get(f"{base_url}/api/benchs/authoring", timeout=10)
+    assert r.status_code == 200, r.text
+    data = r.json()
+
+    assert data["skill"]["name"] == "bench-engine-authoring"
+    assert "SKILL.md" in data["skill"]["path"]
+
+    upstream = data["upstream"]
+    for fw in ("vllm", "sglang"):
+        assert fw in upstream, f"缺少 {fw} 上游链接"
+        assert upstream[fw]["repo"].startswith("https://github.com/"), upstream[fw]
+        assert "{version}" in upstream[fw]["link_template"], "链接模板应含 {version} 占位"
+        assert upstream[fw]["command"], f"{fw} 应提供 bench 命令"
+
+    prompt = data["prompt"]
+    assert "github.com/vllm-project/vllm" in prompt, "提示词应含 vLLM 上游链接"
+    assert "github.com/sgl-project/sglang" in prompt, "提示词应含 SGLang 上游链接"
+    assert "description" in prompt.lower(), "提示词应要求选项描述"
 
 
 def test_get_engine_detail_and_404(client, base_url):

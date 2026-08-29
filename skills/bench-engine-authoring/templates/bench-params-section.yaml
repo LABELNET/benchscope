@@ -1,0 +1,30 @@
+# ── 模板：参数段（追加到 configs/bench-params.yaml 顶层）──
+# 用法：顶层键必须与引擎条目的 params_key 一致；**每个 option 必须有 description**。
+
+<params_key>:                            # 例：vllm-0.24 / sglang-0.4.6 / my-engine
+  <yaml-key>:                            # 与参数 yaml 中的 key 一致（连字符形式）
+    label: <参数名>
+    help: <参数说明：作用与影响>
+    type: <select|str|int|float|bool>    # 有 options 时前端渲染为下拉
+    options:                             # 可选；无 options 时按 type 渲染输入框/开关
+      - value: <取值>
+        label: <展示名>
+        description: >-                  # 【必需】选中该值后展示的描述
+          <该取值的含义、适用场景、注意事项>
+      - value: <取值 2>
+        label: <展示名 2>
+        description: >-
+          <描述 2>
+
+# ── 示例（backend 参数）──
+# backend:
+#   label: 后端 Backend
+#   help: bench 请求推理服务使用的后端协议
+#   type: select
+#   options:
+#     - value: openai-chat
+#       label: openai-chat
+#       description: 使用 /v1/chat/completions 接口（messages 形式），适用于 instruct / chat 模型
+#     - value: openai
+#       label: openai
+#       description: 使用 /v1/completions 接口（prompt 形式），适用于 base 模型

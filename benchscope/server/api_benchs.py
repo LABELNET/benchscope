@@ -18,7 +18,31 @@ from benchscope.benchs import (
     list_engines,
     load_benchs_yaml_text,
     save_benchs_yaml_text,
+    validate_benchs_yaml,
 )
+
+# 自定义引擎的上游参考链接（按版本 tag 固定，供前端「添加自定义版本」展示）
+UPSTREAM_LINKS = {
+    "vllm": {
+        "repo": "https://github.com/vllm-project/vllm",
+        "bench_entry": "vllm/benchmarks/serve.py",
+        "link_template": "https://github.com/vllm-project/vllm/blob/v{version}/vllm/benchmarks/serve.py",
+        "command": "vllm bench serve",
+    },
+    "sglang": {
+        "repo": "https://github.com/sgl-project/sglang",
+        "bench_entry": "python/sglang/bench_serving.py",
+        "link_template": "https://github.com/sgl-project/sglang/blob/v{version}/python/sglang/bench_serving.py",
+        "command": "python -m sglang.bench_serving",
+    },
+}
+
+AUTHORING_SKILL = {
+    "name": "bench-engine-authoring",
+    "path": "skills/bench-engine-authoring/SKILL.md",
+    "readme": "skills/bench-engine-authoring/README.md",
+    "description": "自定义 bench 引擎（vllm/sglang/其他版本）配置与代码生成、导入校验技能",
+}
 from benchscope.bench_params import get_option_description, param_specs_for_engine
 
 log = logging.getLogger("benchscope.api_benchs")
@@ -32,6 +56,46 @@ def list_bench_engines():
     return list_engines(with_env=True)
 
 
+@router.get("/authoring")
+def get_authoring_guide():
+    """自定义引擎开发指引：skills 技能信息与上游参考链接（按版本 tag 固定）。
+
+    前端「添加自定义版本」据此展示：可复制的 AI 提示词 + 目标版本 GitHub 链接。
+    """
+    return {
+        "skill": AUTHORING_SKILL,
+        "upstream": UPSTREAM_LINKS,
+        "prompt": _authoring_prompt(),
+    }
+
+
+@router.post("/import")
+def import_benchs(payload: dict):
+    """导入自定义引擎定义（校验成功方可导入）。
+
+    请求体：{content: <benchs.yaml 内容>, mock_output?: <mock 输出文本>, dry_run?: bool, apply?: bool}
+      - dry_run=true  → 只校验，不写文件（默认）
+      - apply=true    → 校验通过后写入 configs/benchs.yaml
+    响应：{ok, checks: [{item, ok, message}], engines, applied}
+    """
+    content = payload.get("content") or ""
+    mock_output = payload.get("mock_output") or ""
+    dry_run = bool(payload.get("dry_run", True))
+    apply_change = bool(payload.get("apply", False))
+
+    result = validate_benchs_yaml(content, mock_output)
+    if not result["ok"] or dry_run or not apply_change:
+        return {**result, "engines": [], "applied": False}
+
+    try:
+        save_benchs_yaml_text(content, mock_output)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail={"message": str(e), "checks": result["checks"]})
+    return {**result, "engines": list_engines(with_env=False)["engines"], "applied": True}
+
+
+# ⚠️ 静态路径（/authoring / /import / /config/yaml）必须注册在 /{engine_id} 之前，
+#    否则会被 /{engine_id} 优先匹配导致 404。
 @router.get("/{engine_id}")
 def get_bench_engine(engine_id: str):
     """单个引擎详情（含环境校验结果）。"""
@@ -49,16 +113,50 @@ def get_benchs_yaml():
 
 @router.put("/config/yaml")
 def update_benchs_yaml(payload: dict):
-    """保存引擎定义（用户自定义新增引擎 / 版本）。
+    """保存引擎定义（用户自定义新增引擎 / 版本），保存前逐项校验。
 
-    校验失败（YAML 非法 / 缺 engines / 引擎缺 id / kind 不合法）返回 400，文件不被修改。
+    校验项：yaml / engines / id / kind / requires / params_key / option_desc / mock。
+    任一项失败返回 400（含全部检查明细），**文件不被修改**。
     """
     content = payload.get("content") or ""
+    mock_output = payload.get("mock_output") or ""
     try:
-        save_benchs_yaml_text(content)
+        result = save_benchs_yaml_text(content, mock_output)
     except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-    return {"ok": True, "engines": list_engines(with_env=False)["engines"]}
+        # 附带逐项检查结果，便于前端展示失败原因
+        checks = validate_benchs_yaml(content, mock_output).get("checks", [])
+        raise HTTPException(status_code=400, detail={"message": str(e), "checks": checks})
+    return {
+        "ok": True,
+        "checks": result.get("checks", []),
+        "engines": list_engines(with_env=False)["engines"],
+    }
+
+
+def _authoring_prompt() -> str:
+    """生成「让 AI 生成自定义引擎」的提示词（前端可一键复制）。"""
+    return """Task: create a BenchScope custom bench engine definition for <FRAMEWORK> version <VERSION>.
+
+Steps:
+1) Read the upstream bench entrypoint at the pinned tag and enumerate the REAL
+   parameters at that version:
+   - vLLM:   https://github.com/vllm-project/vllm/blob/v<VERSION>/vllm/benchmarks/serve.py
+   - SGLang: https://github.com/sgl-project/sglang/blob/v<VERSION>/python/sglang/bench_serving.py
+   Do NOT reuse parameters from another version.
+2) Emit TWO yaml artifacts:
+   a) an engine entry for configs/benchs.yaml:
+      - id: <framework>-<version>   kind: vllm|sglang|builtin   params_key: <key>
+      - name / description / highlights / requires (torch + framework, with version spec)
+   b) a parameter section for configs/bench-params.yaml under key <params_key>:
+      for each parameter: label, help, type, and options — EVERY option MUST have a
+      non-empty description explaining what that value does.
+3) If the engine needs mock/simulation output, generate it following the mock core
+   contract (mocks/ only), scaling throughput/latency with concurrency and matching
+   the parser regexes exactly.
+4) Validate against the import checklist (yaml / engines / id / kind / requires /
+   params_key exists / option descriptions / mock output) and fix all failures
+   before presenting the result.
+5) Output the final, importable yaml in one code block."""
 
 
 @router.get("/{engine_id}/params")

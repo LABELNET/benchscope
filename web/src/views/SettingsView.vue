@@ -308,6 +308,84 @@
 
           <a-empty v-if="!benchesLoading && !benches.length" :description="t('noData')" />
 
+          <!-- 添加自定义版本：AI 提示词 + 上游链接 + 导入校验 -->
+          <div class="bench-add">
+            <div class="bench-add-head">
+              <span class="bench-label">{{ t('benchAddTitle') }}</span>
+              <a-button size="small" type="primary" @click="showAddBench = !showAddBench">
+                {{ showAddBench ? t('benchAddCollapse') : t('benchAddCustom') }}
+              </a-button>
+            </div>
+            <p class="bench-yaml-desc">{{ t('benchAddDesc') }}</p>
+
+            <div v-if="showAddBench" class="bench-add-body">
+              <!-- 上游链接 -->
+              <div class="add-block">
+                <div class="bench-label">{{ t('benchUpstreamLinks') }}</div>
+                <ul class="bench-ul">
+                  <li v-for="(info, fw) in authoring.upstream || {}" :key="fw">
+                    <a :href="info.repo" target="_blank" rel="noopener">{{ info.repo }}</a>
+                    <span class="add-hint"> · {{ info.command }} · {{ info.bench_entry }}</span>
+                  </li>
+                </ul>
+                <p class="add-hint">{{ t('benchUpstreamHint') }}</p>
+              </div>
+
+              <!-- AI 提示词（可复制） -->
+              <div class="add-block">
+                <div class="add-block-head">
+                  <span class="bench-label">{{ t('benchPromptTitle') }}</span>
+                  <a-button size="small" @click="copyPrompt">{{ t('benchCopyPrompt') }}</a-button>
+                </div>
+                <p class="add-hint">{{ t('benchPromptDesc') }}</p>
+                <pre class="bench-yaml-view">{{ authoring.prompt || t('benchLoading') }}</pre>
+              </div>
+
+              <!-- 导入定义（校验后才可导入） -->
+              <div class="add-block">
+                <div class="bench-label">{{ t('benchImportTitle') }}</div>
+                <p class="add-hint">{{ t('benchImportDesc') }}</p>
+                <a-textarea
+                  v-model:value="importContent"
+                  :rows="10"
+                  class="bench-yaml-editor"
+                  :placeholder="t('benchImportPlaceholder')"
+                  spellcheck="false"
+                />
+                <div class="add-actions">
+                  <a-button size="small" :loading="importChecking" @click="validateImport(false)">
+                    {{ t('benchValidate') }}
+                  </a-button>
+                  <a-button
+                    size="small"
+                    type="primary"
+                    :loading="importApplying"
+                    :disabled="!importResult?.ok"
+                    @click="validateImport(true)"
+                  >
+                    {{ t('benchImportApply') }}
+                  </a-button>
+                </div>
+
+                <!-- 校验结果逐项展示 -->
+                <div v-if="importResult" class="import-result">
+                  <div
+                    v-for="c in importResult.checks || []"
+                    :key="c.item"
+                    class="check-row"
+                  >
+                    <span class="check-item">{{ c.item }}</span>
+                    <a-tag :color="c.ok ? 'green' : 'red'" size="small">{{ c.ok ? 'OK' : 'FAIL' }}</a-tag>
+                    <span class="check-msg" :class="c.ok ? 'env-ok' : 'env-bad'">{{ c.message }}</span>
+                  </div>
+                  <div v-if="importResult.ok && importApplied" class="bench-hint-ok">
+                    {{ t('benchImportApplied') }}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
           <!-- 引擎定义编辑（用户可扩展：新增引擎 / 版本） -->
           <div class="bench-yaml">
             <div class="bench-yaml-head">
@@ -425,6 +503,14 @@ const benchesYaml = ref('')
 const benchesYamlDraft = ref('')
 const benchesYamlEditing = ref(false)
 const benchesSaving = ref(false)
+// 添加自定义引擎（AI 提示词 + 上游链接 + 导入校验）
+const showAddBench = ref(false)
+const authoring = ref({})
+const importContent = ref('')
+const importResult = ref(null)
+const importApplied = ref(false)
+const importChecking = ref(false)
+const importApplying = ref(false)
 // Datasets 左侧分类
 const datasetCats = ref([])
 const activeDsCat = ref('all')
@@ -649,6 +735,7 @@ async function loadBenches() {
     benchComparison.value = resp.comparison || []
     defaultEngineId.value = resp.default_engine_id || 'benchscope'
     await loadBenchesYaml()
+    await loadAuthoring()
   } catch {
     benches.value = []
     benchComparison.value = []
@@ -663,6 +750,58 @@ async function loadBenchesYaml() {
     benchesYaml.value = resp.content || ''
   } catch {
     benchesYaml.value = ''
+  }
+}
+
+// 自定义引擎开发指引（提示词 + 上游链接）
+async function loadAuthoring() {
+  try {
+    authoring.value = await api.getBenchAuthoring() || {}
+  } catch {
+    authoring.value = {}
+  }
+}
+
+// 复制 AI 提示词
+async function copyPrompt() {
+  const text = authoring.value?.prompt || ''
+  if (!text) return
+  try {
+    await navigator.clipboard.writeText(text)
+    message.success(t('benchCopySuccess'))
+  } catch {
+    message.warning(t('benchCopyFail'))
+  }
+}
+
+// 导入校验：apply=false 仅校验；apply=true 校验通过后写入
+async function validateImport(apply) {
+  if (!importContent.value.trim()) {
+    message.warning(t('benchImportEmpty'))
+    return
+  }
+  importApplied.value = false
+  if (apply) importApplying.value = true
+  else importChecking.value = true
+  try {
+    const resp = await api.importBenchs(importContent.value, '', apply)
+    importResult.value = { ok: !!resp.ok, checks: resp.checks || [] }
+    if (apply && resp.applied) {
+      importApplied.value = true
+      message.success(t('benchImportApplied'))
+      await loadBenches()
+    } else if (!resp.ok) {
+      message.error(t('benchValidateFail'))
+    } else {
+      message.success(t('benchValidateOk'))
+    }
+  } catch (e) {
+    const detail = e?.response?.data?.detail
+    importResult.value = { ok: false, checks: detail?.checks || [] }
+    message.error(detail?.message || t('benchValidateFail'))
+  } finally {
+    importChecking.value = false
+    importApplying.value = false
   }
 }
 
@@ -1519,6 +1658,78 @@ function deployModel() {
   white-space: nowrap;
   width: 130px;
 }
+/* 添加自定义引擎（提示词 / 上游链接 / 导入校验） */
+.bench-add {
+  margin-top: 16px;
+  padding: 12px 14px;
+  border: 1px solid var(--ant-color-primary-border, #91caff);
+  border-radius: 8px;
+  background: var(--ant-color-primary-bg, #e6f4ff);
+}
+.bench-add-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.bench-add-body {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  margin-top: 8px;
+}
+.add-block {
+  background: var(--ant-color-bg-container, #fff);
+  border-radius: 6px;
+  padding: 10px 12px;
+}
+.add-block-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 4px;
+}
+.add-hint {
+  font-size: 11px;
+  color: var(--ant-color-text-tertiary, #999);
+  margin: 4px 0 0;
+  line-height: 1.6;
+  word-break: break-all;
+}
+.add-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+}
+.import-result {
+  margin-top: 8px;
+  border-top: 1px dashed var(--ant-color-border-secondary, #f0f0f0);
+  padding-top: 6px;
+}
+.check-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+  padding: 2px 0;
+  flex-wrap: wrap;
+}
+.check-item {
+  min-width: 92px;
+  font-weight: 500;
+}
+.check-msg {
+  color: var(--ant-color-text-secondary, #666);
+  word-break: break-all;
+}
+.bench-hint-ok {
+  font-size: 11px;
+  color: var(--ant-color-success, #52c41a);
+  margin-top: 4px;
+}
+
 /* 引擎定义 yaml（查看 / 编辑） */
 .bench-yaml {
   margin-top: 16px;

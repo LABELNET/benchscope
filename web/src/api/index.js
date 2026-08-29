@@ -36,7 +36,11 @@ export const api = {
   getBenchParams: (engineId) => http.get(`/api/benchs/${engineId}/params`),
   checkBenchEnv: (engineId) => http.get(`/api/benchs/${engineId}/env-check`),
   getBenchsYaml: () => http.get('/api/benchs/config/yaml'),
-  saveBenchsYaml: (content) => http.put('/api/benchs/config/yaml', { content }),
+  saveBenchsYaml: (content, mockOutput) => http.put('/api/benchs/config/yaml', { content, mock_output: mockOutput }),
+  importBenchs: (content, mockOutput, apply) => http.post('/api/benchs/import', {
+    content, mock_output: mockOutput, dry_run: !apply, apply: !!apply,
+  }),
+  getBenchAuthoring: () => http.get('/api/benchs/authoring'),
 
   // 缓存目录管理
   getDirs: () => http.get('/api/config/dirs'),
