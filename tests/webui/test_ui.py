@@ -175,9 +175,9 @@ def test_settings_benches_create_engine_modal(page):
     _open_benches_tab(page)
 
     page.locator(".bench-actions .bench-text-btn").filter(has_text="Create Engine").click()
-    _visible(page, ".bench-modal", timeout=8000)
+    _visible(page, ".bench-modal:visible", timeout=8000)
 
-    modal = page.locator(".bench-modal")
+    modal = page.locator(".bench-modal:visible")
     # 制作步骤教程
     assert modal.locator(".bench-ol li").count() >= 3, "应展示制作步骤教程"
     # 上游仓库链接
@@ -200,11 +200,11 @@ def test_settings_benches_upload_engine_modal(page):
     _open_benches_tab(page)
 
     page.locator(".bench-actions .bench-text-btn").filter(has_text="Upload Engine").click()
-    _visible(page, ".bench-modal", timeout=8000)
+    _visible(page, ".bench-modal:visible", timeout=8000)
 
-    modal = page.locator(".bench-modal")
+    modal = page.locator(".bench-modal:visible")
     # 拖拽上传区（ant-design-vue 4 渲染为 .ant-upload-drag）
-    _visible(page, ".bench-modal .ant-upload-drag")
+    _visible(page, ".bench-modal:visible .ant-upload-drag")
     hint = modal.inner_text()
     assert ".tar.gz" in hint, f"应说明支持 .tar.gz 技能包: {hint[:200]}"
     # 上传前「校验并导入」按钮不可用
@@ -223,10 +223,10 @@ def test_settings_benches_comparison_modal(page):
     assert page.locator(".bench-tab .compare-table").count() == 0, "对比表应移入弹框，不在页面内联"
 
     page.locator(".bench-actions .bench-text-btn").filter(has_text="Engine Comparison").click()
-    _visible(page, ".bench-modal", timeout=8000)
+    _visible(page, ".bench-modal:visible", timeout=8000)
 
-    modal = page.locator(".bench-modal")
-    _visible(page, ".bench-modal .compare-table")
+    modal = page.locator(".bench-modal:visible")
+    _visible(page, ".bench-modal:visible .compare-table")
     # 维度行 + 三个引擎列
     assert modal.locator(".compare-table tbody tr").count() >= 3, "对比表应含多个维度"
     headers = modal.locator(".compare-table thead th").all_inner_texts()
@@ -488,23 +488,24 @@ def test_settings_benches_english_only(page):
     assert not cjk, f"引擎列表出现中文: {''.join(cjk[:40])}"
 
     page.locator(".bench-actions .bench-text-btn").filter(has_text="Engine Comparison").click()
-    _visible(page, ".bench-modal .compare-table", timeout=8000)
-    modal_text = page.locator(".bench-modal").inner_text()
+    _visible(page, ".bench-modal:visible .compare-table", timeout=8000)
+    modal_text = page.locator(".bench-modal:visible").inner_text()
     cjk = [ch for ch in modal_text if "一" <= ch <= "鿿"]
     assert not cjk, f"对比表出现中文: {''.join(cjk[:40])}"
-    page.locator(".bench-modal .ant-modal-close").click()
+    page.locator(".bench-modal:visible .ant-modal-close").click()
 
 
 def test_settings_bench_modal_header_footer_width(page):
-    """引擎弹框：header 为标题 + 提示，footer 为文字按钮，宽度约 1/3 浏览器宽度。"""
+    """引擎弹框：header 为标题 + 提示，footer 为文字按钮，宽度约 1/2 浏览器宽度。"""
     _open_benches_tab(page)
     page.locator(".bench-actions .bench-text-btn").filter(has_text="Create Engine").click()
-    _visible(page, ".bench-modal", timeout=8000)
+    _visible(page, ".bench-modal:visible", timeout=8000)
     page.wait_for_timeout(600)  # 等待弹框缩放动画结束再测量宽度
 
-    modal = page.locator(".bench-modal")
+    # 弹框关闭后仍留在 DOM，必须限定可见的那个
+    modal = page.locator(".bench-modal:visible")
     # header：标题 + 提示文案
-    _visible(page, ".bench-modal .bench-modal-title")
+    _visible(page, ".bench-modal:visible .bench-modal-title")
     hint = modal.locator(".bench-modal-hint").inner_text()
     assert hint.strip(), "header 应包含提示文案"
 
@@ -512,24 +513,52 @@ def test_settings_bench_modal_header_footer_width(page):
     footer = modal.locator(".bench-modal-footer")
     assert footer.locator("button").count() >= 1, "footer 应含文字操作按钮"
 
-    # 宽度 ≈ 1/3 视口（视口 1440 → 约 480）；a-modal 的 class 落在 .ant-modal 本身
+    # 宽度 ≈ 1/2 视口（视口 1440 → 720）
+    # 容差收紧到 20px：此前容差 60 会让「样式未生效的 520px 默认值」误判通过
     box = modal.bounding_box()
     viewport = page.viewport_size["width"]
     assert box, "弹框应已渲染"
-    assert abs(box["width"] - viewport / 3) <= 60, \
-        f"弹框宽度应约为 1/3 视口: {box['width']} vs {viewport / 3}"
-    page.locator(".bench-modal .ant-modal-close").click()
+    assert abs(box["width"] - viewport / 2) <= 20, \
+        f"弹框宽度应约为 1/2 视口: {box['width']} vs {viewport / 2}"
+    modal.locator(".ant-modal-close").click()
 
 
 def test_settings_benches_list_scrollable(page):
-    """Bench Engines 列表区可滚动（内容超出时出现滚动条）。"""
+    """Bench Engines 列表区可滚动：容器限高 + 内容超出时实际发生滚动位移。
+
+    回归背景：a-spin 的 .ant-spin-container 未传递高度约束（scoped 下需 :deep()），
+    导致 .bench-list-scroll 拿不到限高，内容被外层 overflow:hidden 裁掉而无法滚动。
+    """
     _open_benches_tab(page)
-    scrollable = page.evaluate(
-        "() => { const el = document.querySelector('.bench-list-scroll');"
-        " return !!el && (el.scrollHeight > el.clientHeight ||"
-        " getComputedStyle(el).overflowY === 'auto' || el.clientHeight > 0); }"
+
+    # 1) 高度约束链完整：a-spin 内部容器必须是 flex + min-height:0
+    chain = page.evaluate(
+        "() => { const c = document.querySelector('.ant-spin-container');"
+        " const el = document.querySelector('.bench-list-scroll');"
+        " return { cDisplay: c && getComputedStyle(c).display,"
+        "          cMinH: c && getComputedStyle(c).minHeight,"
+        "          ovfY: el && getComputedStyle(el).overflowY }; }"
     )
-    assert scrollable, "引擎列表应为独立滚动容器且可见可滚动"
+    assert chain["cDisplay"] == "flex", f"ant-spin-container 应为 flex: {chain}"
+    assert chain["cMinH"] == "0px", f"ant-spin-container 应 min-height:0: {chain}"
+    assert chain["ovfY"] == "auto", f"列表容器 overflow-y 应为 auto: {chain}"
+
+    # 2) 实际滚动：缩小视口使内容超出 → 滚动位移 > 0
+    page.set_viewport_size({"width": 1440, "height": 400})
+    page.wait_for_timeout(500)
+    before = page.evaluate(
+        "() => { const el = document.querySelector('.bench-list-scroll');"
+        " return { h: el.clientHeight, sh: el.scrollHeight }; }"
+    )
+    assert before["sh"] > before["h"], \
+        f"内容应超出容器（h={before['h']}, scrollH={before['sh']}）"
+    page.evaluate("document.querySelector('.bench-list-scroll').scrollTop = 999")
+    page.wait_for_timeout(200)
+    top = page.evaluate("document.querySelector('.bench-list-scroll').scrollTop")
+    assert top > 0, f"列表应实际发生滚动位移: scrollTop={top}"
+
+    page.set_viewport_size({"width": 1440, "height": 900})
+    page.wait_for_timeout(400)
 
 
 def test_all_pages_bottom_padding(page):

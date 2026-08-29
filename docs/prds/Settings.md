@@ -140,6 +140,13 @@ Settings 页面左侧 5 个侧边栏：
 **列表可滚动（1.0.7 修复）**：`.bench-list-scroll` 的父级是 `a-spin` 的
 `.ant-spin-nested-loading` / `.ant-spin-container`，必须为其补充
 `flex: 1; min-height: 0; display: flex; flex-direction: column`，否则滚动容器拿不到限高而无法滚动。
+⚠️ 两个容器都是 `a-spin` 的**内部元素（非根元素）**，在 `<style scoped>` 下不带本组件 data-v 属性，
+规则必须写成 **`:deep(.ant-spin-nested-loading)`** —— 普通后代选择器编译后带 `[data-v-xxx]`
+匹配不到，样式等于没写（这正是首次修复无效的原因）。
+
+**弹框样式作用域（1.0.7）**：Modal 被 Teleport 到 body，`.bench-modal` 等弹框元素同样
+不带 data-v 属性，**弹框相关规则一律用 `:global()`**（`:deep()` 对插槽内容同样拿不到 scopeId）；
+相关测试容差须收紧（宽度 ±20px）并限定 `:visible`（关闭后的 Modal 仍留在 DOM）。
 
 ### 5.2 引擎卡片内容
 

@@ -24,9 +24,14 @@ def mock_url() -> str:
     return MOCK_URL
 
 
-@pytest.fixture(scope="session")
-def client(base_url: str) -> requests.Session:
-    """就绪探活 + 将推理服务指向 mock（隔离测试环境）。"""
+@pytest.fixture(scope="session", autouse=True)
+def point_to_mock(base_url: str):
+    """会话级前置：将推理服务指向 mock（隔离测试环境）。
+
+    autouse 且 session 级 —— WebUI 测试不依赖 client fixture，单独增量跑
+    tests/webui 时也必须先把 base_url 指向 mock，否则创建任务页模型列表
+    502、Step1 校验不通过（此前增量跑 WebUI 需靠 API 测试先跑才间接配置）。
+    """
     s = requests.Session()
 
     def ready():
@@ -39,4 +44,15 @@ def client(base_url: str) -> requests.Session:
 
     r = s.post(f"{base_url}/api/config", json={"api": {"base_url": MOCK_URL}}, timeout=10)
     assert r.status_code == 200, f"设置 mock 推理地址失败: {r.status_code} {r.text}"
+
+
+@pytest.fixture(scope="session")
+def client(base_url: str) -> requests.Session:
+    """就绪探活（mock 指向由 point_to_mock 完成）+ 返回 HTTP 会话。"""
+    s = requests.Session()
+    helpers.wait_until(
+        lambda: s.get(f"{base_url}/api/version", timeout=2).status_code == 200,
+        timeout=60,
+        msg="benchscope 服务未就绪（请先执行 ./tests/run_tests.sh）",
+    )
     return s

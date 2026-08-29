@@ -379,6 +379,53 @@ Bench Engines 全英文（列表与对比表）、弹框 header 提示 + footer 
 - [x] 布局 — Bench Engines 可滚动 + 全页面底部 18px + 弹框 1/3 宽（header 提示 / footer 文字按钮）
 - [x] 全英文 — 引擎文案双语（英文默认 + `*_zh`）+ Highlights 精简为特性与版本支持
 
+### 迭代 10（2026-08-29 21:15:00）：修复 Step3 旧命令 / 列表滚动 / 弹框宽度 1/2 + 测试约定改为增量
+
+**变更内容**：
+
+1. **Step3 命令仍显示 `benchscope bench`（问题 1，非代码 bug）**
+   - 根因：dev 服务（8080）进程启动于 19:07，代码改动在 20:14 —— **服务运行旧代码**；
+     重启后 Step3 正确显示 `benchscope perf`
+   - **教训：改完代码必须重启 dev 服务再验证；判断「改动是否生效」先比对进程启动时间与文件 mtime**
+2. **Bench Engines 列表仍无法滚动（问题 2，迭代 9 修复无效的真因）**
+   - 迭代 9 的 `.ant-spin-container` 规则写在 `<style scoped>` 内，编译后变为
+     `.ant-spin-container[data-v-xxx]`；该元素是 `a-spin` 的**内部元素（非根元素）**，
+     不携带本组件的 data-v 属性 → **规则匹配不到，等于没写**
+   - 修复：改为 `:deep(.ant-spin-nested-loading)` / `:deep(.ant-spin-container)` 穿透 scoped
+   - 实测验证链：`container display=flex + minH=0` → 列表 `h < scrollH` → `scrollTop` 位移 > 0
+3. **弹框宽度 1/3 → 1/2（问题 3）**
+   - `.bench-modal { width: 50vw !important; min-width: 480px; max-width: 960px }`
+   - 迭代 9 的 1/3 宽度**实际从未生效**：Modal 被 Teleport 到 body，`.bench-modal` 不带 data-v，
+     scoped 规则编译为 `.bench-modal[data-v-xxx]` 匹配不到 → 一直是 ant 默认 520px；
+     当时测试容差 60px（520 vs 480 差 40）**误判通过**
+   - 修复：弹框相关 27 条规则统一包裹 `:global()`（Teleport 元素一律用 :global，不用 :deep——
+     后者对插槽内容同样拿不到 scopeId）；**测试容差收紧到 20px**、定位器限定 `:visible`
+     （关闭后的 Modal 仍留在 DOM）
+   - 尝试过 `:get-container="false"` 就地渲染让 scoped 生效，但多层组件根链丢失 scopeId，
+     且就地渲染使 `.bench-modal` 匹配到多个实例，已回退为 Teleport + :global
+4. **测试约定（问题 4，长期生效）**：**不做全量测试；按增量/变更测试**——每次改动只运行
+   涉及变更功能的测试（前端 → `tests/webui -k <关键词>`，后端 → `tests/api/test_<模块>.py`）
+   - 配套修复 `tests/conftest.py`：mock 指向改为 **session 级 autouse fixture**（`point_to_mock`），
+     增量单独跑 `tests/webui` 时环境自备（此前依赖 API 测试先跑、由 `client` fixture 间接配置，
+     单跑 WebUI 会因 base_url 未指向 mock 而 Step1 校验失败 —— 本次 `params_follow` 单跑失败即此因）
+   - WebUI 增量命令：`BS_TEST_URL=... BS_MOCK_URL=... pytest tests/webui -k "bench"`；
+     后端增量：`pytest tests/api/test_benchs.py`
+5. **测试基建加固**：`test_settings_benches_list_scrollable` 由「恒真表达式」改为硬断言
+   （约束链 display/min-height + 实际滚动位移 > 0），防止再次出现「样式未生效但测试通过」
+
+**验证**（增量）：WebUI `-k "bench or environment or bottom_padding or params_follow"` **11/11**；
+API `test_benchs + test_builtin_bench` **47/47**（含 conftest fixture 改动回归）；
+`verify_all.py` 实测滚动位移与三弹框宽度（720px = 视口 1/2）均通过。
+
+**修复记录**：
+- 上述 4 项根因均属「样式作用域 / 服务旧代码 / 测试断言过松」三类问题，产品逻辑无需改动
+
+**TODO 状态**：
+- [x] Step3 命令 — 重启 dev 服务后正确显示 `benchscope perf`
+- [x] 列表滚动 — `:deep()` 穿透 a-spin 内部容器，实测滚动位移 > 0
+- [x] 弹框 1/2 宽 — :global 化 27 条规则 + 容差 20px 测试防误判
+- [x] 测试约定 — 增量/变更测试落地（conftest autouse 自备 mock 环境）
+
 ## 4. TODO 清单
 
 - [x] **版本初始化**：VERSION_1_0_7.md + 版本号 `1.0.7.dev0` + Roadmap/Readme 同步 + 开发模式启动（2026-08-28 完成）
@@ -405,6 +452,8 @@ Bench Engines 全英文（列表与对比表）、弹框 header 提示 + footer 
 - [x] **Environment 精简**：移除 Framework 单选，仅保留 Base URL + API Key；`framework` 改由所选引擎决定（2026-08-29 完成）
 - [x] **布局规范**：Bench Engines 列表可滚动（修复 a-spin 高度约束）、全页面底部 18px、弹框 1/3 浏览器宽度 + header 提示 + footer 文字按钮（2026-08-29 完成）
 - [x] **Bench Engines 全英文**：引擎文案双语（英文默认 + `*_zh`），Highlights 精简为「简洁特性 + 版本支持」（2026-08-29 完成）
+- [x] **修复：Step3 旧命令 / 列表滚动 / 弹框宽度**：dev 服务重启显示 `benchscope perf`；`:deep()` 修复 a-spin 高度约束；弹框规则 `:global()` 化后宽度真正生效（1/3 → 1/2）（2026-08-29 完成）
+- [x] **测试约定**：改为增量/变更测试（不做全量）；conftest mock 指向改 session 级 autouse，单跑 WebUI 环境自备（2026-08-29 完成）
 
 ---
 
