@@ -4,10 +4,10 @@ benchscope 按版本迭代推进，**倒序**列出各版本（最新在前）�
 
 ---
 
-## 1.0.7（开发中 / In Development）
+## 1.0.7（已发布 / Released）
 
-- **发布时间**：待定
-- **TODO**（后续开发内容均迭代在此版本，按时间顺序追加，详见 [docs/versions/VERSION_1_0_7.md](versions/VERSION_1_0_7.md)）：
+- **发布时间**：2026-08-30
+- **迭代记录**（已归档，详见 [docs/versions/VERSION_1_0_7.md](versions/VERSION_1_0_7.md)）：
 
 **主目标：性能测试核心引擎改造**（详见 [docs/rules/BenchEngine.md](rules/BenchEngine.md)）
 

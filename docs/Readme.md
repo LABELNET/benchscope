@@ -1,7 +1,7 @@
 # docs 文档目录
 
 > **文档状态**：benchscope 文档体系说明与维护约定  
-> **最后更新**：2026-08-31 00:30:00
+> **最后更新**：2026-08-31 01:10:00
 
 本目录组织项目全部技术文档。**开发更新功能时，必须同步更新对应文档**（见文末「维护约定」）。
 
@@ -30,7 +30,7 @@
 
 | 文档 | 内容 |
 | --- | --- |
-| [versions/VERSION_1_0_7.md](versions/VERSION_1_0_7.md) | **1.0.7（开发中）**：当前迭代版本，后续开发内容按时间顺序追加 |
+| [versions/VERSION_1_0_7.md](versions/VERSION_1_0_7.md) | **1.0.7（已发布 2026-08-30）**：PyPI `benchscope==1.0.7`（补丁发布，未推 PyPI）|
 | [versions/VERSION_1_0_6.md](versions/VERSION_1_0_6.md) | **1.0.6（已发布 2026-08-28）**：PyPI `benchscope==1.0.6` |
 | [versions/VERSION_1_0_4.md](versions/VERSION_1_0_4.md) | 1.0.4 规划与 1.0.5 范围定义/收口期文档归档（原 `.trae/` 内容，按时间顺序） |
 | [versions/VERSION_1_0_5.md](versions/VERSION_1_0_5.md) | 1.0.5 版本概述 + 各迭代 PRD 汇总（260824 → 260825 → 260826-1 → 260826-2，按时间顺序）+ TODO |
