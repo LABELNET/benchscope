@@ -2,6 +2,7 @@
 
 > **版本**：1.2.0　**技能目录**：[`skills/bs-engine-create/`](../../skills/bs-engine-create/)
 > **最后更新**：2026-08-31
+> **文档命名**：一个技能一个说明文档（`BsEngineCreate.md` ↔ `bs-engine-create`）
 > **关联**：[Skills 体系总入口](./Readme.md) · [rules/BenchEngine.md](../rules/BenchEngine.md) ·
 > [rules/BenchUpstream.md](../rules/BenchUpstream.md)（上游源码分析）·
 > [rules/BenchCore.md](../rules/BenchCore.md)（自研引擎范例）
@@ -264,3 +265,13 @@ Steps:
 - [import-checklist.md](../../skills/bs-engine-create/references/import-checklist.md) — 校验规则与错误信息
 - [templates/](../../skills/bs-engine-create/templates/) — 可复制 yaml 模板
 - [rules/BenchUpstream.md](../rules/BenchUpstream.md) — 上游核心逻辑分析（含优化项清单）
+
+---
+
+## 12. 维护记录
+
+| 版本 | 日期 | 变更 |
+| --- | --- | --- |
+| 1.0.0 | 2026-08-29 | 初版：引擎定义生成、mock 核心契约、导入校验清单、模板与打包 |
+| 1.1.0 | 2026-08-30 | 明确导入时 mock 数据验证 + 引擎功能动态注册（导入即可用） |
+| 1.2.0 | 2026-08-30 | 补充 mock 数据动态注册：每引擎独立 Mock 开关（默认关），开启即 FAKE 仿真验证 |

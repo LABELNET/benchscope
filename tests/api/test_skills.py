@@ -197,10 +197,10 @@ def test_skills_readme_lists_all_skills():
 
 
 def test_skills_docs_directory():
-    """docs/skills/：skills 说明文档归口，须含三份文档并列全所有技能。"""
+    """docs/skills/：skills 说明文档归口，一个技能一个说明文档（BsXxxYyy.md）。"""
     docs = REPO_ROOT / "docs" / "skills"
 
-    for f in ("Readme.md", "BenchEngineAuthoring.md", "BenchTesting.md"):
+    for f in ("Readme.md", "BsEngineCreate.md", "BsPerfsConcurrency.md", "BsPerfsThreshold.md"):
         assert (docs / f).is_file(), f"缺少技能文档 docs/skills/{f}"
 
     # 总入口：列出全部技能 + 规范章节（打包 / SKILL.md / 维护约定）
@@ -212,9 +212,9 @@ def test_skills_docs_directory():
 
 
 def test_bench_engine_authoring_doc():
-    """docs/skills/BenchEngineAuthoring.md：自定义引擎技能详解（工作流/上游/契约/校验/提示词）。"""
-    doc = REPO_ROOT / "docs" / "skills" / "BenchEngineAuthoring.md"
-    assert doc.is_file(), "缺少 docs/skills/BenchEngineAuthoring.md"
+    """docs/skills/BsEngineCreate.md：自定义引擎技能详解（工作流/上游/契约/校验/提示词）。"""
+    doc = REPO_ROOT / "docs" / "skills" / "BsEngineCreate.md"
+    assert doc.is_file(), "缺少 docs/skills/BsEngineCreate.md"
 
     text = doc.read_text(encoding="utf-8")
 
@@ -246,30 +246,40 @@ def test_bench_engine_authoring_doc():
     assert ".tar.gz" in text and ".yaml" in text, "应说明支持的引擎包格式"
 
 
-def test_bench_testing_doc():
-    """docs/skills/BenchTesting.md：benchscope perf 性能测试技能（并发 / 阈值）说明。"""
-    doc = REPO_ROOT / "docs" / "skills" / "BenchTesting.md"
-    assert doc.is_file(), "缺少 docs/skills/BenchTesting.md"
+def test_bench_perfs_concurrency_doc():
+    """docs/skills/BsPerfsConcurrency.md：bs-perfs-concurrency 并发压测技能说明。"""
+    doc = REPO_ROOT / "docs" / "skills" / "BsPerfsConcurrency.md"
+    assert doc.is_file(), "缺少 docs/skills/BsPerfsConcurrency.md"
 
     text = doc.read_text(encoding="utf-8")
 
-    # 两个 perf 技能均须覆盖
-    assert "bs-perfs-concurrency" in text, "未覆盖并发压测技能"
-    assert "bs-perfs-threshold" in text, "未覆盖阈值搜索技能"
-
-    # benchscope perf 命令与表单
+    assert "bs-perfs-concurrency" in text, "应标注对应技能"
     assert "benchscope perf" in text, "应说明 benchscope perf 命令"
     assert "表单" in text or "form" in text, "应说明内置表单参数配置"
+    for kw in ("Datas/perfs", "run.json", ".zip", "并发", "--concurrency"):
+        assert kw in text, f"应说明 {kw}"
 
-    # 流程与产物（保存任务/日志 + 压缩包 + Datas/perfs 导入）
-    for kw in ("Datas/perfs", "run.json", ".zip", "并发", "阈值"):
+
+def test_bench_perfs_threshold_doc():
+    """docs/skills/BsPerfsThreshold.md：bs-perfs-threshold 阈值搜索压测技能说明。"""
+    doc = REPO_ROOT / "docs" / "skills" / "BsPerfsThreshold.md"
+    assert doc.is_file(), "缺少 docs/skills/BsPerfsThreshold.md"
+
+    text = doc.read_text(encoding="utf-8")
+
+    assert "bs-perfs-threshold" in text, "应标注对应技能"
+    assert "--mode threshold" in text, "应说明阈值模式命令"
+    assert "best_concurrency" in text, "应说明最佳并发输出"
+    assert "表单" in text or "form" in text, "应说明内置表单参数配置"
+    for kw in ("Datas/perfs", "run.json", ".zip", "阈值", "--ttft-threshold-ms"):
         assert kw in text, f"应说明 {kw}"
 
 
 def test_docs_index_links_skills_section():
-    """docs/Readme.md 索引须登记 skills 文档章节。"""
+    """docs/Readme.md 索引须登记 skills 文档章节（一个技能一个说明文档）。"""
     text = (REPO_ROOT / "docs" / "Readme.md").read_text(encoding="utf-8")
-    for f in ("skills/Readme.md", "skills/BenchEngineAuthoring.md", "skills/BenchTesting.md"):
+    for f in ("skills/Readme.md", "skills/BsEngineCreate.md",
+              "skills/BsPerfsConcurrency.md", "skills/BsPerfsThreshold.md"):
         assert f in text, f"docs/Readme.md 未登记 {f}"
 
 

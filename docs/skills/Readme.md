@@ -1,7 +1,7 @@
 # Skills 技能体系
 
 > **适用范围**：`skills/` 目录下所有技能项目；`docs/skills/` 为技能文档的**唯一整理归口**
-> **最后更新**：2026-08-30
+> **最后更新**：2026-08-31
 > **目标**：让技能（skill）可被 AI 直接消费、可打包分发、可校验
 
 ---
@@ -51,11 +51,13 @@ skills/
 | 技能版本包 | `bs-<模块>-<目标>-<版本>.tar.gz` | `bs-perfs-concurrency-1.0.0.tar.gz` |
 | 技能生成产物目录 | `bs-<模块>-<目标>-<版本>-pkgs/` | `bs-engine-vllm-0.28-pkgs/` |
 | 技能生成产物包 | `bs-<模块>-<目标>-<版本>.tar.gz` | `bs-engine-vllm-0.28.tar.gz` |
+| **说明文档**（docs/skills/） | `<BsXxxYyy>.md`（每段去连字符 + 首字母大写） | `bs-engine-create` → `BsEngineCreate.md` · `bs-perfs-concurrency` → `BsPerfsConcurrency.md` · `bs-perfs-threshold` → `BsPerfsThreshold.md` |
 
 - `模块`：能力域，如 `engine`（引擎生成）、`perfs`（压测）；
 - `目标`：具体对象，如 `create`（动作）、`concurrency`（并发）、`threshold`（阈值）、`vllm` / `sglang`（框架）；
 - 技能自身的分发打包产物仍为 `<skill-name>-<version>.tar.gz`（见 §5）；
-- 例：使用 `bs-engine-create` 生成 vLLM 0.28 引擎 → 产物命名为 `bs-engine-vllm-0.28.tar.gz`。
+- 例：使用 `bs-engine-create` 生成 vLLM 0.28 引擎 → 产物命名为 `bs-engine-vllm-0.28.tar.gz`；
+- **一个技能一个说明文档**：每个技能在 `docs/skills/` 下对应一个 `<BsXxxYyy>.md` 说明文档（命名见上表），禁止多技能合并到一份文档。
 
 ---
 
@@ -146,18 +148,19 @@ tar -tzf "$ARCHIVE" >/dev/null && echo "✅ 产物校验通过（可解压）"
 
 | 技能 | 用途 | 版本 | 文档 |
 | --- | --- | --- | --- |
-| [bs-engine-create](../../skills/bs-engine-create/) | 创建自定义 bench 引擎压缩包（vllm/sglang/其他版本）；导入时校验 + mock 数据验证 + 功能动态注册 | 1.2.0 | [BenchEngineAuthoring.md](./BenchEngineAuthoring.md) |
-| [bs-perfs-concurrency](../../skills/bs-perfs-concurrency/) | 安装 benchscope 并用 `benchscope perf` 进行并发（concurrency）压测；内置表单 + 生成可导入 Datas/perfs 的 zip | 1.0.0 | [BenchTesting.md](./BenchTesting.md) |
-| [bs-perfs-threshold](../../skills/bs-perfs-threshold/) | 安装 benchscope 并用 `benchscope perf --mode threshold` 进行阈值搜索压测；内置表单 + 生成可导入 Datas/perfs 的 zip | 1.0.0 | [BenchTesting.md](./BenchTesting.md) |
+| [bs-engine-create](../../skills/bs-engine-create/) | 创建自定义 bench 引擎压缩包（vllm/sglang/其他版本）；导入时校验 + mock 数据验证 + 功能动态注册 | 1.2.0 | [BsEngineCreate.md](./BsEngineCreate.md) |
+| [bs-perfs-concurrency](../../skills/bs-perfs-concurrency/) | 安装 benchscope 并用 `benchscope perf` 进行并发（concurrency）压测；内置表单 + 生成可导入 Datas/perfs 的 zip | 1.0.0 | [BsPerfsConcurrency.md](./BsPerfsConcurrency.md) |
+| [bs-perfs-threshold](../../skills/bs-perfs-threshold/) | 安装 benchscope 并用 `benchscope perf --mode threshold` 进行阈值搜索压测；内置表单 + 生成可导入 Datas/perfs 的 zip | 1.0.0 | [BsPerfsThreshold.md](./BsPerfsThreshold.md) |
 
 ---
 
-## 7. 技能文档索引
+## 7. 技能文档索引（一个技能一个说明文档）
 
-| 文档 | 内容 |
-| --- | --- |
-| [BenchEngineAuthoring.md](./BenchEngineAuthoring.md) | **自定义引擎技能详解**：工作流、上游源码链接与获取、实现契约（Input/Core/Output/Mock）、mock 核心方法、导入校验 8 项、可复制提示词、排错 |
-| [BenchTesting.md](./BenchTesting.md) | **benchscope perf 压测技能说明**（并发 / 阈值）：内置表单、命令、产物打包、Datas/perfs 导入、排错 |
+| 文档 | 对应技能 | 内容 |
+| --- | --- | --- |
+| [BsEngineCreate.md](./BsEngineCreate.md) | bs-engine-create | **自定义引擎技能详解**：工作流、上游源码链接与获取、实现契约（Input/Core/Output/Mock）、mock 核心方法、导入校验 8 项、可复制提示词、排错 |
+| [BsPerfsConcurrency.md](./BsPerfsConcurrency.md) | bs-perfs-concurrency | **并发压测技能说明**：内置表单、命令、产物打包、Datas/perfs 导入、排错 |
+| [BsPerfsThreshold.md](./BsPerfsThreshold.md) | bs-perfs-threshold | **阈值搜索压测技能说明**：内置表单、阈值探测策略、产物打包、Datas/perfs 导入、排错 |
 
 **关联文档（rules）**：
 
@@ -172,12 +175,13 @@ tar -tzf "$ARCHIVE" >/dev/null && echo "✅ 产物校验通过（可解压）"
 ## 8. 维护约定
 
 - **新增技能** → 在 `skills/Readme.md` 与本文档 §6 清单各追加一行，并在 `docs/skills/` 补充对应说明文档；
+- **一个技能一个说明文档（强制）**：每个技能在 `docs/skills/` 下对应一个 `<BsXxxYyy>.md` 说明文档（命名见 §2.1），**禁止多技能合并到一份文档**；
 - **技能内容变更涉及功能/流程** → 同步 `docs/versions/VERSION_x_y_z.md` 迭代记录；
 - **规范变更** → 只改本文件（`docs/skills/Readme.md`），`skills/Readme.md` 保持精简指针，不复制规范正文；
 - 所有技能必须能通过 `scripts/package.sh` 成功打包（由 `tests/api/test_skills.py` 强制校验）。
 - **技能开发完成（强制）**：任何技能的开发/变更完成后，必须**同步更新 `docs/skills/` 文件夹下对应说明与变更内容**：
   - `docs/skills/Readme.md` §6 技能清单（版本/用途）、命名规范、文档索引如有变化需同步；
-  - 对应技能的说明文档（如 `BenchEngineAuthoring.md` / `BenchTesting.md`）更新功能描述与维护记录表；
+  - 对应技能的说明文档（如 `BsEngineCreate.md` / `BsPerfsConcurrency.md` / `BsPerfsThreshold.md`）更新功能描述与维护记录表；
   - 变更内容同步 `docs/versions/VERSION_x_y_z.md` 迭代记录；若涉及能力/命名/发布规则变更，同步 `skills/Readme.md`。
 
 ### 8.1 版本递增与发版（强制约定）

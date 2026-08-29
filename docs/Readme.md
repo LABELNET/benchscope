@@ -1,7 +1,7 @@
 # docs 文档目录
 
 > **文档状态**：benchscope 文档体系说明与维护约定  
-> **最后更新**：2026-08-31 01:40:00
+> **最后更新**：2026-08-31 02:00:00
 
 本目录组织项目全部技术文档。**开发更新功能时，必须同步更新对应文档**（见文末「维护约定」）。
 
@@ -56,8 +56,9 @@ Skills（给 AI 消费的技能包）的**说明文档归口**；技能可分发
 | 文档 | 内容 |
 | --- | --- |
 | [skills/Readme.md](skills/Readme.md) | **Skills 体系总入口（规范）**：定位、目录结构规范、SKILL.md / README.md 规范、打包规范、技能清单、维护约定 |
-| [skills/BenchEngineAuthoring.md](skills/BenchEngineAuthoring.md) | **自定义 Bench 引擎技能详解**：7 步工作流 + 上游源码链接/获取命令 + 实现契约（Input/Core/Output/Mock）+ mock 核心方法 + 导入校验 8 项 + 可复制提示词 + 排错 |
-| [skills/BenchTesting.md](skills/BenchTesting.md) | **benchscope perf 压测技能说明**（bs-perfs-concurrency 并发 / bs-perfs-threshold 阈值）：内置表单、命令、产物打包、Datas/perfs 导入、排错 |
+| [skills/BsEngineCreate.md](skills/BsEngineCreate.md) | **自定义 Bench 引擎技能详解**（bs-engine-create）：7 步工作流 + 上游源码链接/获取命令 + 实现契约（Input/Core/Output/Mock）+ mock 核心方法 + 导入校验 8 项 + 可复制提示词 + 排错 |
+| [skills/BsPerfsConcurrency.md](skills/BsPerfsConcurrency.md) | **并发压测技能说明**（bs-perfs-concurrency）：内置表单、命令、产物打包、Datas/perfs 导入、排错 |
+| [skills/BsPerfsThreshold.md](skills/BsPerfsThreshold.md) | **阈值搜索压测技能说明**（bs-perfs-threshold）：内置表单、阈值探测策略、产物打包、Datas/perfs 导入、排错 |
 
 > 上游 bench 核心逻辑分析（源码实证）见 [rules/BenchUpstream.md](rules/BenchUpstream.md)。
 > **技能开发完成（强制）**：任何技能开发/变更完成后，必须同步更新 `docs/skills/` 下对应说明与变更内容（§6 清单、说明文档、维护记录、VERSION 迭代），详见 `docs/skills/Readme.md` §8。
