@@ -56,7 +56,7 @@ python -m benchscope.cli --port 8081 --no-browser                            # �
    - 架构 / 方案 / 设计 / 开发规范 → `docs/rules/`（Architecture / Software / Design / Development）
    - **软件依赖变更（新增/升级/移除）** → 同步 `docs/rules/Software.md` §2 技术栈与 §3 依赖清单
 3. **测试（强制）**：生成/更新对应 tests（API → `tests/api/`，WebUI → `tests/webui/`），运行 `check-i18n` + 构建 + `./tests/run_tests.sh` 全量通过。
-4. 提交。
+4. 提交（**git 提交规范，强制**）：提交描述一律使用**英文**，**简短总结**变更（Conventional Commits 风格，如 `feat:` / `fix:` / `docs:` / `refactor:` / `test:` 前缀），如 `feat: add per-engine mock switch`。正文可补充要点，但保持简洁。禁止中文或冗长描述。
 
 ## 5. 发布（Release checklist）
 
@@ -75,7 +75,11 @@ TWINE_USERNAME=__token__ TWINE_PASSWORD=<pypi-token> ./scripts/release.sh 1.0.6
   2. **GitHub Release 总结**：`scripts/release.sh` 自动创建（`gh release create` 或 `GITHUB_TOKEN` REST API 回退），说明默认从 `docs/versions/VERSION_x_y_z.md` 提取**版本更新功能清单**（迭代标题 + 变更内容一级功能项），可用 `--notes <file>` 覆盖；**补丁版本不推 PyPI，但 Release 仍带功能清单照常推送**；
   3. **版本 tag**：`git tag vX.Y.Z` + `git push origin main --tags`。
 - 前置：PyPI token（`TWINE_USERNAME/TWINE_PASSWORD` 或 `~/.pypirc`，仅 X.Y 变化时需要）+ GitHub 凭据（`gh auth` 或 `GITHUB_TOKEN`）。
-- 发布记录写入 `docs/versions/VERSION_x_y_z.md`（按时间顺序），并将该版本状态置为「已发布（Released）」，同步 `docs/Readme.md` 最后更新日期与版本表。
+- **发布完成后（强制）**：同步更改 docs 文件状态并提交——
+  1. `docs/versions/VERSION_x_y_z.md`：状态置为「已发布（Released）」+ 发布时间；
+  2. `docs/Readme.md`：§2 版本表标记该版本已发布 + 刷新头部「最后更新」日期；
+  3. `docs/Roadmap.md`：该版本状态更新为已发布；
+  4. **提交**：按 §4 提交规范（英文、简短，如 `docs: mark vX.Y.Z as released`）提交并推送这些 docs 变更。
 
 ## 6. 目录约定
 

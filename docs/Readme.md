@@ -1,7 +1,7 @@
 # docs 文档目录
 
 > **文档状态**：benchscope 文档体系说明与维护约定  
-> **最后更新**：2026-08-31 01:10:00
+> **最后更新**：2026-08-31 01:20:00
 
 本目录组织项目全部技术文档。**开发更新功能时，必须同步更新对应文档**（见文末「维护约定」）。
 
@@ -80,6 +80,8 @@ Skills（给 AI 消费的技能包）的**说明文档归口**；技能可分发
 >
 > **版本迭代规则**：未特别说明版本号时，项目内容所有变更默认归属当前版本 **v1.0.7**（开发中显示 `v1.0.7-dev`），全部迭代到 `versions/VERSION_1_0_7.md`；**除非用户明确说「迭代下一个版本」**，才创建 `VERSION_x_y_z.md` 并同步升级版本号（`__init__.py` / `pyproject.toml`），否则不得擅自变更版本号。
 >
-> **发布规则（强制）**：**发布 = 打包推送 PyPI + 推送 GitHub Release 总结 + 推送版本 tag**（三者缺一不算完整发布）。执行 `./scripts/release.sh X.Y.Z`（自动升版本 → 构建 → `twine upload` → 创建 GitHub Release（`gh` 或 `GITHUB_TOKEN`，说明默认取自 `VERSION_x_y_z.md` 迭代摘要，可 `--notes <file>` 覆盖）→ `git tag` + push）；发布后须将 `VERSION_x_y_z.md` 状态置为「已发布（Released）」并刷新本文件「最后更新」日期。详见 `rules/Development.md` §5。
+> **发布规则（强制）**：**发布 = 打包推送 PyPI + 推送 GitHub Release 总结 + 推送版本 tag**（三者缺一不算完整发布）。执行 `./scripts/release.sh X.Y.Z`（自动升版本 → 构建 → `twine upload` → 创建 GitHub Release（`gh` 或 `GITHUB_TOKEN`，说明默认取自 `VERSION_x_y_z.md` 迭代摘要，可 `--notes <file>` 覆盖）→ `git tag` + push）；**发布完成后必须同步更改 docs 文件状态并提交**——将 `VERSION_x_y_z.md` 状态置为「已发布（Released）」+ 发布时间、`docs/Readme.md` 版本表标记已发布并刷新「最后更新」日期、`docs/Roadmap.md` 更新状态，然后按 git 提交规范（英文简短）提交并推送。详见 `rules/Development.md` §5。
 >
 > **时间记录规则（重要）**：**所有迭代变更记录的时间必须记录精确时间——年-月-日 时:分:秒**（含 commit 号，取自提交/落地时刻），禁止仅写日期；主导航相关变更另须在 `prds/TopBar.md` §5 追加记录（同样精确到秒）。
+>
+> **git 提交规范（强制）**：提交描述一律使用**英文**、**简短总结**（Conventional Commits，如 `feat:` / `fix:` / `docs:` / `refactor:` / `test:` 前缀），禁止中文或冗长描述；发布后同步 docs 状态也按此规范提交（如 `docs: mark vX.Y.Z as released`）。详见 `rules/Development.md` §4。
