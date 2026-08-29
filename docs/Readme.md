@@ -1,7 +1,7 @@
 # docs 文档目录
 
 > **文档状态**：benchscope 文档体系说明与维护约定  
-> **最后更新**：2026-08-29 10:01:26
+> **最后更新**：2026-08-29 17:59:10
 
 本目录组织项目全部技术文档。**开发更新功能时，必须同步更新对应文档**（见文末「维护约定」）。
 
@@ -47,8 +47,21 @@
 | [rules/Development.md](rules/Development.md) | 开发 / 验证 / 部署规范 |
 | [rules/BenchEngine.md](rules/BenchEngine.md) | **Bench 引擎架构（1.0.7）**：引擎抽象（自研 bench / vllm-<ver> / sglang-<ver>）+ 环境校验 + 参数描述 + 自研引擎核心设计 |
 | [rules/BenchCore.md](rules/BenchCore.md) | ⭐ **自研 bench 核心实现总结（存档）**：流式时间线采集、指标口径对齐 vLLM、四子系统实现、设计取舍与实测数据 |
+| [rules/BenchUpstream.md](rules/BenchUpstream.md) | ⭐ **上游 bench 核心逻辑分析（源码实证）**：vLLM v0.23.0 / SGLang v0.5.10 的 git+zip 链接、commit、时间线与指标公式（带行号）、与自研引擎对齐表、优化项 |
 
-## 4. 顶层文档
+## 4. 技能文档 — `skills/`
+
+Skills（给 AI 消费的技能包）的**说明文档归口**；技能可分发产物在仓库根目录 `skills/`。
+
+| 文档 | 内容 |
+| --- | --- |
+| [skills/Readme.md](skills/Readme.md) | **Skills 体系总入口（规范）**：定位、目录结构规范、SKILL.md / README.md 规范、打包规范、技能清单、维护约定 |
+| [skills/BenchEngineAuthoring.md](skills/BenchEngineAuthoring.md) | **自定义 Bench 引擎技能详解**：7 步工作流 + 上游源码链接/获取命令 + 实现契约（Input/Core/Output/Mock）+ mock 核心方法 + 导入校验 8 项 + 可复制提示词 + 排错 |
+| [skills/BenchTesting.md](skills/BenchTesting.md) | **性能测试技能说明**（vLLM / SGLang）：引擎选择与环境校验、服务与框架参数、数据集、并发与速率、测试流程、日志产物、排错 |
+
+> 上游 bench 核心逻辑分析（源码实证）见 [rules/BenchUpstream.md](rules/BenchUpstream.md)。
+
+## 5. 顶层文档
 
 | 文档 | 内容 |
 | --- | --- |

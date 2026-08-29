@@ -42,6 +42,7 @@ bench-engine-authoring/
 ├── README.md                           # 本文件（人消费）
 ├── references/
 │   ├── engine-schema.md                # 引擎定义字段参考 + 完整示例
+│   ├── upstream-analysis.md            # ⭐ 上游核心逻辑分析（v0.23.0 / v0.5.10 源码实证，含链接与可复制代码）
 │   ├── mock-core.md                    # mock 核心逻辑方法与介绍（缩放模型 / 两条硬规则）
 │   └── import-checklist.md             # 导入校验项、API 与排错指引
 ├── templates/
@@ -51,6 +52,19 @@ bench-engine-authoring/
     ├── package.sh                      # 打包（tar.gz + 产物校验）
     └── validate.sh                     # 离线校验引擎定义
 ```
+
+## 上游源码（分析与复用）
+
+自定义引擎**必须拉取目标版本源码分析**，不得凭记忆或跨版本复制参数：
+
+| 框架 | 版本 | Git | Zip |
+| --- | --- | --- | --- |
+| vLLM | v0.23.0 | https://github.com/vllm-project/vllm | https://github.com/vllm-project/vllm/archive/refs/tags/v0.23.0.zip |
+| SGLang | v0.5.10 | https://github.com/sgl-project/sglang | https://github.com/sgl-project/sglang/archive/refs/tags/v0.5.10.zip |
+
+核心逻辑（时间线采集 / 指标公式 / 并发与速率控制）已实证分析并存档于
+`references/upstream-analysis.md` 与 `docs/rules/BenchUpstream.md`，实现新引擎时
+**直接复用上游逻辑**，只适配 benchscope 的入口 / 出口 / mock 契约。
 
 ## 打包
 

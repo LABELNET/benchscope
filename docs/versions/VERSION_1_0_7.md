@@ -211,6 +211,52 @@ conc= 8  out_tps= 517.8  req/s=16.18  ttft=2.92ms  tpot=15.83ms  ok=8
 - [x] 导入 — 7 项校验 + /api/benchs/import（dry_run/apply）+ /api/benchs/authoring
 - [x] 前端 — Settings「添加自定义版本」面板（提示词复制 + 上游链接 + 校验后导入）
 
+### 迭代 7（2026-08-29 17:59:10）：上游 bench 源码实证分析 + skills 文档归口 `docs/skills/`
+
+**变更内容**：
+
+1. **上游 bench 核心逻辑分析（源码实证）**
+   - 拉取并分析 **vLLM v0.23.0**（commit `0fc695fc6d1d82e9a5ac6835ac8e4e1c83703665`，
+     `vllm/benchmarks/serve.py` 2052 行 + `lib/endpoint_request_func.py` 861 行）与
+     **SGLang v0.5.10**（commit `1519acf37c23f2189adb93f57ca9cd2db1bebf18`，
+     `python/sglang/bench_serving.py` 2352 行）的 bench 核心逻辑
+   - 存档 `docs/rules/BenchUpstream.md`：git/zip/tarball 链接、pinned 文件链接、获取命令、
+     时间线采集与指标公式（带源码行号）、token 计数、并发与速率控制、与自研引擎对齐表、后续优化项
+   - 技能侧同步 `skills/bench-engine-authoring/references/upstream-analysis.md`
+2. **自定义引擎实现方法明确化**：新增「**复制上游代码 + 适配四段契约**」章节——
+   入口（Input `BuiltinOptions`）/ 处理（Core 复制上游时间线与公式）/ 出口（Output 兼容
+   `parser.parse_metrics`）/ Mock（仅 `mocks/`，匹配 parser 正则）；`SKILL.md` §3.5 与
+   `README.md` 同步
+3. **skills 文档归口整理**：新增 `docs/skills/` 目录
+   - `docs/skills/Readme.md` —— Skills 体系总入口（定位 / 目录结构规范 / SKILL.md 与 README.md 规范 /
+     打包规范 / 技能清单 / 文档索引 / 维护约定）
+   - `docs/skills/BenchEngineAuthoring.md` —— 自定义引擎技能详解（7 步工作流 + 上游链接与获取命令 +
+     实现契约 + mock 核心方法 + 导入校验 8 项 + 可复制提示词 + 排错）
+   - `docs/skills/BenchTesting.md` —— vLLM/SGLang 性能测试技能说明（引擎选择与环境校验 / 配置 /
+     测试流程 / 日志产物 / 排错）
+   - `skills/Readme.md` 精简为**速查指针**（清单 + 强制结构 + 关键约定），规范正文统一以
+     `docs/skills/Readme.md` 为准，避免两处重复维护
+   - `docs/Readme.md` 索引新增「§4 技能文档 — skills/」
+4. **测试修复**：`tests/api/test_skills.py` 补充上游分析文档校验（版本/commit/zip 链接/公式/
+   契约关键字）与技能文档归口校验
+
+**实现策略**：上游分析以**具体 commit + 行号**为事实依据（禁止凭记忆写参数）；
+文档采用「技能产物在 `skills/`、说明文档在 `docs/skills/`」的分工，规范正文单一来源。
+
+**验证**：`./tests/run_tests.sh` 全量通过 —— **API 97/97**（新增 4 项：`docs/skills/` 目录与三份文档内容校验、docs 索引登记）、**WebUI 20/20**。
+
+**修复记录**：
+- `tests/api/test_skills.py` 首行误插入字符 `1` → **语法错误导致 `tests/api` 整体 collection 中断**
+  （0 个 API 测试执行）；连带使 `conftest.client` fixture 不运行，配置中推理地址仍为默认 `:8000`，
+  导致 WebUI `test_perf_create_threshold_mode` 因「推理服务不可达」误报失败。
+  → 删除多余字符恢复；**教训：collection 级语法错误会级联影响 WebUI 测试，须先查 API 收集结果**
+
+**TODO 状态**：
+- [x] 上游分析 — vLLM v0.23.0 / SGLang v0.5.10 源码实证 + BenchUpstream.md 存档
+- [x] 实现方法 — 复制上游 + 四段契约（Input/Core/Output/Mock）写入技能与文档
+- [x] 文档归口 — `docs/skills/` 三份文档 + `skills/Readme.md` 精简 + docs 索引同步
+- [x] 测试修复 — test_skills.py 语法错误修复 + 全量回归通过
+
 ## 4. TODO 清单
 
 - [x] **版本初始化**：VERSION_1_0_7.md + 版本号 `1.0.7.dev0` + Roadmap/Readme 同步 + 开发模式启动（2026-08-28 完成）
@@ -223,6 +269,10 @@ conc= 8  out_tps= 517.8  req/s=16.18  ttft=2.92ms  tpot=15.83ms  ok=8
 - [x] **P6 测试与文档**：tests/api 92 + tests/webui 20 + Architecture.md / Software.md / BenchCore.md 同步（2026-08-29 完成）
 - [x] **Skills 体系**：skills 项目规范（结构/frontmatter/打包）+ `bench-engine-authoring` 自定义引擎技能（mock 核心方法 + 上游链接 + 提示词）+ 已有 vllm/sglang skills 规范化至 v1.1.0（2026-08-29 完成）
 - [x] **导入校验**：7 项校验（yaml/engines/id/kind/requires/params_key/option_desc/mock）+ `POST /api/benchs/import`（dry_run 预校验 / apply 写入）+ Settings「添加自定义版本」面板（提示词复制 + GitHub 链接 + 校验后导入）（2026-08-29 完成）
+- [x] **上游源码分析**：拉取 vLLM v0.23.0 / SGLang v0.5.10 源码分析 bench 核心逻辑（时间线 / 指标公式 / 并发速率 / token 计数），存档 `docs/rules/BenchUpstream.md` + 技能 `references/upstream-analysis.md`（2026-08-29 完成）
+- [x] **自定义引擎实现方法**：明确「复制上游代码 + 适配入口/处理/出口/mock 四段契约」并写入技能与文档（2026-08-29 完成）
+- [x] **Skills 文档归口**：新增 `docs/skills/`（Readme 规范 / BenchEngineAuthoring / BenchTesting）+ `skills/Readme.md` 精简为指针 + docs 索引同步（2026-08-29 完成）
+- [x] **测试修复**：`tests/api/test_skills.py` 首行多余字符导致的语法错误（连带 WebUI 级联失败）修复 + 全量回归通过（2026-08-29 完成）
 
 ---
 

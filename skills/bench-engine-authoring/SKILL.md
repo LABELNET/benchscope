@@ -41,26 +41,71 @@ engine/version can be imported into Settings → Bench 引擎.
    - `benchs-engine-entry.yaml` — one engine entry appended to `configs/benchs.yaml`;
    - `bench-params-section.yaml` — parameter descriptions for `configs/bench-params.yaml`
      (every option **must** carry a `description`).
-4. **Generate mock logic** (only when the engine needs simulation, e.g. FAKE mode):
+4. **Implement the engine code by copying upstream logic + adapting the contract** (see §3.5):
+   download the pinned source (§2), reuse the verified core (streaming timeline, metric
+   formulas, concurrency & rate control), then wire benchscope's **Input / Core / Output / Mock**
+   contract. Do **not** re-invent the metric math — copy it and keep the口径 identical.
+5. **Generate mock logic** (only when the engine needs simulation, e.g. FAKE mode):
    follow the mock core contract in §3 — output must match benchscope's parser regexes.
-5. **Validate before import** — the import endpoint runs these checks (see §4).
+6. **Validate before import** — the import endpoint runs these checks (see §4).
    Fix every failure and re-validate; **import succeeds only if all checks pass**.
-6. **Import** — paste the final YAML into Settings → Bench 引擎 → 引擎定义 (benchs.yaml)
+7. **Import** — paste the final YAML into Settings → Bench 引擎 → 引擎定义 (benchs.yaml)
    → 编辑 → 保存 (validation runs server-side), or call `PUT /api/benchs/config/yaml`.
 
-## 2. Upstream reference links (pin to the target version tag)
+### 3.5 Copy-upstream implementation contract (Input / Core / Output / Mock)
 
-| Framework | Repo | Bench entrypoint | Pin format |
-| --- | --- | --- | --- |
-| vLLM | https://github.com/vllm-project/vllm | `vllm bench serve` → `vllm/benchmarks/serve.py` | `https://github.com/vllm-project/vllm/tree/v<VERSION>` |
-| SGLang | https://github.com/sgl-project/sglang | `python -m sglang.bench_serving` → `python/sglang/bench_serving.py` | `https://github.com/sgl-project/sglang/tree/v<VERSION>` |
+| Contract | Requirement |
+| --- | --- |
+| **Input** | Accept `BuiltinOptions` (base_url / model / endpoint / backend / dataset / concurrency / num_prompts / request_rate / timeout / warmups / seed / extra_body) |
+| **Core** | **Copy** upstream streaming timeline (`t0→t_first→t_i→t_end`), metric formulas (TPOT = `(lat-ttft)/(n-1)`, duration = wall-clock), semaphore concurrency, gamma/burstiness rate control |
+| **Output** | Return a dict compatible with `parser.parse_metrics`: `output_mean` `total_mean` `req_per_s` `ttft_{mean,median,p99}` `tpot_{mean,median,p99}` `itl_{mean,median,p99}` `successful_requests` `failed_requests` `benchmark_duration` `total_input_tokens` `total_generated_tokens`; plus `raw` (vLLM-style text for logs) |
+| **Mock** | Implement in `mocks/` only; output text **must match `parser.py` regexes** |
 
-- Built-in engines in benchscope today: `benchscope`（自研）· `vllm-0.23` · `sglang-0.5.10`.
-- **How to use these links**: replace `<VERSION>` with the target version, open the bench
-  entrypoint file at that tag, and read the argument parser to enumerate real flags.
-  Example pinned URLs:
-  - vLLM 0.23 → `https://github.com/vllm-project/vllm/blob/v0.23.0/vllm/benchmarks/serve.py`
-  - SGLang 0.5.10 → `https://github.com/sgl-project/sglang/blob/v0.5.10/python/sglang/bench_serving.py`
+Reference skeleton: `benchscope/benches/builtin_bench.py` already implements this contract —
+read it as the canonical example before writing a new engine.
+
+## 2. Upstream source: links, versions & how to fetch
+
+**You MUST pull the actual source of the target version and analyze it** — never write an
+engine definition from memory or by copying another version's parameters.
+
+### 2.1 Verified references (analysed in this repo)
+
+| Framework | Version | Commit | Git | Zip | Bench entrypoint |
+| --- | --- | --- | --- | --- | --- |
+| vLLM | `v0.23.0` | `0fc695fc6d1d82e9a5ac6835ac8e4e1c83703665` | https://github.com/vllm-project/vllm | https://github.com/vllm-project/vllm/archive/refs/tags/v0.23.0.zip | `vllm/benchmarks/serve.py` (2052 lines) + `vllm/benchmarks/lib/endpoint_request_func.py` (861) |
+| SGLang | `v0.5.10` | `1519acf37c23f2189adb93f57ca9cd2db1bebf18` | https://github.com/sgl-project/sglang | https://github.com/sgl-project/sglang/archive/refs/tags/v0.5.10.zip | `python/sglang/bench_serving.py` (2352 lines) |
+
+Built-in engines in benchscope today: `benchscope`（自研）· `vllm-0.23` · `sglang-0.5.10`.
+
+### 2.2 Fetch commands (replace `<VERSION>`)
+
+```bash
+# vLLM — clone / zip / single file
+git clone --depth 1 --branch v<VERSION> https://github.com/vllm-project/vllm
+curl -L -o vllm-<VERSION>.zip https://github.com/vllm-project/vllm/archive/refs/tags/v<VERSION>.zip
+curl -sL "https://api.github.com/repos/vllm-project/vllm/contents/vllm/benchmarks/serve.py?ref=v<VERSION>"
+
+# SGLang
+git clone --depth 1 --branch v<VERSION> https://github.com/sgl-project/sglang
+curl -L -o sglang-<VERSION>.zip https://github.com/sgl-project/sglang/archive/refs/tags/v<VERSION>.zip
+curl -sL "https://api.github.com/repos/sgl-project/sglang/contents/python/sglang/bench_serving.py?ref=v<VERSION>"
+```
+
+Pinned file links:
+- vLLM → `https://github.com/vllm-project/vllm/blob/v<VERSION>/vllm/benchmarks/serve.py`
+- SGLang → `https://github.com/sgl-project/sglang/blob/v<VERSION>/python/sglang/bench_serving.py`
+
+### 2.3 What to extract from the source
+
+1. The bench entrypoint's **argument parser** → real flags, defaults, valid values at that tag;
+2. The **request function** (`async_request_openai_*` / `async_request_*`) → timeline recording;
+3. `calculate_metrics(...)` → exact metric formulas and the duration definition.
+
+Full analysis of the two reference versions (with line numbers) is archived in
+[references/upstream-analysis.md](references/upstream-analysis.md) and
+[docs/rules/BenchUpstream.md](../../../docs/rules/BenchUpstream.md) — **read it first**, it
+gives you the verified core logic you can copy.
 
 ## 3. Mock core logic (contract — required when generating mock output)
 
