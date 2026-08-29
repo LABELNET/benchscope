@@ -175,6 +175,10 @@ tar -tzf "$ARCHIVE" >/dev/null && echo "✅ 产物校验通过（可解压）"
 - **技能内容变更涉及功能/流程** → 同步 `docs/versions/VERSION_x_y_z.md` 迭代记录；
 - **规范变更** → 只改本文件（`docs/skills/Readme.md`），`skills/Readme.md` 保持精简指针，不复制规范正文；
 - 所有技能必须能通过 `scripts/package.sh` 成功打包（由 `tests/api/test_skills.py` 强制校验）。
+- **技能开发完成（强制）**：任何技能的开发/变更完成后，必须**同步更新 `docs/skills/` 文件夹下对应说明与变更内容**：
+  - `docs/skills/Readme.md` §6 技能清单（版本/用途）、命名规范、文档索引如有变化需同步；
+  - 对应技能的说明文档（如 `BenchEngineAuthoring.md` / `BenchTesting.md`）更新功能描述与维护记录表；
+  - 变更内容同步 `docs/versions/VERSION_x_y_z.md` 迭代记录；若涉及能力/命名/发布规则变更，同步 `skills/Readme.md`。
 
 ### 8.1 版本递增与发版（强制约定）
 

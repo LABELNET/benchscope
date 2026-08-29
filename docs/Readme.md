@@ -1,7 +1,7 @@
 # docs 文档目录
 
 > **文档状态**：benchscope 文档体系说明与维护约定  
-> **最后更新**：2026-08-31 01:20:00
+> **最后更新**：2026-08-31 01:30:00
 
 本目录组织项目全部技术文档。**开发更新功能时，必须同步更新对应文档**（见文末「维护约定」）。
 
@@ -20,7 +20,7 @@
 | [prds/TopBar.md](prds/TopBar.md) | **TopBar 主导航（1.0.6 新增）**：全局参数（品牌区/6 栏菜单/Service 状态/StatusBadge prop）+ **导航变更记录（含精确到秒的 commit 时间）** |
 | [prds/Accuracy.md](prds/Accuracy.md) | Accuracy 占位页与 v5.0 规划 |
 | [prds/Sessions.md](prds/Sessions.md) | Sessions：会话管理、SSE 流式、思考解析、性能栏 |
-| [prds/Settings.md](prds/Settings.md) | Settings：General / Providers / Models / Datasets / Bench Engines / Skills / Plugins / Debug 八栏（1.0.7：面板化 + Skills/Debug 新栏，Debug 仅开发模式） |
+| [prds/Settings.md](prds/Settings.md) | Settings：General / Providers / Models / Datasets / Bench Engines / Skills / Plugins 七栏（1.0.7：面板化 + 每引擎 Mock 开关；Debug 已移除） |
 
 > 命名规则：`<页面名>.md`；有子页面时 `Sessions-xxx.md` 形式。
 
@@ -57,9 +57,10 @@ Skills（给 AI 消费的技能包）的**说明文档归口**；技能可分发
 | --- | --- |
 | [skills/Readme.md](skills/Readme.md) | **Skills 体系总入口（规范）**：定位、目录结构规范、SKILL.md / README.md 规范、打包规范、技能清单、维护约定 |
 | [skills/BenchEngineAuthoring.md](skills/BenchEngineAuthoring.md) | **自定义 Bench 引擎技能详解**：7 步工作流 + 上游源码链接/获取命令 + 实现契约（Input/Core/Output/Mock）+ mock 核心方法 + 导入校验 8 项 + 可复制提示词 + 排错 |
-| [skills/BenchTesting.md](skills/BenchTesting.md) | **性能测试技能说明**（vLLM / SGLang）：引擎选择与环境校验、服务与框架参数、数据集、并发与速率、测试流程、日志产物、排错 |
+| [skills/BenchTesting.md](skills/BenchTesting.md) | **benchscope perf 压测技能说明**（bs-perfs-concurrency 并发 / bs-perfs-threshold 阈值）：内置表单、命令、产物打包、Datas/perfs 导入、排错 |
 
 > 上游 bench 核心逻辑分析（源码实证）见 [rules/BenchUpstream.md](rules/BenchUpstream.md)。
+> **技能开发完成（强制）**：任何技能开发/变更完成后，必须同步更新 `docs/skills/` 下对应说明与变更内容（§6 清单、说明文档、维护记录、VERSION 迭代），详见 `docs/skills/Readme.md` §8。
 
 ## 5. 顶层文档
 
