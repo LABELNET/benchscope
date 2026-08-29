@@ -152,48 +152,54 @@ if [ -n "$NOTES_FILE" ]; then
   fi
   cp "$NOTES_FILE" "$NOTES_TMP"
 elif [ -f "$VER_DOC" ]; then
-  echo "==> 从 ${VER_DOC} 提取迭代摘要生成 Release 说明 ..."
+  echo "==> 从 ${VER_DOC} 提取功能清单生成 Release 说明 ..."
   python3 - "$VER_DOC" > "$NOTES_TMP" <<'PYEOF'
 import re, sys
 src = open(sys.argv[1], encoding="utf-8").read()
 
-# 按 "### 迭代" 分块，每块 = 迭代标题 + 该迭代的变更内容功能清单
+# 优先使用 VERSION 文档中的「版本功能清单（Release Notes）」双语区块（人工维护，中英按功能总结）
+m = re.search(r"(?ms)^##\s*版本功能清单（Release Notes）\s*\n(.*?)(?=^##\s|\Z)", src)
+if m:
+    # 只保留功能条目（- 开头），过滤说明段与分隔线；每条中英已内联（中文 / English）
+    lines = [l.rstrip() for l in m.group(1).splitlines()
+             if l.strip().startswith("- ")]
+    print("## 版本功能清单 / Feature Highlights\n")
+    print("\n".join(lines) if lines else "（未提取到功能条目，请补充）")
+    print("\n---\n详细迭代记录见仓库 `docs/versions/`。")
+    sys.exit(0)
+
+# 回退：汇总所有迭代「变更内容」的一级功能项，去重为纯功能清单（不带迭代标题/时间）
 blocks = re.split(r"(?m)^### ", src)
-out = []
+seen = set()
+feats = []
 for b in blocks:
     if not b.strip():
         continue
-    first_line = b.splitlines()[0].strip()
-    title = f"### {first_line}"
-    # 提取 "**变更内容**" 块内的功能清单项（仅一级变更项：数字编号或行首无序，排除缩进子项）
     body = b[b.find("**变更内容**"):]
-    # 截断到验证 / TODO 块，避免把验证明细或 TODO 清单混入功能清单
     cut = len(body)
     for mark in ("**验证", "**TODO 状态**", "## 4."):
         j = body.find(mark)
         if j != -1 and j < cut:
             cut = j
     body = body[:cut]
-    feat_lines = []
     for line in body.splitlines():
-        if not line.strip():
+        s = line.strip()
+        if not s:
             continue
-        # 一级项：行首为数字编号（1. / 2. ...）或无序列表（- **），缩进的子项以空格开头则跳过
         is_top = line.startswith(("1.", "2.", "3.", "4.", "5.", "6.", "7.", "8.", "9.", "- "))
-        if is_top:
-            s = re.sub(r"^\d+\.\s", "- ", line.strip())
-            feat_lines.append(s)
-    if feat_lines:
-        out.append(title)
-        out.extend(feat_lines)
-        out.append("")
+        if not is_top:
+            continue
+        s = re.sub(r"^\d+\.\s", "", s).strip()
+        if s and s not in seen:
+            seen.add(s)
+            feats.append(f"- {s}")
 
-print("## 版本更新功能清单\n")
-if out:
-    print("\n".join(out).rstrip())
+print("## 版本功能清单 / Feature Highlights\n")
+if feats:
+    print("\n".join(feats))
 else:
-    print("（无迭代记录，请手动补充说明。）")
-print("\n---\n详细版本说明见仓库 `docs/versions/`。")
+    print("（未提取到功能条目，请手动补充说明。）")
+print("\n---\n详细迭代记录见仓库 `docs/versions/`。")
 PYEOF
 else
   echo "# benchscope v${NEW}" > "$NOTES_TMP"
