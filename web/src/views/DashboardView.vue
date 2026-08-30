@@ -20,7 +20,7 @@
               <div class="stat-label">{{ t('maxPerfRecords') }} <span class="stat-sub">(RUN ID)</span></div>
             </div>
             <div class="stat-box">
-              <div class="stat-num stat-num-dash">—</div>
+              <div class="stat-num" :class="{ 'stat-num-dash': !stats.best_acc_run_id }">{{ stats.best_acc_run_id || '—' }}</div>
               <div class="stat-label">{{ t('maxAccRecords') }} <span class="stat-sub">(RUN ID)</span></div>
             </div>
             <div class="stat-box">
@@ -136,7 +136,7 @@
       <div class="records-footer">{{ t('latest8Hint') }}</div>
     </a-card>
 
-    <!-- Eval Records（v5.0 预留） -->
+    <!-- Eval Records（1.0.8 精度模块接通） -->
     <a-card size="small" class="records-card">
       <template #title>{{ t('accTestRecords') }}</template>
       <template #extra>
@@ -145,7 +145,7 @@
             <template #icon><reload-outlined /></template>
             {{ t('refresh') }}
           </a-button>
-          <a-button type="link" size="small" @click="onMore">{{ t('more') }}</a-button>
+          <a-button type="link" size="small" @click="onEvalMore">{{ t('more') }}</a-button>
         </a-space>
       </template>
       <a-table
@@ -158,8 +158,28 @@
         :bordered="false"
         :pagination="false"
       >
+        <template #bodyCell="{ column, record }">
+          <template v-if="column.key === 'run_id'">
+            <span class="cell-text">{{ record.run_id }}</span>
+          </template>
+          <template v-if="column.key === 'model'">
+            <span class="cell-text">{{ record.meta?.model || '-' }}</span>
+          </template>
+          <template v-if="column.key === 'accuracy'">
+            <span class="cell-text">{{ record.meta?.summary?.accuracy != null ? record.meta.summary.accuracy + '%' : '-' }}</span>
+          </template>
+          <template v-if="column.key === 'status'">
+            <span class="cell-status" :class="'st-' + (record.meta?.status || '')">{{ statusText(record.meta?.status) }}</span>
+          </template>
+          <template v-if="column.key === 'time'">
+            <span class="cell-text">{{ record.meta?.started_at || '-' }}</span>
+          </template>
+          <template v-if="column.key === 'actions'">
+            <span class="cell-action" @click="goEvalDetail(record.run_id)">{{ t('detail') }}</span>
+          </template>
+        </template>
         <template #emptyText>
-          <a-empty :description="t('accuracyPlanned')" />
+          <a-empty :description="t('evalsEmpty')" />
         </template>
       </a-table>
       <!-- 面板 footer：右侧灰色小字 -->
@@ -205,7 +225,7 @@ const columns = [
 const accColumns = [
   { title: 'Run ID', key: 'run_id', width: 140 },
   { title: 'Model', key: 'model', width: 180 },
-  { title: 'Framework', key: 'framework', width: 100 },
+  { title: 'Accuracy', key: 'accuracy', width: 100 },
   { title: 'Status', key: 'status', width: 100 },
   { title: 'Time', key: 'time', width: 180 },
   { title: '', key: 'actions', width: 90 },
@@ -228,18 +248,22 @@ async function loadRuns() {
   loading.value = true
   try {
     const resp = await api.listRuns()
-    runs.value = resp.runs || []
+    runs.value = (resp.runs || []).filter((r) => !isEvalRun(r))
     await loadStats()
   } finally {
     loading.value = false
   }
 }
 
+function isEvalRun(record) {
+  return (record.dir || '').includes('/evals') || record.meta?.kind === 'eval'
+}
+
 async function loadAccRuns() {
   accLoading.value = true
   try {
-    // v5.0 精度记录接口预留：暂无数据
-    accRuns.value = []
+    const resp = await api.listRuns()
+    accRuns.value = (resp.runs || []).filter(isEvalRun).slice(0, 8)
   } finally {
     accLoading.value = false
   }
@@ -252,8 +276,18 @@ async function loadEnv() {
 }
 
 function onMore() {
-  // 联动 Datas 页面：Perf/Eval Records 的「更多」跳转到记录管理页
+  // 联动 Datas 页面：Perf Records 的「更多」跳转到记录管理页
   router.push('/datas/perfs')
+}
+
+function onEvalMore() {
+  // Eval Records「更多」跳转 Datas/evals
+  router.push('/datas/evals')
+}
+
+function goEvalDetail(runId) {
+  // Eval 详情跳转 Datas/evals 对比面板（记录列表）
+  router.push('/datas/evals')
 }
 
 function goRunDetail(runId) {
@@ -263,6 +297,7 @@ function goRunDetail(runId) {
 
 onMounted(async () => {
   await loadRuns()
+  await loadAccRuns()
   await loadEnv()
   config.refreshStatus()
 })

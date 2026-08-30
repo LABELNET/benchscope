@@ -39,7 +39,7 @@ def load(path, label):
 benchs = load(benchs_path, "benchs.yaml")
 params = load(params_path, "bench-params.yaml")
 
-VALID_KINDS = {"builtin", "vllm", "sglang"}
+VALID_KINDS = {"builtin", "vllm", "sglang", "native", "mock"}
 
 if benchs is not None:
     engines = benchs.get("engines")
@@ -59,14 +59,14 @@ if benchs is not None:
 
         kind = e.get("kind")
         if kind not in VALID_KINDS:
-            errors.append(f"[benchs.yaml] engines[{i}]（{eid}）的 kind 必须是 builtin / vllm / sglang")
+            errors.append(f"[benchs.yaml] engines[{i}]（{eid}）的 kind 必须是 builtin / vllm / sglang / native / mock")
             continue
 
-        # 原生引擎环境要求
+        # 原生引擎环境要求（native 需 torch+transformers；mock/builtin 无）
         requires = e.get("requires") or []
-        if kind != "builtin":
+        if kind not in ("builtin", "mock"):
             names = {r.get("name") for r in requires if isinstance(r, dict)}
-            needed = {"torch", kind}
+            needed = {"torch", "transformers"} if kind == "native" else {"torch", kind}
             if not needed.issubset(names):
                 errors.append(
                     f"[benchs.yaml] engines[{i}]（{eid}）原生引擎必须声明 torch 与 {kind} 环境要求"

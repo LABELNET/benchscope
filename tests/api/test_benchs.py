@@ -408,9 +408,11 @@ def test_check_env_builtin_and_native():
 
 
 def test_load_bench_engines_and_comparison():
-    """yaml 定义加载：三个引擎 + 对比表；默认引擎取自研。"""
+    """yaml 定义加载：五个引擎（1.0.8 新增 native-hf / mock 精度引擎）+ 对比表；默认引擎取自研。"""
     engines = load_bench_engines()
-    assert {e["id"] for e in engines} == {"benchscope", "vllm-0.23", "sglang-0.5.10"}
+    assert {e["id"] for e in engines} == {
+        "benchscope", "vllm-0.23", "sglang-0.5.10", "native-hf", "mock",
+    }
     assert load_comparison(), "对比表不应为空"
     assert default_engine_id() == "benchscope"
     assert list_engines()["default_engine_id"] == "benchscope"

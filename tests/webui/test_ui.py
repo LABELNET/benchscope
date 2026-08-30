@@ -130,12 +130,12 @@ def _open_benches_tab(page):
 
 
 def test_settings_benches_panel(page):
-    """Settings → Bench Engines 栏：整页为三个内置引擎列表（Bench CLI / vllm-0.23 /
-    sglang-0.5.10）+ 介绍文案 + 环境校验结果。"""
+    """Settings → Bench Engines 栏：内置引擎列表（1.0.8 起为 5 个：Bench CLI / vllm-0.23 /
+    sglang-0.5.10 / native-hf / mock）+ 介绍文案 + 环境校验结果。"""
     _open_benches_tab(page)
 
     cards = page.locator(".bench-card")
-    assert cards.count() == 3, f"expected 3 engines, got {cards.count()}"
+    assert cards.count() == 5, f"expected 5 engines, got {cards.count()}"
 
     names = page.locator(".bench-name").all_inner_texts()
     joined = " | ".join(names)
@@ -146,7 +146,10 @@ def test_settings_benches_panel(page):
 
     # 每个引擎有介绍文案
     descs = page.locator(".bench-desc").all_inner_texts()
-    assert len(descs) == 3 and all(d.strip() for d in descs), f"引擎介绍缺失: {descs}"
+    assert len(descs) == 5 and all(d.strip() for d in descs), f"引擎介绍缺失: {descs}"
+    # 1.0.8：精度引擎卡片存在
+    assert "Native HF" in " | ".join(names), "缺少 native-hf 精度引擎"
+    assert "Mock" in " | ".join(names), "缺少 mock 精度引擎"
 
     # 自研引擎（第 1 张卡）环境恒满足；原生引擎展示环境要求明细
     first_env = cards.nth(0).locator(".ant-tag").all_inner_texts()
@@ -227,10 +230,10 @@ def test_settings_benches_comparison_modal(page):
 
     modal = page.locator(".bench-modal:visible")
     _visible(page, ".bench-modal:visible .compare-table")
-    # 维度行 + 三个引擎列
+    # 维度行 + 五个引擎列
     assert modal.locator(".compare-table tbody tr").count() >= 3, "对比表应含多个维度"
     headers = modal.locator(".compare-table thead th").all_inner_texts()
-    assert len(headers) == 4, f"表头应为 1 维度列 + 3 引擎列, got {headers}"
+    assert len(headers) == 6, f"表头应为 1 维度列 + 5 引擎列, got {headers}"
 
     modal.locator(".ant-modal-close").click()
     page.wait_for_timeout(500)
@@ -886,3 +889,97 @@ def test_settings_benches_mock_switch(page):
         # 恢复关闭，避免影响其他依赖真实环境的用例
         req.post(f"{BASE_URL}/api/benchs/{first_id}/mock", json={"enabled": False}, timeout=10)
         page.wait_for_timeout(400)
+
+
+# ---------------------------------------------------------------------------
+# 精度测试模块（1.0.8 Accuracy）
+# ---------------------------------------------------------------------------
+
+
+def test_accuracy_landing_intro(page):
+    """Accuracy 页：无任务时展示介绍页与「Create Accuracy Task」入口（默认 en 语境）。"""
+    # 清理历史任务，确保 intro 状态
+    import requests as _rq
+
+    for task in (_rq.get(f"{BASE_URL}/api/accuracy/tasks", timeout=10).json().get("tasks") or []):
+        _rq.delete(f"{BASE_URL}/api/accuracy/tasks/{task['task_id']}", timeout=10)
+
+    page.goto(f"{BASE_URL}/accuracy", wait_until="domcontentloaded")
+    _visible(page, ".accuracy-page")
+    _visible(page, ".intro-head")
+    btn = page.locator(".intro-head button", has_text="Create Accuracy Task").first
+    btn.wait_for(state="visible", timeout=15000)
+
+
+def test_accuracy_create_wizard(page):
+    """精度创建向导：三步表单渲染 + 内置评测数据集 + 引擎环境明细。"""
+    page.goto(f"{BASE_URL}/accuracy/create", wait_until="domcontentloaded")
+    _visible(page, ".acc-create-page")
+    _visible(page, ".steps")
+    # Step1 数据集：下拉含内置评测数据集（MMLU）
+    page.locator(".step-body .ant-select").first.click()
+    opt = page.locator(".ant-select-dropdown .ant-select-item-option", has_text="MMLU").first
+    opt.wait_for(state="visible", timeout=15000)
+    opt.click()
+    # Step2：引擎环境明细（benchscope 恒通过 → 无校验行；切换 native-hf 展示 torch/transformers/CUDA 明细）
+    page.locator(".actions button", has_text="Next").first.click()
+    page.locator(".step-body:visible .ant-select").first.click()
+    page.locator(".ant-select-dropdown:visible .ant-select-item-option", has_text="Native HF").first.click()
+    env_tag = page.locator(".env-item .ant-tag", has_text="FAIL").first
+    env_tag.wait_for(state="visible", timeout=15000)
+    # 切回自研引擎（恒通过，不阻断）
+    page.locator(".step-body:visible .ant-select").first.click()
+    page.locator(".ant-select-dropdown:visible .ant-select-item-option", has_text="Bench CLI").first.click()
+    page.wait_for_timeout(800)
+
+
+def test_accuracy_task_flow_list_and_detail(page):
+    """全链路：API 创建 mock 精度任务 → 列表出现 → 详情指标卡渲染。"""
+    import json as _json
+    import pathlib
+    import uuid
+
+    import requests as _rq
+
+    ds = pathlib.Path("/tmp") / f"acc_ui_{uuid.uuid4().hex[:6]}.jsonl"
+    lines = [_json.dumps({"question": f"q{i}", "choices": ["甲", "乙", "丙", "丁"],
+                          "answer": "ABCD"[i % 4], "subject": "s"}, ensure_ascii=False)
+             for i in range(4)]
+    ds.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+    r = _rq.post(f"{BASE_URL}/api/accuracy/tasks", timeout=15, json={
+        "engine_id": "mock", "model": "ui-model", "dataset": {"path": str(ds)},
+        "mock_correct_rate": 1.0, "api": {"base_url": "http://mock.invalid"},
+    })
+    assert r.status_code == 200, r.text
+    task_id = r.json()["task"]["task_id"]
+
+    deadline = __import__("time").time() + 30
+    status = None
+    while __import__("time").time() < deadline:
+        status = _rq.get(f"{BASE_URL}/api/accuracy/tasks/{task_id}", timeout=10).json()["task"]["status"]
+        if status in ("done", "error", "stopped"):
+            break
+        __import__("time").sleep(0.2)
+    assert status == "done"
+
+    page.goto(f"{BASE_URL}/accuracy", wait_until="domcontentloaded")
+    _visible(page, ".accuracy-page")
+    # 任务列表出现该任务
+    cell = page.locator(".accuracy-page .ant-table", has_text=task_id).first
+    cell.wait_for(state="visible", timeout=15000)
+    # 详情指标卡渲染（accuracy 100%）
+    metric = page.locator(".metric-box", has_text="Accuracy").first
+    metric.wait_for(state="visible", timeout=15000)
+    val = page.locator(".metric-value", has_text="100").first
+    val.wait_for(state="visible", timeout=15000)
+
+    _rq.delete(f"{BASE_URL}/api/accuracy/tasks/{task_id}", timeout=10)
+    ds.unlink(missing_ok=True)
+
+
+def test_datas_evals_records_page(page):
+    """Datas/evals 记录页渲染（空态或列表）。"""
+    page.goto(f"{BASE_URL}/datas/evals", wait_until="domcontentloaded")
+    _visible(page, ".evals-page")
+    _visible(page, ".list-card")

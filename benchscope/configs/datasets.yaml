@@ -1,6 +1,10 @@
 # 内置数据集定义（Settings → Datasets 面板）
 # 字段：id / name / description / url（访问链接）/ download（展示用下载命令）/ category（分类）
 #       source: type(modelscope|url) + dataset_id/file 或 url（实际下载源，缓存到 datasets_dir）
+#       eval:   精度评测元数据（1.0.8，带该段的数据集同时出现在精度评测数据集清单）：
+#               scorer（判分器绑定 choice|math|code|judge）/ metrics（主指标名）/
+#               total_samples（声明样本量）/ prompt_template（可选模板前缀）/
+#               fewshot（保留字段，当前 0-shot）/ answer_field / subject_field（展示用说明）
 # categories: 分类（Datasets 面板左侧副侧边栏）
 categories:
   - key: chat
@@ -12,6 +16,21 @@ categories:
   - key: math
     name_zh: 数学推理
     name_en: Math
+  - key: accuracy-knowledge
+    name_zh: 精度·知识
+    name_en: Accuracy · Knowledge
+  - key: accuracy-math
+    name_zh: 精度·数学
+    name_en: Accuracy · Math
+  - key: accuracy-code
+    name_zh: 精度·代码
+    name_en: Accuracy · Code
+  - key: accuracy-chat
+    name_zh: 精度·对话
+    name_en: Accuracy · Chat
+  - key: accuracy-mix
+    name_zh: 精度·综合
+    name_en: Accuracy · Mix
 
 datasets:
   - id: sharegpt
@@ -30,27 +49,150 @@ datasets:
     category: instruction
     description: Stanford Alpaca 指令微调数据集（52K 对话样本），对话格式基准测试
     url: https://huggingface.co/datasets/tatsu-lab/alpaca
-    download: "huggingface-cli download tatsu-lab/alpaca --repo-type dataset --local-dir ./alpaca"
+    download: "huggingface-cli download tatsu-lab/alpaca --repo-type dataset --local_dir ./alpaca"
     source:
       type: url
       url: https://huggingface.co/datasets/tatsu-lab/alpaca/resolve/main/alpaca_data.json
 
   - id: gsm8k
     name: GSM8K
-    category: math
-    description: 小学数学推理题数据集（8.5K 训练题），精度/推理能力测试候选
+    category: accuracy-math
+    description: 小学数学推理题数据集（7473 训练题），数学推理精度评测（exact_match）
     url: https://huggingface.co/datasets/openai/gsm8k
-    download: "huggingface-cli download openai/gsm8k --repo-type dataset --local-dir ./gsm8k"
+    download: "huggingface-cli download openai/gsm8k --repo-type dataset --local_dir ./gsm8k"
     source:
       type: url
       url: https://huggingface.co/datasets/openai/gsm8k/resolve/main/gsm8k_train.jsonl
+    eval:
+      scorer: math
+      metrics: exact_match
+      total_samples: 7473
+      answer_field: answer（含 #### 最终答案）
+      subject_field: ""
 
   - id: dolly
     name: Dolly
     category: instruction
     description: Databricks Dolly-15k 指令微调数据集（15K 样本），对话格式基准测试
     url: https://huggingface.co/datasets/databricks/databricks-dolly-15k
-    download: "huggingface-cli download databricks/databricks-dolly-15k --repo-type dataset --local-dir ./dolly"
+    download: "huggingface-cli download databricks/databricks-dolly-15k --repo-type dataset --local_dir ./dolly"
     source:
       type: url
       url: https://huggingface.co/datasets/databricks/databricks-dolly-15k/resolve/main/databricks-dolly-15k.jsonl
+
+  # ---------------- 精度评测数据集（1.0.8，样本量为官方声明值） ----------------
+  - id: mmlu
+    name: MMLU
+    category: accuracy-knowledge
+    description: 多任务语言理解基准（57 学科 14079 四选一客观题），知识类精度核心评测
+    url: https://modelscope.cn/datasets/opencompass/mmlu
+    download: "modelscope download --dataset opencompass/mmlu --local_dir ./mmlu"
+    source:
+      type: modelscope
+      dataset_id: opencompass/mmlu
+    eval:
+      scorer: choice
+      metrics: accuracy
+      total_samples: 14079
+      subject_field: subject
+
+  - id: cmmlu
+    name: CMMLU
+    category: accuracy-knowledge
+    description: 中文多任务语言理解基准（67 学科 11960 四选一客观题），中文知识精度评测
+    url: https://modelscope.cn/datasets/opencompass/cmmlu
+    download: "modelscope download --dataset opencompass/cmmlu --local_dir ./cmmlu"
+    source:
+      type: modelscope
+      dataset_id: opencompass/cmmlu
+    eval:
+      scorer: choice
+      metrics: accuracy
+      total_samples: 11960
+      subject_field: subject
+
+  - id: c-eval
+    name: C-Eval
+    category: accuracy-knowledge
+    description: 中文基础模型评估套件（52 学科 13480 四选一客观题），中文知识精度评测
+    url: https://modelscope.cn/datasets/opencompass/ceval-exam
+    download: "modelscope download --dataset opencompass/ceval-exam --local_dir ./c-eval"
+    source:
+      type: modelscope
+      dataset_id: opencompass/ceval-exam
+    eval:
+      scorer: choice
+      metrics: accuracy
+      total_samples: 13480
+      subject_field: subject
+
+  - id: math
+    name: MATH
+    category: accuracy-math
+    description: 竞赛数学数据集（5000 题目），高难度数学推理精度评测（exact_match）
+    url: https://modelscope.cn/datasets/opencompass/math
+    download: "modelscope download --dataset opencompass/math --local_dir ./math"
+    source:
+      type: modelscope
+      dataset_id: opencompass/math
+    eval:
+      scorer: math
+      metrics: exact_match
+      total_samples: 5000
+
+  - id: humaneval
+    name: HumanEval
+    category: accuracy-code
+    description: OpenAI 代码生成基准（164 题函数补全），代码精度评测（pass@1）
+    url: https://modelscope.cn/datasets/opencompass/humaneval
+    download: "modelscope download --dataset opencompass/humaneval --local_dir ./humaneval"
+    source:
+      type: modelscope
+      dataset_id: opencompass/humaneval
+    eval:
+      scorer: code
+      metrics: pass@1
+      total_samples: 164
+
+  - id: mbpp
+    name: MBPP
+    category: accuracy-code
+    description: 基础 Python 编程基准（974 题文本生成代码），代码精度评测（pass@1）
+    url: https://modelscope.cn/datasets/opencompass/mbpp
+    download: "modelscope download --dataset opencompass/mbpp --local_dir ./mbpp"
+    source:
+      type: modelscope
+      dataset_id: opencompass/mbpp
+    eval:
+      scorer: code
+      metrics: pass@1
+      total_samples: 974
+
+  - id: mt-bench
+    name: MT-Bench
+    category: accuracy-chat
+    description: 多轮对话对齐基准（80 题 160 轮），LLM-as-judge 对话精度评测（0–10 分）
+    url: https://modelscope.cn/datasets/opencompass/mt_bench
+    download: "modelscope download --dataset opencompass/mt_bench --local_dir ./mt-bench"
+    source:
+      type: modelscope
+      dataset_id: opencompass/mt_bench
+    eval:
+      scorer: judge
+      metrics: mt_bench
+      total_samples: 80
+
+  - id: gaokao-bench
+    name: GAOKAO-Bench
+    category: accuracy-mix
+    description: 中国高考题基准（2000 题，自动判分取客观题子集），综合知识精度评测
+    url: https://modelscope.cn/datasets/opencompass/gaokao-bench
+    download: "modelscope download --dataset opencompass/gaokao-bench --local_dir ./gaokao-bench"
+    source:
+      type: modelscope
+      dataset_id: opencompass/gaokao-bench
+    eval:
+      scorer: choice
+      metrics: accuracy
+      total_samples: 2000
+      subject_field: subject

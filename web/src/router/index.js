@@ -9,6 +9,8 @@ const routes = [
   // 单任务重设计：创建与详情都内联进 /performance，旧路由重定向回主页
   { path: '/performance/:taskId', redirect: '/performance' },
   { path: '/accuracy', name: 'accuracy', component: () => import('@/views/AccuracyView.vue') },
+  // 创建精度任务三步表单（数据集 / 模式与引擎 / 预览与 Token 强提醒确认）
+  { path: '/accuracy/create', name: 'accuracy-create', component: () => import('@/views/AccuracyCreateView.vue') },
   { path: '/sessions', name: 'sessions', component: () => import('@/views/SessionsView.vue') },
   {
     path: '/datas',

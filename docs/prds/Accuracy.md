@@ -1,61 +1,78 @@
 # benchscope Accuracy 页面 — 功能与约束说明
 
-> **版本**：v1.0.5  
-> **最后更新**：2026-08-26  
-> **文档状态**：Accuracy（精度测试）页面的当前状态、规划功能与约束条件说明  
-> **关联文档**：[Performance.md](./Performance.md) · [Dashboard.md](./Dashboard.md)
+> **版本**：v1.0.8
+> **最后更新**：2026-08-30
+> **文档状态**：Accuracy（独立精度测试模块）页面功能、实现策略与约束说明
+> **关联文档**：[Performance.md](./Performance.md) · [Dashboard.md](./Dashboard.md) · [Datas.md](./Datas.md) · [../rules/AccuracyEngine.md](../rules/AccuracyEngine.md)
 
 ---
 
 ## 0. 总览
 
-Accuracy 页面为 **v5.0 精度测试**预留的占位页，当前**无功能逻辑**，仅展示规划说明与功能预览卡片。顶部导航第 3 项「Accuracy」进入。
+Accuracy 页面为**独立精度测试模块**的主页面（1.0.8 落地，替换原 v5.0 占位页）：Native 原生精度 / Serving 链路精度双模式评测，与性能模块彻底解耦。顶部导航第 3 项「Accuracy」进入；创建任务走 `/accuracy/create` 三步向导。
 
----
+后端独立包 `benchscope/accuracy/`（架构详见 [rules/AccuracyEngine.md](../rules/AccuracyEngine.md)）：
+- `EvalTaskManager` 独立调度（`pending → running → done|stopped|error`），落库三件套 `evals/<task_id>/task.json + result.json + samples.jsonl`（另写 `run.json` 接入 Datas 记录体系）；
+- `run_eval` 评测核心（CLI `benchscope eval` 与 Web 任务共用）：数据集加载 → Prompt 构建 → 批量推理（Serving aiohttp / Native transformers / Mock 可控伪输出）→ 判分（choice / math / code / judge）→ 指标汇总 → 基线对标；
+- WS 消息族 `eval_task_*`（快照回放 / started / log / progress / result / done / error）。
 
-## 1. 页面组成（当前占位状态）
+## 1. 任务列表（无任务 → 介绍页）
 
-### 1.1 规划提示（a-result）
+- **无任务**：介绍页（标题 + 三张特性卡：双模式评测 / 基线对标 / Token 预估强提醒）+「创建精度任务」按钮。
+- **有任务**：任务表格（任务 ID / 模型（LoRA 标签）/ 模式（Native|Serving）/ 数据集 / 状态 / accuracy 或运行进度 / 停止 / 删除）+ 点击行进入详情；「刷新」「创建精度任务」按钮。
 
-- `status="info"` 的提示卡片：
-  - 标题：`planned`（规划中）
-  - 副标题：`plannedDesc`（计划支持常见数据集精度评估、ModelScope 模型对比、多维度质量分析）
-  - 右侧标签：`expectedVersion`（预计版本：v5.0）
+## 2. 创建任务（/accuracy/create 三步向导）
 
-### 1.2 功能预览卡片（3 张，与 Performance 默认页同款样式）
+### Step1 数据集（沿用 Settings → Datasets 体系）
 
-| 图标 | 标题 | 描述 |
-| --- | --- | --- |
-| 📊 | 数据集精度评估 | 在常见数据集上评估模型精度与质量 |
-| 🔗 | ModelScope 模型对比 | 官方模型链接与对比结论分析 |
-| 📈 | 多维度质量分析 | 从多个维度分析和比较模型表现 |
+- 来源单选：**内置评测数据集**（`configs/datasets.yaml` 带 eval 元数据的 9 个：MMLU / CMMLU / C-Eval / GSM8K / MATH / HumanEval / MBPP / MT-Bench / GAOKAO-Bench，显示类别 / 判分器 / 样本量 / 下载缓存状态）/ **本地路径 JSONL**（免上传直接引用，标准字段 `question / answer`，可选 `choices / subject`；判分器按字段自动探测）。
+- 预览按钮 → 前 5 条样本（题干 / prompt / 标准答案）。
+- 样本抽样上限（0 = 全量；固定种子抽样可复现）。
 
-- 卡片样式与 Performance 默认页**完全一致**：`size="small"`、等高（`height:100%` + flex 居中）、标题单行省略、描述两行截断（12px）。
+### Step2 模式与模型
 
----
+- **模式**：Serving 链路（OpenAI 兼容服务）/ Native 原生（本地权重；说明环境要求与无 Token 统计边界）。
+- **评测引擎**（`GET /api/accuracy/engines`）：`benchscope`（serving）/ `native-hf`（native）/ `mock`（联调）；选中后展示环境校验明细（`env-check`），native 不满足（torch / transformers / CUDA）**阻断下一步**。
+- **Provider**（Serving）：复用 Settings → Providers（激活项默认）。
+- **模型**：沿用 Settings → Models 厂商目录（下拉搜索）/ 自定义（模型名或 Native 本地权重路径）。
+- **LoRA 微调增量模型**：`lora_path`（peft adapter 路径，Native 经 peft 合并加载；Serving 请求服务端已注册 adapter，`lora_name`）——微调前后的精度与性能均可对比。
+- 推理参数：全局种子 / 温度 / top_p / max_tokens / 并发推理数（Serving）；MT-Bench 数据集需填评审模型（judge）。
 
-## 2. 规划功能（v5.0，未实现）
+### Step3 预览与启动（Token 强提醒）
 
-| 功能 | 说明 |
+- payload 摘要 + **等效 CLI 命令**（`benchscope eval ...`，可复制执行）。
+- **Serving 模式强提醒弹窗**（固定文案，`Modal.confirm`）：数据集 / 预估总 Token（含输入 / 输出拆分、样本数与预估口径）/「该消耗会计入线上推理资源计费/负载」/ 确认启动。预估接口 `GET /api/accuracy/estimate`（优先级：数据集实测统计 > 内置常量表 `configs/token_estimates.yaml` > 字符估算）。
+- 确认后 `POST /api/accuracy/tasks`（创建即启动）→ 跳回 Accuracy 页。
+
+## 3. 任务详情（实时 + 报表）
+
+| 区块 | 内容 |
 | --- | --- |
-| 数据集精度评估 | 在常见数据集上评估模型精度与质量 |
-| ModelScope 模型对比 | 官方模型链接与对比结论分析 |
-| 多维度质量分析 | 从多个维度分析和比较模型表现 |
-| 精度测试记录 | Dashboard「Eval Records」面板的数据来源（v5.0 开放） |
+| 头部 | 任务名 / 模式标签 / 状态 / 运行进度条（done/total）/ 停止按钮 |
+| 核心指标 | 六指标卡：accuracy / pass_rate / 总样本 / 正确 / 错误 / 无效；数据集专属指标标签（exact_match / pass@1 / mt_bench_score 等）；评测结论（合格 / 精度下跌 / 异常）+ 错因标签分布 |
+| Token 统计（Serving） | 输入 / 输出 / 总消耗 / 单样本均值；**预估 vs 实际**偏差 |
+| 基线对标 | 档位标签（S/A/B/C）/ 对标基线与差值 pp / 同尺寸排名 / 自动结论（优于 / 持平 / 明显劣于-风险预警） |
+| 分学科准确率 | 学科 / 正确 / 总数 / accuracy（知识类） |
+| 评测日志 | 实时终端（WS `eval_task_log`，自动滚动） |
+| 单样本溯源 | 表格（# / 学科 / Prompt / 输出 / 标准答案 / Token(入/出) / 判定+错因），筛选全部 / 答错 / 无效；**导出错题集**（JSONL 下载） |
 
----
+## 4. Datas/evals 与 Dashboard 联动
 
-## 3. 约束与边界
+- **Datas → Evals**：精度记录列表（来自既有 `listRuns` 扫描 evals_dir，`run.json` kind=eval），摘要列显示 accuracy；勾选 2 条 →「对比」面板（横向主指标表 + **Native vs Serving 一致性差值**：|diff|≤2pp 训推一致 / ≤5pp 存在偏差 / >5pp 显著偏差）；详情跳 Accuracy、日志下载。
+- **Dashboard**：Overview 六宫格 Total/Max Acc Records 实数；Eval Records 表格（Run ID / Model / Accuracy / Status / Time / 详情）接通真实数据。
+
+## 5. 约束与边界
 
 | 项 | 约束 |
 | --- | --- |
-| 功能状态 | 纯占位，无任何接口调用与逻辑 |
-| Dashboard 联动 | Dashboard「Eval Records」面板当前为空（`total_acc_runs=0`、记录列表为空），待 v5.0 精度测试落地后接入 |
-| i18n | `planned` / `plannedDesc` / `expectedVersion` 键中英双语；功能卡片标题/描述当前为中文硬编码（`features` 数组），未走 i18n |
-| 主题 | 使用 antd 变量（`var(--ant-color-*)`），亮/暗主题自适应 |
+| 解耦 | `accuracy/` 不 import 性能模块代码；不承载任何性能指标（QPS / 延迟 / 吞吐） |
+| 双模式边界 | Native 模式无 Token 统计（`result.tokens = null`）；judge（MT-Bench）仅 Serving / Mock 支持 |
+| LoRA | Serving 需服务端已启用 LoRA（vLLM `--enable-lora --lora-modules`，`model` 用 adapter 注册名）；Native 需 peft（extras `benchscope[accuracy-native]`） |
+| 代码沙箱 | HumanEval / MBPP 判分在受限子进程执行（`-I` 隔离 + 超时 + 临时目录），属预期行为 |
+| 数据集 | 内置数据集启动评测时自动下载（ModelScope 优先，缓存 `datasets_dir/<id>/`）；GAOKAO-Bench 自动判分取客观题子集 |
+| i18n | 全部文案走 zh/en 词典（`acc*` / `evals*` 键），`npm run check:i18n` 校验 |
+| 主题 | antd 变量（亮/暗自适应），组件复用 antd 表格 / 卡片 / 步骤条范式 |
 
----
-
-## 4. 相关文档约定
+## 6. 相关文档约定
 
 > **约定**：后续对 Accuracy 页面的设计/界面修改、逻辑与策略调整、UI 调整，均需同步更新本文档。

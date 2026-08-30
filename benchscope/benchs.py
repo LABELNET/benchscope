@@ -278,6 +278,7 @@ def engine_summary(engine: dict, with_env: bool = True) -> dict:
         "highlights": engine.get("highlights") or [],
         "highlights_zh": engine.get("highlights_zh") or engine.get("highlights") or [],
         "requires": engine.get("requires") or [],
+        "eval": (engine.get("eval") or "").strip().lower(),  # 精度评测能力：serving|native|mock|空
     }
     if with_env:
         out["env"] = check_env(engine)
@@ -355,27 +356,28 @@ def validate_benchs_yaml(content: str, mock_output: str = "", extra_param_sectio
     for i, e in enumerate(engines):
         if not isinstance(e, dict):
             continue
-        if e.get("kind") not in ("builtin", "vllm", "sglang"):
-            add("kind", False, f"engines[{i}]（{e.get('id')}）的 kind 必须是 builtin / vllm / sglang")
+        if e.get("kind") not in ("builtin", "vllm", "sglang", "native", "mock"):
+            add("kind", False,
+                f"engines[{i}]（{e.get('id')}）的 kind 必须是 builtin / vllm / sglang / native / mock")
             kinds_ok = False
             break
     if kinds_ok:
         add("kind", True, "kind 合法")
 
-    # 4. requires（原生引擎）
+    # 4. requires（原生引擎：vllm/sglang 需 torch+框架；native 需 torch+transformers；mock/builtin 无）
     req_ok = True
     for i, e in enumerate(engines):
         if not isinstance(e, dict):
             continue
         kind = e.get("kind")
-        if kind == "builtin":
+        if kind in ("builtin", "mock"):
             continue
         requires = e.get("requires") or []
         names = {r.get("name") for r in requires if isinstance(r, dict)}
-        needed = {"torch", kind}
+        needed = {"torch", "transformers"} if kind == "native" else {"torch", kind}
         if not needed.issubset(names):
             add("requires", False,
-                f"engines[{i}]（{e.get('id')}）原生引擎必须声明 torch 与 {kind} 环境要求")
+                f"engines[{i}]（{e.get('id')}）原生引擎必须声明 torch 与 {', '.join(sorted(needed - names) or kind)} 环境要求")
             req_ok = False
             break
         missing_spec = [r.get("name") for r in requires if isinstance(r, dict) and not r.get("spec")]

@@ -1,0 +1,62 @@
+# 开源模型基准基线库（静态固化权威公开测评分数，管理员可经 PUT /api/accuracy/baselines 更新）
+#
+# 字段：
+#   name      基线模型名（含尺寸）
+#   params_b  参数量（B，用于同尺寸段排名）
+#   group     通用（general）/ 中文专项（chinese）
+#   source    分数来源标注（公开技术报告 / 榜单，数值为近似参考值）
+#   scores    数据集 id → 精度得分（百分制；缺失表示该数据集无公开基线）
+# 注意：基线数据为静态参考值（多为 instruct/chat 版本口径），用于横向对标与档位评级，
+#       不作为官方口径引用；更新基线请补充 source 标注。
+version: "2026-08-30"
+models:
+  - name: Llama-3-8B
+    params_b: 8
+    group: general
+    source: "Meta Llama3 技术报告 / 公开榜单近似值"
+    scores: { mmlu: 68.4, gsm8k: 79.6, math: 30.0, humaneval: 62.2, mbpp: 66.0, cmmlu: 51.0, c-eval: 45.0, mt-bench: 8.0 }
+  - name: Llama-3-70B
+    params_b: 70
+    group: general
+    source: "Meta Llama3 技术报告 / 公开榜单近似值"
+    scores: { mmlu: 82.0, gsm8k: 93.0, math: 41.4, humaneval: 81.7, mbpp: 74.0, cmmlu: 70.0, c-eval: 65.0, mt-bench: 8.6 }
+  - name: Qwen2-7B
+    params_b: 7
+    group: general
+    source: "Qwen2 技术报告 / 公开榜单近似值"
+    scores: { mmlu: 70.5, gsm8k: 79.9, math: 51.3, humaneval: 54.9, mbpp: 60.0, cmmlu: 84.8, c-eval: 87.1, mt-bench: 8.0 }
+  - name: Qwen2-14B
+    params_b: 14
+    group: general
+    source: "Qwen2 技术报告 / 公开榜单近似值"
+    scores: { mmlu: 74.5, gsm8k: 85.5, math: 55.9, humaneval: 66.5, mbpp: 66.0, cmmlu: 86.0, c-eval: 88.0, mt-bench: 8.3 }
+  - name: Qwen2-72B
+    params_b: 72
+    group: general
+    source: "Qwen2 技术报告 / 公开榜单近似值"
+    scores: { mmlu: 84.2, gsm8k: 91.1, math: 68.1, humaneval: 73.2, mbpp: 74.0, cmmlu: 88.0, c-eval: 91.0, mt-bench: 9.0 }
+  - name: InternLM2-7B
+    params_b: 7
+    group: general
+    source: "InternLM2 技术报告 / 公开榜单近似值"
+    scores: { mmlu: 65.8, gsm8k: 70.7, math: 33.4, humaneval: 43.9, mbpp: 52.0, cmmlu: 80.0, c-eval: 82.7, mt-bench: 7.8 }
+  - name: Mistral-7B
+    params_b: 7
+    group: general
+    source: "Mistral 技术报告 / 公开榜单近似值"
+    scores: { mmlu: 62.5, gsm8k: 52.2, math: 20.0, humaneval: 30.5, mbpp: 47.5, cmmlu: 45.0, c-eval: 40.0, mt-bench: 7.6 }
+  - name: Qwen2-Chinese
+    params_b: 7
+    group: chinese
+    source: "Qwen2 中文口径（CMMLU/C-Eval）近似值"
+    scores: { mmlu: 70.5, cmmlu: 84.8, c-eval: 87.1, gsm8k: 79.9, mt-bench: 8.0 }
+  - name: Llama3-CN
+    params_b: 8
+    group: chinese
+    source: "Llama3 中文社区评测（CMMLU/C-Eval）近似值"
+    scores: { mmlu: 68.4, cmmlu: 52.0, c-eval: 46.0, gsm8k: 79.6, mt-bench: 8.0 }
+  - name: Zephyr-7B
+    params_b: 7
+    group: chinese
+    source: "Zephyr (HuggingFace) 技术报告近似值"
+    scores: { mmlu: 61.4, gsm8k: 46.5, math: 15.0, humaneval: 27.4, mt-bench: 7.3 }

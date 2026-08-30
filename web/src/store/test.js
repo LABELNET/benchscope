@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import { api, wsUrl } from '@/api'
 import { useConfigStore } from './config'
+import { useAccuracyStore } from './accuracy'
 
 let socket = null
 let reconnectTimer = null
@@ -42,6 +43,11 @@ export const useTestStore = defineStore('test', {
       }
     },
     handleMessage(msg) {
+      // 独立精度模块消息族（eval_task_*）转发给 accuracy store
+      if (msg.type && msg.type.startsWith('eval_task_')) {
+        useAccuracyStore().handleEvalMessage(msg)
+        return
+      }
       switch (msg.type) {
         case 'status':
           useConfigStore().applyStatus(msg)

@@ -35,7 +35,7 @@
 
 `fastapi>=0.110` · `uvicorn[standard]>=0.29` · `requests>=2.31` · `openpyxl>=3.1`（Excel 导出）· `pydantic>=2` · `python-multipart>=0.0.9`（数据集上传、**1.0.7 新增：引擎包上传 `/api/benchs/upload`**）· `pyyaml>=6.0`（1.0.6：内置数据集 / 模型厂商目录 yaml 定义解析）· `aiohttp>=3.9`（**1.0.7：自研 bench 引擎异步 SSE 压测**）
 
-可选：`modelscope>=1.15`（`pip install benchscope[modelscope]`，1.0.6：数据集 modelscope 源下载）
+可选：`modelscope>=1.15`（`pip install benchscope[modelscope]`，1.0.6：数据集 modelscope 源下载）；**1.0.8 新增 extras**：`accuracy-native`（`torch>=2.0` + `transformers>=4.40` + `peft>=0.10`，`pip install 'benchscope[accuracy-native]'`，Native 原生精度评测 / LoRA 增量模型加载，**不随 pip 必装**）
 
 ### 前端（`web/package.json`）
 
@@ -56,6 +56,10 @@
 | **测试引擎（1.0.7）** | yaml 驱动注册表（`configs/benchs.yaml`）：`benchscope`（自研）/ `vllm-<ver>` / `sglang-<ver>` | 引擎与版本解耦，用户可扩展；原生引擎需环境校验 |
 | **自研引擎口径（1.0.7）** | 严格对齐 vLLM bench（TPOT=(E2E-TTFT)/(tokens-1)、throughput=tokens/duration） | 自研与原生引擎结果可直接对比 |
 | **输出 token 计数（1.0.7）** | 服务端 `usage.completion_tokens`（`stream_options.include_usage`），缺失回退 chunk 数 | 精确且不引入分词依赖 |
+| **精度模块解耦（1.0.8）** | 独立包 `benchscope/accuracy/` + 独立 `EvalTaskManager` + 文件落库三件套（`evals/<task_id>/`）；引擎/数据集注册复用公共 yaml（`benchs.yaml` eval 能力字段 / `datasets.yaml` eval 元数据） | 与性能模块彻底解耦；保持 pip 即用与无数据库定位 |
+| **精度引擎（1.0.8）** | serving（aiohttp OpenAI 兼容）/ native（transformers 本地权重，可选依赖 + CUDA 校验）/ mock（可控正确率伪输出） | 双模式独立运行；mock 环境无 GPU 全链路可测 |
+| **判分器（1.0.8）** | 注册表按数据集绑定：choice（选项抽取）/ math（\boxed + 规范化等价）/ code（受限子进程沙箱 pass@1）/ judge（LLM-as-judge JSON 评分） | 各专项数据集口径对齐行业标准（accuracy / exact_match / pass@1 / mt_bench_score） |
+| **LoRA 增量模型（1.0.8）** | 任务配置 `lora_path`（可选 `lora_name`）：Native peft 合并加载；Serving 请求服务端已注册 adapter（vLLM 需 `--enable-lora --lora-modules`） | 微调前后精度与性能均可量化对比 |
 
 ## 5. 数据流约定
 

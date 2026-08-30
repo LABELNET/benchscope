@@ -36,6 +36,7 @@
 | `benchscope/cli.py` | 命令行入口（`benchscope` / `python -m benchscope.cli`） |
 | `benchscope/config.py` + `constants.py` | 配置持久化（`~/.benchscope/settings.json`，旧版 `config.json` 兼容迁移）与默认值（9 目录体系） |
 | `benchscope/task_manager.py` | 任务生命周期（创建/执行/停止/持久化），双模式执行策略（并发/阈值 + 二分探测），结果行携带 `case_id` |
+| `benchscope/accuracy/` | **独立精度测试模块（1.0.8）**：engines（eval 引擎适配）/ datasets（评测数据集）/ executor（推理执行 + run_eval 核心）/ scorers（choice/math/code/judge 判分）/ metrics（指标汇总）/ estimator（Token 预估）/ baselines（基线对标）/ task_manager（`EvalTaskManager` 独立调度）/ compare（对比与一致性）；详见 [AccuracyEngine.md](./AccuracyEngine.md) |
 | `benchscope/session_manager.py` | 会话存储 + SSE 流式对话 + 思考标签解析（`parse_think_tags`） |
 | `benchscope/parser.py` | bench 输出解析（mean + P99 双套指标，vLLM/SGLang 格式兼容） |
 | `benchscope/summary.py` | CSV / xlsx 汇总（mean + P99 双 sheet） |
@@ -55,7 +56,7 @@
 | 任务执行监控 | WS 广播：`task_log`（终端行 + 当前 case/concurrency 位置）、`task_result`（结果行）、`task_snapshot`、`task_done` |
 | 阈值高亮 | 前端 computed 按组（`caseKey`）标记 Best/BestPerf（本地阈值与任务阈值） |
 | 导出 Excel | Realtime 表格 Download → `POST /api/tasks/{id}/export` → run_dir 缓存 + 下载 |
-| 精度/评估 | Accuracy 占位；Dashboard Eval Records 空态（v5.0） |
+| 精度/评估 | **Accuracy 独立精度模块（1.0.8）**：Accuracy 页创建向导 + 实时详情报表；`POST /api/accuracy/tasks` → `EvalTaskManager`（独立调度）→ `run_eval`（数据集 → 推理 → 判分 → 汇总）→ `evals/` 三件套；`benchscope eval` CLI 同核执行；Dashboard Eval Records 接通 |
 | 对话 | Sessions → `POST /api/sessions/{id}/chat` SSE 流式（思考 + 正文） |
 | 模型下载 | Settings → Models → 宫格 → 详情抽屉（精度/链接/下载命令）；部署按钮待实现 |
 | mock 联调 | `./scripts/dev.sh`（mock OpenAI :8001 + 统一入口 :8080，FAKE bench） |
@@ -69,4 +70,5 @@
   - 未指定 `engine_id` 的旧任务回退原生链路。详见 [BenchEngine.md](./BenchEngine.md)。
 - **引擎与版本解耦（1.0.7）**：引擎定义由 `configs/benchs.yaml` 驱动（注册表模式），参数描述由 `configs/bench-params.yaml` 驱动，均支持用户扩展；新增引擎 / 版本无需改代码。
 - **无服务端插件**：仅需推理服务暴露 OpenAI 兼容 API。
+- **精度模块彻底解耦（1.0.8）**：`benchscope/accuracy/` **不 import 任何性能模块代码**（`task_manager.py` / `benches/`），仅共享公共设施（`ConfigManager` / `WebSocketHub` / `benchs.py` 引擎注册表 / `datasets.yaml`）；独立任务状态机、独立落库三件套（`evals/<task_id>/task.json + result.json + samples.jsonl`，`run.json` 兼容 Datas 记录体系）、独立 WS 消息族（`eval_task_*`）、独立报表；不承载任何性能指标。
 - **持久化**：配置 `~/.benchscope/settings.json`（旧版 `config.json` 首启自动迁移）。**9 目录体系**：`data_dir` 根（默认 `~/.benchscope`）+ 8 功能子目录（perfs / evals / analysis / logs / sessions / models / datasets / plugins），子目录未自定义时跟随 `data_dir`；任务 run_dir 按 `kind` 落 `perfs_dir` / `evals_dir`；终端输出日志 `logs_dir/perf|eval_runID_*.log`；会话 `sessions_dir`；内置数据集缓存 `datasets_dir/{id}/`。

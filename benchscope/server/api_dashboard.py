@@ -41,12 +41,19 @@ def dashboard_stats():
                 runs.append(run_info)
 
     total_runs = len(runs)
-    running_tasks = state.tasks.running_count
+    acc_runs = [r for r in runs if r.get("kind") == "eval"]
+    best_acc = max(
+        ((r.get("summary") or {}).get("accuracy") for r in acc_runs if (r.get("summary") or {}).get("accuracy") is not None),
+        default=None,
+    )
+    running_tasks = state.tasks.running_count + state.evals.running_count
     avg_tpot = None
     best_model = "-"
     best_tpot = float("inf")
 
     for r in runs:
+        if r.get("kind") == "eval":
+            continue  # 精度任务不参与性能指标聚合
         rows = r.get("rows") or []
         model = r.get("model", "")
         for row in rows:
@@ -66,8 +73,9 @@ def dashboard_stats():
             avg_tpot = round(avg_tpot / total_metrics, 2)
 
     return {
-        "total_runs": total_runs,
-        "total_acc_runs": 0,  # 精度测试 v5.0 预留
+        "total_runs": total_runs - len(acc_runs),
+        "total_acc_runs": len(acc_runs),
+        "best_acc": best_acc,
         "running_tasks": running_tasks,
         "avg_tpot": avg_tpot,
         "best_model": best_model,

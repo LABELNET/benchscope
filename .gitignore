@@ -18,6 +18,9 @@ datasets/
 .DS_Store
 *.log.tmp
 
+# IDE 临时
+.zcode/
+
 # Office 锁文件
 ~$*
 .venv

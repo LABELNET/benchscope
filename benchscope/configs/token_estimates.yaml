@@ -1,0 +1,15 @@
+# Token 消耗预估内置常量表（Serving 链路精度评测前置预估用）
+#
+# 数值为工业界通用均值（需求附件固化）：单样本输入 / 输出 Token 均值 + 全量样本量声明值。
+# 预估优先级：数据集实测统计（datasets_dir 缓存实测）> 本常量表 > 自定义数据集字符估算（chars/4）。
+version: "2026-08-30"
+estimates:
+  mmlu:           { prompt_tokens: 180, completion_tokens: 8,   total_samples: 14079 }
+  cmmlu:          { prompt_tokens: 200, completion_tokens: 8,   total_samples: 11960 }
+  c-eval:         { prompt_tokens: 220, completion_tokens: 8,   total_samples: 13480 }
+  gsm8k:          { prompt_tokens: 120, completion_tokens: 80,  total_samples: 7473 }
+  math:           { prompt_tokens: 180, completion_tokens: 120, total_samples: 5000 }
+  humaneval:      { prompt_tokens: 150, completion_tokens: 200, total_samples: 164 }
+  mbpp:           { prompt_tokens: 130, completion_tokens: 180, total_samples: 974 }
+  mt-bench:       { prompt_tokens: 300, completion_tokens: 350, total_samples: 80 }
+  gaokao-bench:   { prompt_tokens: 400, completion_tokens: 150, total_samples: 2000 }

@@ -11,7 +11,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from benchscope import __version__
-from benchscope.server import api_config, api_logs, api_tasks, api_dashboard, api_sessions, api_test, api_benchs, api_skills
+from benchscope.server import api_config, api_logs, api_tasks, api_dashboard, api_sessions, api_test, api_benchs, api_skills, api_accuracy
 from benchscope.server.state import state
 
 log = logging.getLogger("benchscope.app")
@@ -32,6 +32,7 @@ async def lifespan(app: FastAPI):
     yield
     state.monitor.stop()
     state.tasks.stop()
+    state.evals.stop()
 
 
 def create_app() -> FastAPI:
@@ -57,6 +58,8 @@ def create_app() -> FastAPI:
     app.include_router(api_sessions.router)
     # 精度测试（Accuracy）API：路由/模型已实现，统一随服务挂载（覆盖 /api/test*）
     app.include_router(api_test.router)
+    # 独立精度测试模块 API（1.0.8，/api/accuracy*）
+    app.include_router(api_accuracy.router)
     # 内置 bench 引擎 API（引擎清单 / 详情 / 环境校验）
     app.include_router(api_benchs.router)
     # 内置技能清单 API（Settings → Skills）
@@ -82,6 +85,9 @@ def create_app() -> FastAPI:
             # 推送所有任务快照
             for task in state.tasks.list_tasks():
                 await ws.send_text(json.dumps({"type": "task_snapshot", "task_id": task["task_id"], "task": task}, ensure_ascii=False))
+            # 推送所有精度任务快照（eval_task_* 消息族）
+            for task in state.evals.list_tasks():
+                await ws.send_text(json.dumps({"type": "eval_task_snapshot", "task_id": task["task_id"], "task": task}, ensure_ascii=False))
             while True:
                 await ws.receive_text()
         except WebSocketDisconnect:

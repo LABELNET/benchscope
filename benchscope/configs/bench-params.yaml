@@ -517,3 +517,39 @@ sglang:
     help: Max context length for the sharegpt dataset; longer inputs are truncated
     help_zh: sharegpt 数据集的最大上下文长度，超出则截断
     type: int
+
+# ---------------- Native 原生精度引擎（params_key = native，1.0.8） ----------------
+native:
+  temperature:
+    label: Temperature
+    label_zh: 温度
+    help: Sampling temperature for native generation (0 = greedy, deterministic)
+    help_zh: Native 生成的采样温度（0 = 贪心解码，确定可复现）
+    type: float
+  top_p:
+    label: Top P
+    label_zh: Top P
+    help: Nucleus sampling probability mass for native generation
+    help_zh: Native 生成的核采样概率质量
+    type: float
+  max_tokens:
+    label: Max Tokens
+    label_zh: 最大输出
+    help: Maximum number of new tokens to generate per sample
+    help_zh: 单样本生成的最大新 token 数
+    type: int
+  lora_path:
+    label: LoRA Path
+    label_zh: LoRA 路径
+    help: Path of the LoRA fine-tuned incremental adapter (peft), optional
+    help_zh: LoRA 微调训练的增量模型（adapter）路径，可选；经 peft 合并加载
+    type: str
+
+# ---------------- Mock 精度引擎（params_key = mock，1.0.8） ----------------
+mock:
+  mock_correct_rate:
+    label: Mock Correct Rate
+    label_zh: Mock 正确率
+    help: Deterministic pseudo-answer correctness rate (0-1, default 0.7)
+    help_zh: Mock 伪输出的正确率（0-1，默认 0.7），用于联调与测试
+    type: float

@@ -113,6 +113,31 @@ export const api = {
   updateSessionPerf: (id, perf) => http.patch(`/api/sessions/${id}/perf`, { perf }),
   clearSessions: () => http.delete('/api/sessions'),
   chatUrl: (sessionId) => `/api/sessions/${sessionId}/chat`,
+
+  // 精度测试（Accuracy，独立模块）
+  listAccTasks: () => http.get('/api/accuracy/tasks'),
+  createAccTask: (payload) => http.post('/api/accuracy/tasks', payload),
+  getAccTask: (taskId) => http.get(`/api/accuracy/tasks/${taskId}`),
+  stopAccTask: (taskId) => http.post(`/api/accuracy/tasks/${taskId}/stop`),
+  deleteAccTask: (taskId) => http.delete(`/api/accuracy/tasks/${taskId}`),
+  listAccSamples: (taskId, params) => http.get(`/api/accuracy/tasks/${taskId}/samples`, { params }),
+  exportAccSamplesUrl: (taskId, filter) => `/api/accuracy/tasks/${taskId}/export-samples?filter=${filter}`,
+  getAccBenchmark: (taskId) => http.get(`/api/accuracy/tasks/${taskId}/benchmark`),
+  listAccEngines: () => http.get('/api/accuracy/engines'),
+  checkAccEngineEnv: (engineId) => http.get(`/api/accuracy/engines/${engineId}/env-check`),
+  listAccDatasets: () => http.get('/api/accuracy/datasets'),
+  importAccDataset: (file, name) => {
+    const form = new FormData()
+    form.append('file', file)
+    return http.post(`/api/accuracy/datasets/import?name=${encodeURIComponent(name || '')}`, form, { timeout: 120000 })
+  },
+  deleteAccDataset: (id) => http.delete(`/api/accuracy/datasets/${encodeURIComponent(id)}`),
+  previewAccDataset: (ref) => http.post('/api/accuracy/datasets/preview', ref),
+  statsAccDataset: (ref) => http.post('/api/accuracy/datasets/stats', ref, { timeout: 120000 }),
+  estimateAcc: (params) => http.get('/api/accuracy/estimate', { params }),
+  getBaselines: () => http.get('/api/accuracy/baselines'),
+  saveBaselines: (content) => http.put('/api/accuracy/baselines', { content }),
+  compareAccTasks: (taskIds) => http.post('/api/accuracy/compare', { task_ids: taskIds }),
 }
 
 export function wsUrl() {

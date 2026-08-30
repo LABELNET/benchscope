@@ -55,11 +55,13 @@ def list_runs():
                 "dir": str(d),
                 "files": [{"name": n, "size": s} for n, s in files],
                 "meta": {
+                    "kind": (run_info or {}).get("kind", "perf"),
                     "framework": (run_info or {}).get("framework_name"),
                     "model": (run_info or {}).get("model"),
                     "status": (run_info or {}).get("status"),
                     "started_at": (run_info or {}).get("started_at"),
                     "finished_at": (run_info or {}).get("finished_at"),
+                    "summary": (run_info or {}).get("summary"),
                 } if run_info else {},
             }
             # 多根目录去重：perfs/evals 优先于 logs 兼容目录

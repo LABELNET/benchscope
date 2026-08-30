@@ -14,7 +14,7 @@ Datas 为 1.0.6 新增的主导航页（位于 Sessions 之后），采用**副�
 - **副导航**（白底黑字，位于主导航正下方、宽度较窄）：三个入口 **Perfs / Evals / Analysis**，当前项蓝色高亮
 - **子路由**：`/datas` 默认重定向 `/datas/perfs`；`/datas/perfs|evals|analysis` 三个子页面
 - **Perfs**：任务记录详情管理（记录列表 + 5 行详情布局 + 删除/备份/分享）
-- **Evals / Analysis**：占位空页（提示「规划中」），v5.0 实现
+- **Evals**：精度/评估测试记录页（**1.0.8 落地**：记录列表 + 摘要 accuracy + 勾选 2 条对比（横向主指标 + Native vs Serving 一致性差值）+ 详情/日志）；**Analysis** 仍为占位
 
 ---
 
@@ -106,7 +106,7 @@ Datas 为 1.0.6 新增的主导航页（位于 Sessions 之后），采用**副�
 | 行 2 等高 | 各占 1/3 固定宽度（minmax(0,1fr)）；高度以 Perf Info 为准（JS 测量 gridAutoRows），内容超出面板内部滚动；行内容宽度不足伪隐藏 |
 | Log Files 面板 | 灰色面板容器（#f5f5f5 + 圆角边框），文件名/大小 8px，图标按钮 20px；**高度随面板填充（flex:1），内容超出滚动**（不再限 140px） |
 | 导入提示 | 左栏导入图标 tooltip 与导入抽屉标题统一「导入 record / Import Record」（i18n `import` 键） |
-| 副导航 | Evals / Analysis 为占位空页，路由已注册 |
+| 副导航 | Evals 精度记录页已落地（1.0.8）；Analysis 仍为占位 |
 | Dashboard 联动 | Perf/Eval Records「更多」→ 跳转 `/datas/perfs`；「详情」→ 跳转 `/datas/perfs?run_id={id}`，Perfs 页加载后按 query 自动选中对应任务 |
 
 ## 5. 相关文档约定

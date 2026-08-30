@@ -13,7 +13,7 @@ Dashboard 页面自上而下共三块内容：
 
 1. **第一行**：左 2 列「Overview 统计概览」+ 右 2 列「Envs info 环境信息」（等高卡片）
 2. **Perf Records**：性能测试记录（最多 8 条，不分页）
-3. **Eval Records**：精度/评估测试记录（v5.0 预留，当前为空）
+3. **Eval Records**：精度/评估测试记录（**1.0.8 接通**，展示精度任务记录）
 
 页面加载时并行拉取：运行记录（`/api/logs/runs`）、统计（`/api/dashboard/stats`）、环境信息（`/api/dashboard/env`），并刷新推理服务状态（`config.refreshStatus()`）。
 
@@ -24,7 +24,7 @@ Dashboard 页面自上而下共三块内容：
 | 位置 | 内容 | 数据来源 | 显示规则 |
 | --- | --- | --- | --- |
 | 1 | Total Perf Records | `stats.total_runs` | 性能测试总次数 |
-| 2 | Total Acc Records | `stats.total_acc_runs` | 精度测试总次数（v5.0 预留，当前恒为 0） |
+| 2 | Total Acc Records | `stats.total_acc_runs` | 精度测试总次数（1.0.8 实数） |
 | 3 | Max Perf Records (RUN ID) | — | 显示 `—`（逻辑未实现） |
 | 4 | Max Acc Records (RUN ID) | — | 显示 `—`（逻辑未实现） |
 | 5 | Running Tasks | `stats.running_tasks` | 运行中任务数；>0 时数字绿色 |
@@ -78,9 +78,10 @@ Dashboard 页面自上而下共三块内容：
 
 ## 4. Eval Records 面板
 
-- 标题：**Eval Records**（原 Acc Records，v5.0 精度/评估测试预留）。
-- 结构与 Perf Records 一致：最多 8 条、不分页、header 右侧「刷新 / 更多」文字按钮（更多同样跳转 `/datas/perfs`）、面板底部 footer 灰色小字「仅显示最新 8 条记录」。
-- 当前无数据：`loadAccRuns` 恒返回空数组，表格空态显示「精度测试功能规划中,待 v5.0」。
+- 标题：**Eval Records**，数据源为 `GET /api/logs/runs`（过滤 `evals_dir` 下 kind=eval 的运行记录）。
+- 列：Run ID / Model / **Accuracy**（run.json summary）/ Status / Time / 详情（跳转 `/datas/evals`）。
+- 结构与 Perf Records 一致：最多 8 条、「刷新 / 更多」（更多跳转 `/datas/evals`）；空态「暂无精度评测记录」。
+- Overview「Max Acc Records」接通 `stats.best_acc_run_id`（accuracy 最高的精度任务）。
 
 ---
 
@@ -89,7 +90,7 @@ Dashboard 页面自上而下共三块内容：
 | 接口 | 用途 |
 | --- | --- |
 | `GET /api/logs/runs` | 运行记录列表（Perf Records 数据源） |
-| `GET /api/dashboard/stats` | 统计卡片：`total_runs` / `total_acc_runs` / `running_tasks` / `avg_tpot` / `best_model` |
+| `GET /api/dashboard/stats` | 统计卡片：`total_runs` / `total_acc_runs` / `best_acc` / `best_acc_run_id` / `running_tasks`（含精度任务）/ `avg_tpot` / `best_model`（1.0.8：精度任务不参与性能指标聚合） |
 | `GET /api/dashboard/env` | 环境信息：`hardware` / `os` / `network` / `versions` |
 | `GET /api/config/status`（`config.refreshStatus`） | 推理服务状态：`inference` / `models`（测试环境状态徽标） |
 

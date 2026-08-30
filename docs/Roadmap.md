@@ -7,11 +7,22 @@ benchscope 按版本迭代推进，**倒序**列出各版本（最新在前）�
 ## 1.0.8（开发中 / In Development）
 
 - **发布时间**：待定
-- **TODO**（后续开发内容均迭代在此版本，按时间顺序追加，详见 [docs/versions/VERSION_1_0_8.md](versions/VERSION_1_0_8.md)）：
+- **迭代记录**（详见 [docs/versions/VERSION_1_0_8.md](versions/VERSION_1_0_8.md)）：
 
-**主目标**：（待规划，随开发补充）
+**主目标：独立精度测试模块（Accuracy）落地**（规划来源：《BenchScope 独立精度测试模块完整功能规划》需求附件，实施路径 P1–P16 详见版本文档）
 
-- （待定）
+- **独立精度任务管理**：Native（本地权重）/ Serving（OpenAI 兼容链路）双模式任务，独立任务 / 结果 / 单样本溯源落库（`evals/` 目录三件套），与性能模块彻底解耦、不承载任何性能指标
+- **内置命令 `benchscope eval`**：精度测试内置 CLI 命令（对齐 `benchscope perf` 模式），终端输出精度指标，产物落盘 `evals/` 目录可导入 Datas/evals，CLI 与 Web 任务双入口共用同一评测核心
+- **评测引擎抽象（bench engines 并入精度内容）**：`configs/benchs.yaml` 引擎体系增加精度相关内容——`benchscope` 引擎增加 serving 精度评测能力（`benchscope eval`）、新增 `native-hf`（本地权重精度，torch / transformers 已装才可用，不引入必装依赖）与 `mock` 引擎条目、对比表新增精度评测维度；mock 环境联调
+- **9 个内置评测数据集**：MMLU / CMMLU / C-Eval / GSM8K / MATH / HumanEval / MBPP / MT-Bench / GAOKAO-Bench（下载、标准化、预览、统计）+ 自定义路径 / 上传 JSONL
+- **模型与数据集沿用设置界面 + 自定义 + LoRA 增量模型被测**：模型沿用 Settings → Models 厂商目录、数据集沿用 Settings → Datasets 体系（评测数据集并入展示）；支持自定义路径模型（Serving 自定义模型名 / Native 本地权重路径）与自定义路径 JSONL 数据集；**LoRA 微调训练的增量模型（`lora_path`）作为被测对象**——精度测试（Native peft 加载 / Serving 请求服务端已注册 adapter）与性能测试（压测请求 adapter 注册名）均可进行
+- **精度打分引擎**：客观题分学科判分、数学 `exact_match`、代码 `pass@1` 沙箱、MT-Bench LLM-as-judge
+- **Token 预估与强提醒**（Serving 专属）：创建前置预估弹窗（内置常量表 + 实测统计），任务结束预估 vs 实际偏差
+- **开源模型基线对标**：内置基线库（Llama3 / Qwen2 / InternLM2 / Mistral / 中文专项），差值百分点、S/A/B/C 档位、同尺寸排名、能力雷达图、自动结论（含风险预警）
+- **精度报表体系**：任务详情报表、Native vs Serving 训推一致性对比、多任务对比、错误样本溯源与错题集导出
+- **前端落地**：Accuracy 创建向导 + 实时详情 + 报表、Datas/Evals 记录页、Dashboard Eval Records 接通
+
+次要候选（主目标后评估）：错题集回流自定义数据集 · 模型海选批量评测队列 · 报告 PNG 分享 · 自定义判分器插件
 
 ---
 
@@ -138,7 +149,7 @@ benchscope 按版本迭代推进，**倒序**列出各版本（最新在前）�
 ## 5.0（规划中 / Planned）
 
 - **TODO**：
-  - 常见数据集精度测试（Accuracy 页落地，Dashboard Eval Records 接入）
+  - 精度能力增强：评测数据集 / 判分器扩展、自动化评测流水线（基础精度能力已于 1.0.8 落地）
 
 ---
 
@@ -157,6 +168,6 @@ benchscope 按版本迭代推进，**倒序**列出各版本（最新在前）�
 ---
 
 > **Notes**：
-> - **Accuracy 页**（1.0.5）为 v5.0 精度测试预留占位，暂无功能逻辑。
+> - **Accuracy 页**（1.0.5）为精度测试预留占位页；精度模块改由 **1.0.8** 落地（独立精度测试模块），占位页改造计划见 [versions/VERSION_1_0_8.md](versions/VERSION_1_0_8.md)。
 > - **Settings → Plugins**（1.0.5）为后续版本预留占位，暂无插件管理。
 > - 版本修订记录（功能概述 + TODO 明细）见 [docs/versions/](versions/)，按时间顺序维护。

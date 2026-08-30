@@ -3,7 +3,10 @@
 #
 # - 新增引擎 / 新版本：追加一条 engines 项（或由 Settings → Upload Engine 导入）
 # - kind: builtin（自研，无环境依赖） | vllm（vLLM 原生） | sglang（SGLang 原生）
-# - requires: 环境依赖；自研引擎为空数组 → 环境校验恒通过
+#         | native（本地权重精度评测，torch+transformers） | mock（mock 伪输出）
+# - eval: 精度评测能力（serving=OpenAI 兼容链路精度 / native=本地权重精度 /
+#         mock=可控伪输出精度）；缺失表示仅支持性能压测
+# - requires: 环境依赖；自研/mock 引擎为空数组 → 环境校验恒通过
 # - params_key: 参数说明 key，必须存在于 configs/bench-params.yaml
 # - 文案字段：默认英文，*_zh 为中文（界面按当前语言选择，缺失时回退英文）
 # - highlights: 仅列「简洁特性」与「版本支持情况」，不描述实现方式
@@ -77,6 +80,21 @@ comparison:
       vllm-0.23: 大（完整 vLLM）
       sglang-0.5.10: 大（完整 SGLang）
 
+  - dimension: Eval Support
+    dimension_zh: 精度评测
+    values:
+      benchscope: "Yes (serving accuracy, benchscope eval)"
+      vllm-0.23: "No (performance only)"
+      sglang-0.5.10: "No (performance only)"
+      native-hf: "Yes (local-weight accuracy, transformers)"
+      mock: "Yes (mock, controllable accuracy)"
+    values_zh:
+      benchscope: 支持（Serving 链路精度，benchscope eval）
+      vllm-0.23: 不支持（仅性能压测）
+      sglang-0.5.10: 不支持（仅性能压测）
+      native-hf: 支持（本地权重精度，transformers）
+      mock: 支持（mock 精度，可控正确率）
+
 # ---------------- 引擎列表 ----------------
 engines:
   # ---------------- Bench CLI 自研引擎（无需本地框架环境） ----------------
@@ -85,26 +103,31 @@ engines:
     framework: builtin
     version: stable
     params_key: benchscope
+    eval: serving
     name: Bench CLI
     description: >-
       BenchScope built-in engine (Bench CLI) — an in-process async load generator for
       OpenAI-compatible APIs. No local vLLM / SGLang installation is required, so any local
       or remote OpenAI-compatible service can be tested right after pip install.
       Metrics follow the vLLM bench definitions (TTFT / TPOT / ITL / throughput), so results
-      are directly comparable with the native engines.
+      are directly comparable with the native engines. Also provides serving-link accuracy
+      evaluation via the built-in `benchscope eval` command.
     description_zh: >-
       BenchScope 自研测试引擎（Bench CLI），基于 OpenAI 兼容 API 的进程内异步流式负载生成器。
       不依赖本地 vLLM / SGLang 环境，pip 安装后即可对本地或远程的任意 OpenAI 兼容推理服务进行性能测试。
       指标口径严格对齐 vLLM bench（TTFT / TPOT / ITL / 吞吐量），结果可与原生引擎直接对比。
+      同时提供 Serving 链路精度评测能力（内置命令 `benchscope eval`）。
     highlights:
       - No local framework needed — runs after pip install
       - Works with any OpenAI-compatible service (local or remote)
       - Streaming (SSE) collection — accurate TTFT / ITL
+      - Accuracy evaluation via `benchscope eval` (serving link)
       - "Version support: any service version (protocol-based, no framework coupling)"
     highlights_zh:
       - 无需本地框架环境，安装即用
       - 支持任意 OpenAI 兼容服务（本地或远程）
       - SSE 流式采集，TTFT / ITL 测量准确
+      - 内置 `benchscope eval` 精度评测（Serving 链路精度）
       - 版本支持：任意服务版本（基于协议，不与框架版本绑定）
     requires: []
 
@@ -170,3 +193,66 @@ engines:
       - name: sglang
         spec: ">=0.5.10,<0.6"
         hint: "pip install 'sglang>=0.5.10,<0.6'"
+
+  # ---------------- Native 原生精度引擎（transformers 本地权重） ----------------
+  - id: native-hf
+    kind: native
+    framework: transformers
+    version: stable
+    params_key: native
+    eval: native
+    name: Native HF
+    description: >-
+      Native accuracy engine — loads local model weights (path or HF id) with transformers
+      and runs offline inference. 100% reproducible with a fixed seed; supports LoRA
+      fine-tuned incremental models via peft adapters (lora_path). Requires torch and
+      transformers in the current environment (validated before selection; optional extras,
+      not bundled with pip install).
+    description_zh: >-
+      Native 原生精度引擎，经 transformers 本地加载模型权重（路径或 HF id）离线推理。
+      固定种子 100% 可复现；支持 LoRA 微调训练的增量模型（peft adapter，lora_path 配置）。
+      需当前环境已安装 torch 与 transformers（选择前环境校验；可选依赖，不随 pip 必装）。
+    highlights:
+      - Local-weight offline inference (path or HF id)
+      - Fixed seed — 100% reproducible
+      - LoRA fine-tuned incremental models via peft (lora_path)
+      - "Version support: torch >= 2.0 + transformers >= 4.40"
+    highlights_zh:
+      - 本地权重离线推理（路径或 HF id）
+      - 固定种子，100% 可复现
+      - 支持 LoRA 微调增量模型（peft，lora_path）
+      - 版本支持：torch >= 2.0 + transformers >= 4.40
+    requires:
+      - name: torch
+        spec: ">=2.0"
+        hint: "pip install 'torch>=2.0'"
+      - name: transformers
+        spec: ">=4.40"
+        hint: "pip install 'transformers>=4.40'"
+
+  # ---------------- Mock 精度引擎（联调与测试，可控正确率） ----------------
+  - id: mock
+    kind: mock
+    framework: mock
+    version: stable
+    params_key: mock
+    eval: mock
+    name: Mock
+    description: >-
+      Mock accuracy engine — returns deterministic pseudo answers with a controllable
+      correctness rate (mock_correct_rate, default 0.7). For full-pipeline integration,
+      demos and tests without GPU or a real inference service.
+    description_zh: >-
+      Mock 精度引擎，按样本返回确定性伪输出，正确率可控（mock_correct_rate，默认 0.7）。
+      用于无 GPU / 无真实推理服务场景的全链路联调、演示与测试（mock 环境定位）。
+    highlights:
+      - No GPU / service needed — full pipeline offline
+      - Controllable correctness rate (mock_correct_rate)
+      - Deterministic outputs with fixed seed
+      - "Version support: always available"
+    highlights_zh:
+      - 无需 GPU 与推理服务，离线全链路可跑
+      - 正确率可控（mock_correct_rate）
+      - 固定种子输出确定
+      - 版本支持：恒可用
+    requires: []

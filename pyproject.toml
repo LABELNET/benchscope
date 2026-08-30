@@ -43,6 +43,8 @@ dependencies = [
 
 [project.optional-dependencies]
 modelscope = ["modelscope>=1.15"]
+# Native 原生精度评测（1.0.8）：可选依赖，不随 pip 必装
+accuracy-native = ["torch>=2.0", "transformers>=4.40", "peft>=0.10"]
 
 [project.urls]
 Homepage = "https://github.com/LABELNET/benchscope"
@@ -57,6 +59,8 @@ packages = [
     "benchscope",
     "benchscope.server",
     "benchscope.benches",
+    "benchscope.accuracy",
+    "benchscope.accuracy.scorers",
 ]
 
 [tool.setuptools.package-data]

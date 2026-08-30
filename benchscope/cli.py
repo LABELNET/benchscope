@@ -3,7 +3,8 @@
 子命令：
   benchscope               启动 Web 服务（默认，等价 `benchscope serve`）
   benchscope serve         启动 Web 服务
-  benchscope perf         直接执行一次 Bench CLI（自研引擎）压测并打印指标
+  benchscope perf          直接执行一次 Bench CLI（自研引擎）压测并打印指标
+  benchscope eval          直接执行一次精度评测并打印精度指标（与 Web 任务共用评测核心）
 """
 from __future__ import annotations
 
@@ -262,6 +263,162 @@ def _save_perf_artifacts(args, mode: str, rows: dict, best_concurrency: int | No
     print(f"已生成日志占位: {log_file}（打包时请将终端输出写入 perf_{run_id}_*.log）")
 
 
+def _eval(args) -> int:
+    """执行精度评测（内置命令 `benchscope eval`）——与 Web 精度任务共用评测核心。
+
+    - `--dataset` 传内置数据集 id（mmlu / gsm8k / ...）或本地 JSONL 文件路径。
+    - `--engine` 传精度引擎（benchscope=serving / native-hf=native / mock=联调）。
+    - 产物落盘 `evals/eval-<月日时分秒>/`（task.json / result.json / samples.jsonl），
+      与 Web 精度任务一致，可在 Datas/evals 打包导入。
+    """
+    import json as _json
+    from pathlib import Path as _Path
+
+    from benchscope.accuracy import baselines as acc_baselines
+    from benchscope.accuracy import estimator as acc_estimator
+    from benchscope.accuracy import metrics as acc_metrics
+    from benchscope.accuracy.executor import run_eval
+    from benchscope.config import ConfigManager
+
+    cfg = ConfigManager()
+    dataset_ref = {"path": args.dataset} if _Path(args.dataset).suffix in (".jsonl", ".json") else {"id": args.dataset}
+    payload = {
+        "engine_id": args.engine,
+        "mode": args.mode,
+        "model": args.model,
+        "lora_path": args.lora_path,
+        "lora_name": args.lora_name,
+        "dataset": dataset_ref,
+        "limit": args.limit,
+        "seed": args.seed,
+        "temperature": args.temperature,
+        "top_p": args.top_p,
+        "max_tokens": args.max_tokens,
+        "concurrency": args.concurrency,
+        "judge_model": args.judge_model,
+        "mock_correct_rate": args.mock_correct_rate,
+        "use_mock_env": args.use_mock_env,
+    }
+
+    stamp = datetime.now()
+    task_id = f"eval-{stamp.strftime('%m%d-%H%M%S')}"
+    task_dir = cfg.evals_dir / task_id
+    task_dir.mkdir(parents=True, exist_ok=True)
+    log_path = cfg.logs_dir / f"eval_{task_id.replace('eval-', '')}_{stamp.strftime('%m%d%H%M%S')}.log"
+    log_fp = open(log_path, "a", encoding="utf-8")
+    samples_path = task_dir / "samples.jsonl"
+    samples_fp = open(samples_path, "a", encoding="utf-8")
+
+    def log_cb(line: str):
+        print(line, end="", flush=True)
+        log_fp.write(line)
+        log_fp.flush()
+
+    def progress_cb(done: int, total: int):
+        if done % 10 == 0 or done == total:
+            print(f"  progress: {done}/{total}", flush=True)
+
+    def sample_cb(record: dict):
+        samples_fp.write(_json.dumps(record, ensure_ascii=False) + "\n")
+        samples_fp.flush()
+
+    print("=" * 56)
+    print(f"  benchscope eval | engine={args.engine} model={args.model} dataset={args.dataset}")
+    print("=" * 56)
+    result = None
+    try:
+        meta, _rows, result, stopped = run_eval(cfg, payload, log_cb=log_cb,
+                                                progress_cb=progress_cb, sample_cb=sample_cb)
+        benchmark = acc_baselines.compute_benchmark(meta, result)
+        if benchmark:
+            result["benchmark"] = benchmark
+        result["conclusion"] = acc_metrics.conclusion(result, benchmark)
+
+        # 落盘任务主表（对齐 Web 精度任务 task.json 结构）
+        estimate = acc_estimator.estimate(cfg, dataset_ref, limit=args.limit,
+                                          mode="serving", max_tokens=args.max_tokens) if args.mode != "native" else None
+        task_meta = {
+            "task_id": task_id,
+            "task_dir": str(task_dir),
+            "name": args.name or f"CLI {task_id}",
+            "mode": "native" if args.mode == "native" else "serving",
+            "engine_id": args.engine,
+            "model": args.model,
+            "lora_name": args.lora_name,
+            "lora_path": args.lora_path,
+            "dataset_id": meta.get("id") or args.dataset,
+            "dataset_name": meta.get("name") or args.dataset,
+            "dataset": dataset_ref,
+            "limit": args.limit, "seed": args.seed, "temperature": args.temperature,
+            "top_p": args.top_p, "max_tokens": args.max_tokens, "concurrency": args.concurrency,
+            "judge_model": args.judge_model,
+            "status": "stopped" if stopped else "done",
+            "created_at": stamp.strftime("%Y-%m-%d %H:%M:%S"),
+            "finished_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "progress": {"done": result.get("total_samples") or 0, "total": result.get("total_samples") or 0},
+            "estimate": estimate,
+            "log_path": str(log_path),
+            "use_mock_env": bool(args.use_mock_env),
+        }
+        (task_dir / "task.json").write_text(
+            _json.dumps(task_meta, ensure_ascii=False, indent=2), encoding="utf-8")
+        (task_dir / "result.json").write_text(
+            _json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
+    except Exception as e:  # noqa: BLE001
+        log_fp.close()
+        samples_fp.close()
+        print(f"❌ 精度评测失败：{e}")
+        return 1
+    finally:
+        if result is None:
+            try:
+                log_fp.close()
+                samples_fp.close()
+            except Exception:
+                pass
+
+    print("-" * 56)
+    print(f"accuracy            : {result.get('accuracy')}%")
+    print(f"pass_rate           : {result.get('pass_rate')}%")
+    print(f"total / correct     : {result.get('total_samples')} / {result.get('correct_samples')}")
+    print(f"wrong / invalid     : {result.get('wrong_samples')} / {result.get('invalid_samples')}")
+    dm = result.get("dataset_metrics") or {}
+    for key in ("exact_match", "math_accuracy", "pass_at_1", "compile_rate", "mt_bench_score"):
+        if dm.get(key) is not None:
+            print(f"{key:<20}: {dm[key]}")
+    if result.get("tokens"):
+        print(f"total_tokens        : {result['tokens'].get('total_tokens')}")
+    if result.get("benchmark"):
+        b = result["benchmark"]
+        print(f"baseline            : {b.get('baseline_used', {}).get('name')} "
+              f"(diff {b.get('diff_pp'):+.2f}pp, grade {b.get('grade')}) — {b.get('conclusion')}")
+    print(f"conclusion          : {result.get('conclusion')}")
+    print(f"产物目录            : {task_dir}")
+    return 0 if not stopped and result.get("total_samples") else 1
+
+
+def _add_eval_args(p: argparse.ArgumentParser) -> None:
+    p.add_argument("--engine", default="benchscope", help="精度引擎 id（benchscope=serving / native-hf=native / mock=联调）")
+    p.add_argument("--mode", default="serving", choices=["serving", "native"],
+                   help="评测模式：serving（链路） / native（本地权重）")
+    p.add_argument("--model", required=True, help="被测模型名（Native 可传本地权重路径或 HF id）")
+    p.add_argument("--lora-path", default="", help="LoRA 微调增量模型（adapter）路径，可选")
+    p.add_argument("--lora-name", default="", help="LoRA 增量模型服务端注册名（Serving 请求侧 model），可选")
+    p.add_argument("--dataset", required=True, help="内置数据集 id（mmlu/gsm8k/...）或本地 JSONL 路径")
+    p.add_argument("--base-url", default="", help="被测服务地址（Serving；缺省取全局 Provider 配置）")
+    p.add_argument("--api-key", default="", help="被测服务 API Key（可选）")
+    p.add_argument("--limit", type=int, default=0, help="样本抽样上限（0 = 全量）")
+    p.add_argument("--seed", type=int, default=1234, help="全局随机种子（抽样与生成，固定可复现）")
+    p.add_argument("--temperature", type=float, default=0.0, help="采样温度")
+    p.add_argument("--top-p", type=float, default=1.0, help="核采样概率")
+    p.add_argument("--max-tokens", type=int, default=512, help="单样本最大输出 token")
+    p.add_argument("--concurrency", type=int, default=4, help="并发推理数")
+    p.add_argument("--judge-model", default="", help="MT-Bench 评审模型（judge 数据集用）")
+    p.add_argument("--mock-correct-rate", type=float, default=0.7, help="mock 引擎正确率（0-1）")
+    p.add_argument("--name", default="", help="任务名称（可选）")
+    p.add_argument("--use-mock-env", action="store_true", help="mock 环境标记（联调用）")
+
+
 def _add_serve_args(p: argparse.ArgumentParser) -> None:
     p.add_argument("--host", default="0.0.0.0", help="监听地址（默认 0.0.0.0）")
     p.add_argument("--port", type=int, default=8080, help="监听端口（默认 8080）")
@@ -331,6 +488,9 @@ def main(argv=None) -> int:
     perf_p = sub.add_parser("perf", help="执行一次 Bench CLI（自研引擎）压测")
     _add_perf_args(perf_p)
 
+    eval_p = sub.add_parser("eval", help="执行一次精度评测（Serving / Native / Mock）")
+    _add_eval_args(eval_p)
+
     args = parser.parse_args(argv)
     logging.basicConfig(
         level=logging.DEBUG if getattr(args, "debug", False) else logging.INFO,
@@ -339,6 +499,8 @@ def main(argv=None) -> int:
 
     if args.command == "perf":
         return _perf(args)
+    if args.command == "eval":
+        return _eval(args)
     return _serve(args)
 
 
