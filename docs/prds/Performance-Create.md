@@ -1,7 +1,7 @@
 # Performance-Create（创建任务页）— 功能与约束说明
 
-> **版本**：v1.0.7  
-> **最后更新**：2026-08-30  
+> **版本**：v1.0.8  
+> **最后更新**：2026-08-31  
 > **文档状态**：Performance 创建任务子页面（`/performance/create`）的三步表单、双模式与约束说明  
 > **关联文档**：[Performance.md](./Performance.md)（任务执行页双模式核心逻辑）
 
@@ -113,7 +113,18 @@
   - **原生引擎（vllm / sglang）** → 对应 CLI 命令（`vllm bench serve` / `python -m sglang.bench_serving`），
     Step2 编辑的引擎参数以 `--key=value` 附加
 - Bench CLI 预览命令**可直接复制到终端执行**（新增 `benchscope perf` 子命令，见 [rules/BenchEngine.md](../rules/BenchEngine.md)）
-- 「启动」→ Modal 确认 → `createTask` + `startTask` + 设为当前任务 → 跳回 `/performance` 任务执行页
+- 「启动」→ **Token 使用预警弹窗（1.0.8，仅前端估算）** → Modal 确认（footer 确定/取消）→ `createTask` + `startTask` + 设为当前任务 → 跳回 `/performance` 任务执行页
+
+### 3.1 Token 使用预警弹窗（1.0.8，仅前端计算与提示）
+
+- **触发**：Step3 点 **Launch** 后，中间弹窗（`.token-warning`）展示 Token 使用预估，**footer 仅「取消 / 确定」两个按钮**；取消则弹窗消失不启动，确定才创建并启动任务。
+- **内容**：
+  - `a-alert` 警告（前端估算、实际用量可能有出入）；
+  - **每组**（按 `inputLen × outputLen` 分组）的 token 表：请求数 / 输入 token / 输出 token，附组内合计；
+  - 底部**全部总输入 token / 总输出 token**（**百万单位**，保留 2 位小数）。
+- **并发模式（逻辑 1）**：每组按 `requestRates` 每个请求数**独立**计算——`输入 token = inputLen × 请求数`、`输出 token = outputLen × 请求数`（`num-prompts`>0 时请求数取 num-prompts）；组内求和，全部组再加总。
+- **阈值模式（逻辑 2）**：按 **2 的次方阶梯**（1, 2, 4, … ≤ `maxRequests`）逐级**累计**——`请求 N` 的行 = **前面所有 2 的次方之和（含自身）** × inputLen/outputLen（如 请求 2 = (1+2)×1024、请求 4 = (1+2+4)×1024），反映阶梯探测的累计消耗。
+- **不改变启动流程**：仅为前端预警，`createTask` / `startTask` 后端逻辑不变。
 
 ---
 

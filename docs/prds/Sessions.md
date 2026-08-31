@@ -1,7 +1,7 @@
 # benchscope Sessions 页面 — 功能与约束说明
 
-> **版本**：v1.0.7  
-> **最后更新**：2026-08-29  
+> **版本**：v1.0.8
+> **最后更新**：2026-08-31
 > **文档状态**：Sessions（SSE 流式对话）页面的功能逻辑与约束条件说明  
 > **关联文档**：[Performance.md](./Performance.md) · [Dashboard.md](./Dashboard.md)
 
@@ -61,7 +61,7 @@ Sessions 页面提供与 OpenAI 兼容推理服务的 **SSE 流式对话**：
 | 模型选择 | 来自所选 Provider 的 `/v1/models`；本地记忆（localStorage `benchscope_chat_model`），列表加载后自动选第一个 |
 | 对话质量 | high / medium / low → temperature 0.9 / 0.5 / 0.2；localStorage `benchscope_chat_quality` 记忆 |
 | 思考开关 | `enable_thinking` → `chat_template_kwargs.enable_thinking`；localStorage `benchscope_chat_thinking` 记忆 |
-| 发送 | 有内容且非流式中可点；`Enter` 发送、`Shift+Enter` 换行 |
+| 发送/停止（1.0.8） | 非流式中显示「发送」：有内容且非流式可点（`Enter` 发送、`Shift+Enter` 换行）；流式中显示「停止」（`.send-stop` 红色）：点击中止数据流（`AbortController.abort`，保存已生成部分，不报错），文字改回「发送」 |
 | 输入框 | 1–6 行自适应；流式中禁用 |
 
 ## 5. 约束与边界
@@ -69,7 +69,7 @@ Sessions 页面提供与 OpenAI 兼容推理服务的 **SSE 流式对话**：
 | 项 | 约束 |
 | --- | --- |
 | 服务依赖 | 需在 Settings → Providers 配置至少一个 Provider；发送时按所选 Provider 调用其 OpenAI 兼容接口，离线/不可达时流式请求失败并提示（header 红色） |
-| 流式中操作 | 发送按钮禁用、输入框禁用；流式结束前不允许切换操作 |
+| 流式中操作 | 发送按钮变「停止」可中止数据流、输入框禁用；流式结束前不允许切换会话 |
 | 消息上限 | 无截断；日志行保留最近 8000 行（logLines） |
 | 思考块 | 默认折叠（`_thinkingOpen=false`），点击展开 |
 | 持久化目录 | 会话存储于服务端 `data_dir/sessions`（默认 `~/.benchscope/sessions`），非浏览器本地 |

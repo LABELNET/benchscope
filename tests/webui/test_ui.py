@@ -659,6 +659,63 @@ def test_create_page_conditions_no_rate_and_max_requests(page):
     assert maxreq.input_value() == "4096", f"默认应为 4096: {maxreq.input_value()}"
 
 
+def _goto_step3_launch(page, mode):
+    """进入创建页 Step3 并点击 Launch，返回预警弹窗 locator。"""
+    page.goto(f"{BASE_URL}/performance/create?mode={mode}", wait_until="domcontentloaded")
+    _visible(page, ".perf-create-page", timeout=15000)
+    page.wait_for_function(
+        "() => { const tags = [...document.querySelectorAll('.bench-picker .ant-tag')];"
+        " return tags.some(t => /Ready|Not Satisfied|Real|Mock/.test(t.textContent)); }",
+        timeout=15000,
+    )
+    page.locator(".panel-footer button").filter(has_text="Next").first.click()
+    page.wait_for_timeout(1500)
+    page.locator(".panel-footer button").filter(has_text="Next").first.click()
+    page.wait_for_timeout(2000)
+    page.locator(".panel-footer button").filter(has_text="Launch").first.click()
+    page.wait_for_timeout(1200)
+    return page.locator(".ant-modal-content")
+
+
+def test_create_page_token_warning_concurrency(page):
+    """创建页 Step3：并发模式点 Launch 弹出 token 使用预警（每组输入/输出 + 总计百万单位 + 确定/取消）。"""
+    modal = _goto_step3_launch(page, "concurrency")
+    assert modal.count() >= 1, "点 Launch 后应弹出 token 使用预警弹窗"
+    # 每组预估：输入/输出 token 表
+    assert modal.locator(".token-table").count() >= 1, "应显示每组 token 预估表"
+    assert modal.locator(".token-table tbody tr").count() >= 1, "应有请求数行"
+    # 全部总计（百万单位）
+    total_text = modal.locator(".token-total").inner_text()
+    assert "M" in total_text or "百万" in total_text, f"总计应为百万单位: {total_text}"
+    # footer 确定/取消
+    btns = modal.locator(".ant-modal-footer button").all_inner_texts()
+    assert len(btns) == 2, f"footer 应有确定/取消两个按钮: {btns}"
+    # 取消 → 弹窗消失，不启动任务
+    modal.locator(".ant-modal-footer button").filter(has_text="Cancel").first.click()
+    page.wait_for_timeout(800)
+    assert page.locator(".ant-modal-content.token-warning").count() == 0 or \
+        not page.locator(".ant-modal-content").first.is_visible(), "取消后预警弹窗应消失"
+
+
+def test_create_page_token_warning_threshold(page):
+    """创建页 Step3：阈值模式按 2 的次方阶梯累计预估 token（请求 1/2/4 逐级累加）。"""
+    modal = _goto_step3_launch(page, "threshold")
+    assert modal.count() >= 1, "阈值模式点 Launch 后应弹出 token 使用预警弹窗"
+    rows = modal.locator(".token-table tbody tr")
+    assert rows.count() >= 3, f"阈值模式应有多级阶梯: {rows.count()}"
+    # 阶梯累计：第 2 行(请求2) token = 第 1 行(请求1) token * 3（1+2）
+    def cell(r, i):
+        return int(rows.nth(r).locator("td").nth(i).inner_text().replace(",", ""))
+    r0_in, r1_in = cell(0, 1), cell(1, 1)
+    assert r1_in == r0_in * 3, f"阈值模式第 2 阶梯应累计(1+2=3)倍: {r0_in} -> {r1_in}"
+    # 总计百万单位
+    total_text = modal.locator(".token-total").inner_text()
+    assert "M" in total_text or "百万" in total_text, f"总计应为百万单位: {total_text}"
+    # 取消关闭
+    modal.locator(".ant-modal-footer button").filter(has_text="Cancel").first.click()
+    page.wait_for_timeout(600)
+
+
 def test_create_page_mock_env_option(page):
     """创建页：不显示 Use Mock Environment 勾选（mock 由 Bench Engines 每引擎开关控制），
     引擎选择后显示 Mock/Real 状态 tag。"""
@@ -794,10 +851,10 @@ def test_perf_landing_intro_cards(page):
     assert "Realtime Performance Charts" in joined, f"缺实时图表卡片: {joined}"
     assert "Multi-Framework" not in joined, f"旧文案应移除: {joined}"
 
-    # Threshold Search 描述已补全（逐步搜索机制）
+    # Threshold Search 描述精简为 2 行（自动搜索满足阈值的最大并发）
     thr = page.locator(".feature-card").filter(has_text="Threshold Search")
     desc = thr.inner_text()
-    assert "逐步" in desc or "step" in desc.lower(), f"Threshold 描述应含逐步搜索机制: {desc}"
+    assert "max concurrency" in desc.lower() or "最大并发" in desc, f"Threshold 描述应含最大并发: {desc}"
 
 
 def _open_settings_tab(page, text, wait_sel):
@@ -906,9 +963,13 @@ def test_accuracy_landing_intro(page):
 
     page.goto(f"{BASE_URL}/accuracy", wait_until="domcontentloaded")
     _visible(page, ".accuracy-page")
-    _visible(page, ".intro-head")
-    btn = page.locator(".intro-head button", has_text="Create Accuracy Task").first
+    _visible(page, ".perf-intro")
+    _visible(page, ".planned-card")
+    btn = page.locator(".ant-result-extra button", has_text="Create Accuracy Task").first
     btn.wait_for(state="visible", timeout=15000)
+    # 介绍页结构与特性卡（与 Performance 默认页一致）
+    assert page.locator(".ant-result").count() >= 1, "介绍页应使用 a-result 结构"
+    assert page.locator(".feature-card").count() >= 3, "介绍页应显示特性卡片"
 
 
 def test_accuracy_create_wizard(page):

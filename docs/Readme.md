@@ -1,7 +1,7 @@
 # docs 文档目录
 
 > **文档状态**：benchscope 文档体系说明与维护约定  
-> **最后更新**：2026-08-31 04:00:00
+> **最后更新**：2026-08-31 17:30:00
 
 本目录组织项目全部技术文档。**开发更新功能时，必须同步更新对应文档**（见文末「维护约定」）。
 
@@ -18,7 +18,7 @@
 | [prds/Dashboard.md](prds/Dashboard.md) | Dashboard：Overview 六宫格、Envs info 四宫格、Perf/Eval Records 表格 |
 | [prds/Datas.md](prds/Datas.md) | Datas（1.0.6）：副导航（Perfs/Evals/Analysis）+ Records 记录面板（导入恢复/刷新）+ Perfs 详情 5 行布局（删除备份分享、Perf-Cases-Logs 等高、Perf Datas、分析面板）+ 占位页 |
 | [prds/TopBar.md](prds/TopBar.md) | **TopBar 主导航（1.0.6 新增）**：全局参数（品牌区/6 栏菜单/Service 状态/StatusBadge prop）+ **导航变更记录（含精确到秒的 commit 时间）** |
-| [prds/Accuracy.md](prds/Accuracy.md) | Accuracy 占位页与 v5.0 规划 |
+| [prds/Accuracy.md](prds/Accuracy.md) | **Accuracy 独立精度测试模块（1.0.8 落地）**：Native / Serving 双模式、9 评测数据集、判分、基线对标、Token 预估、默认页 UI |
 | [prds/Sessions.md](prds/Sessions.md) | Sessions：会话管理、SSE 流式、思考解析、性能栏 |
 | [prds/Settings.md](prds/Settings.md) | Settings：General / Providers / Models / Datasets / Bench Engines / Skills / Plugins 七栏（1.0.7：面板化 + 每引擎 Mock 开关；Debug 已移除） |
 

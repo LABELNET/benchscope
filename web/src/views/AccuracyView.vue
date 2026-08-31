@@ -1,28 +1,42 @@
 <template>
   <div class="accuracy-page">
-    <!-- 无任务：介绍页 -->
-    <div v-if="!hasTasks" class="intro">
-      <div class="intro-head">
-        <h2>{{ t('accIntroTitle') }}</h2>
-        <p>{{ t('accIntroDesc') }}</p>
-        <a-button type="primary" size="large" @click="goCreate">{{ t('accCreateTask') }}</a-button>
+    <!-- 无任务：介绍页（与 Performance 默认页结构/样式一致） -->
+    <div v-if="!hasTasks" class="perf-intro">
+      <div class="planned-card">
+        <a-result :title="t('accIntroTitle')" :sub-title="t('accIntroDesc')">
+          <template #icon>
+            <span class="result-icon">
+              <fund-outlined />
+            </span>
+          </template>
+          <template #extra>
+            <a-button type="primary" size="large" @click="goCreate">
+              <template #icon><play-circle-outlined /></template>
+              {{ t('accCreateTask') }}
+            </a-button>
+          </template>
+        </a-result>
+        <div class="features">
+          <a-row :gutter="[24, 24]" justify="center">
+            <a-col :xs="24" :sm="8" v-for="(feat, idx) in features" :key="feat.icon">
+              <a-card size="small" class="feature-card" hoverable>
+                <template #cover>
+                  <div class="feature-icon" :class="`fi-${idx % 4}`">{{ feat.icon }}</div>
+                </template>
+                <a-card-meta :title="t(feat.title)" :description="t(feat.desc)" />
+              </a-card>
+            </a-col>
+          </a-row>
+        </div>
       </div>
-      <a-row :gutter="24" class="intro-cards">
-        <a-col :xs="24" :md="8" v-for="feat in features" :key="feat.icon">
-          <a-card size="small" class="feature-card" hoverable>
-            <template #cover><div class="feature-icon">{{ feat.icon }}</div></template>
-            <a-card-meta :title="t(feat.title)" :description="t(feat.desc)" />
-          </a-card>
-        </a-col>
-      </a-row>
     </div>
 
-    <!-- 有任务：列表 + 详情 -->
+    <!-- 有任务：两栏布局（左侧任务列表 + 右侧详情） -->
     <template v-else>
       <div class="layout">
         <a-card size="small" class="list-card" :title="t('accTasks')">
           <template #extra>
-            <a-space>
+            <a-space :size="4">
               <a-button size="small" @click="refresh">{{ t('refresh') }}</a-button>
               <a-button type="primary" size="small" @click="goCreate">{{ t('accCreateTask') }}</a-button>
             </a-space>
@@ -33,12 +47,13 @@
             :pagination="false"
             size="small"
             row-key="task_id"
+            :scroll="{ y: 'calc(100vh - 260px)' }"
             :row-class-name="({ record }) => (record.task_id === activeTaskId ? 'row-active' : '')"
             :custom-row="(record) => ({ onClick: () => selectTask(record.task_id), style: { cursor: 'pointer' } })"
           >
             <template #bodyCell="{ column, record }">
               <template v-if="column.key === 'model'">
-                <span>{{ record.model }}</span>
+                <span class="cell-main">{{ record.model }}</span>
                 <a-tag v-if="record.lora_path" color="purple" style="margin-left:6px">LoRA</a-tag>
               </template>
               <template v-else-if="column.key === 'mode'">
@@ -48,7 +63,7 @@
                 <a-badge :status="statusBadge(record.status)" :text="statusText(record.status)" />
               </template>
               <template v-else-if="column.key === 'accuracy'">
-                <span v-if="record.result">{{ record.result.accuracy }}%</span>
+                <span v-if="record.result" class="acc-num">{{ record.result.accuracy }}%</span>
                 <a-progress
                   v-else-if="record.status === 'running' && record.progress"
                   :percent="progressPct(record)" size="small" style="width:120px"
@@ -56,8 +71,8 @@
                 <span v-else>—</span>
               </template>
               <template v-else-if="column.key === 'actions'">
-                <a-space>
-                  <a-button v-if="record.status === 'running'" size="small" danger @click.stop="stopTask(record.task_id)">{{ t('stop') }}</a-button>
+                <a-space :size="0">
+                  <a-button v-if="record.status === 'running'" size="small" danger type="text" @click.stop="stopTask(record.task_id)">{{ t('stop') }}</a-button>
                   <a-button size="small" danger type="text" @click.stop="removeTask(record.task_id)">{{ t('delete') }}</a-button>
                 </a-space>
               </template>
@@ -67,9 +82,9 @@
 
         <!-- 详情 -->
         <div v-if="active" class="detail">
-          <a-card size="small" :title="active.name || active.task_id" class="detail-head">
+          <a-card size="small" :title="active.name || active.task_id" class="detail-head block">
             <template #extra>
-              <a-space>
+              <a-space :size="6">
                 <a-tag :color="active.mode === 'native' ? 'green' : 'blue'">{{ active.mode === 'native' ? 'Native 原生' : 'Serving 链路' }}</a-tag>
                 <a-badge :status="statusBadge(active.status)" :text="statusText(active.status)" />
                 <a-button v-if="active.status === 'running'" size="small" danger @click="stopTask(active.task_id)">{{ t('stop') }}</a-button>
@@ -87,13 +102,14 @@
               v-if="active.status === 'running' && active.progress"
               :percent="progressPct(active)"
               :format="() => `${active.progress.done}/${active.progress.total}`"
+              class="run-progress"
             />
           </a-card>
 
           <!-- 核心指标 -->
           <a-card v-if="result" size="small" :title="t('accMetrics')" class="block">
             <a-row :gutter="12">
-              <a-col :span="4" v-for="m in metricCards" :key="m.label">
+              <a-col :xs="12" :sm="8" :md="4" v-for="m in metricCards" :key="m.label">
                 <div class="metric-box">
                   <div class="metric-value" :class="m.accent">{{ m.value }}</div>
                   <div class="metric-label">{{ m.label }}</div>
@@ -156,7 +172,7 @@
           <!-- 样本溯源 -->
           <a-card size="small" class="block" :title="t('accSamples')">
             <template #extra>
-              <a-space>
+              <a-space :size="6">
                 <a-radio-group v-model:value="sampleFilter" size="small" button-style="solid">
                   <a-radio-button value="all">{{ t('accSampleAll') }}</a-radio-button>
                   <a-radio-button value="wrong">{{ t('accSampleWrong') }}</a-radio-button>
@@ -201,6 +217,7 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { message } from 'ant-design-vue'
+import { FundOutlined, PlayCircleOutlined } from '@ant-design/icons-vue'
 import * as echarts from 'echarts'
 import { api } from '@/api'
 import { t } from '@/i18n'
@@ -218,6 +235,7 @@ const samplesLoading = ref(false)
 const hasTasks = computed(() => store.taskList.length > 0)
 const taskList = computed(() => store.taskList)
 const active = computed(() => store.activeTask)
+const activeTaskId = computed(() => store.activeTaskId)
 const result = computed(() => active.value?.result || null)
 const logs = computed(() => store.activeLogs)
 
@@ -228,13 +246,13 @@ const features = [
 ]
 
 const taskColumns = computed(() => [
-  { title: t('accTaskId'), dataIndex: 'task_id', key: 'task_id', width: 150 },
+  { title: t('accTaskId'), dataIndex: 'task_id', key: 'task_id', width: 132 },
   { title: t('accModel'), key: 'model' },
-  { title: t('accMode'), key: 'mode', width: 90 },
-  { title: t('accDataset'), key: 'dataset_name' },
-  { title: t('accStatus'), key: 'status', width: 100 },
-  { title: t('accAccuracy'), key: 'accuracy', width: 160 },
-  { title: '', key: 'actions', width: 130 },
+  { title: t('accMode'), key: 'mode', width: 82 },
+  { title: t('accDataset'), key: 'dataset_name', width: 96, ellipsis: true },
+  { title: t('accStatus'), key: 'status', width: 88 },
+  { title: t('accAccuracy'), key: 'accuracy', width: 120 },
+  { title: '', key: 'actions', width: 96 },
 ])
 
 const subjectColumns = computed(() => [
@@ -382,30 +400,105 @@ onMounted(async () => {
 </script>
 
 <style scoped>
-.accuracy-page { height: 100%; overflow: auto; padding: 16px 20px; }
-.intro { max-width: 980px; margin: 24px auto; text-align: center; }
-.intro-head h2 { margin-bottom: 8px; }
-.intro-head p { color: var(--ant-color-text-secondary); margin-bottom: 20px; }
-.intro-cards { margin-top: 32px; text-align: left; }
-.feature-card { text-align: center; border-radius: 8px; height: 100%; display: flex; flex-direction: column; }
-.feature-card :deep(.ant-card-body) { flex: 1; display: flex; flex-direction: column; justify-content: center; }
-.feature-icon { font-size: 40px; padding: 16px 0; }
-.layout { display: flex; flex-direction: column; gap: 12px; }
-.detail { display: flex; flex-direction: column; gap: 12px; }
-.empty-detail { padding: 40px 0; }
-.block { width: 100%; }
-.metric-box { text-align: center; padding: 8px 0; border: 1px solid var(--ant-color-border-secondary); border-radius: 8px; }
-.metric-value { font-size: 22px; font-weight: 600; }
-.metric-label { font-size: 12px; color: var(--ant-color-text-secondary); }
+.accuracy-page {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  overflow: auto;
+  padding: 16px 20px;
+  background: transparent;
+}
+
+/* ===== 无任务介绍页（与 Performance 默认页一致） ===== */
+.perf-intro {
+  flex: 1;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  min-height: 0;
+  overflow: auto;
+  padding: 40px 20px;
+}
+.planned-card {
+  max-width: 900px;
+  width: 100%;
+}
+.result-icon {
+  font-size: 72px;
+  color: var(--ant-color-primary, #1677ff);
+}
+.features {
+  margin-top: 24px;
+}
+.feature-card {
+  text-align: center;
+  border-radius: 8px;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+.feature-card :deep(.ant-card-body) {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+.feature-card :deep(.ant-card-meta-title) {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ant-color-text, rgba(0, 0, 0, 0.88));
+}
+.feature-card :deep(.ant-card-meta-description) {
+  line-height: 20px;
+  margin-top: 4px;
+  color: var(--ant-color-text-secondary, #666);
+}
+.feature-icon {
+  font-size: 48px;
+  padding-top: 24px;
+}
+.fi-0 { background: linear-gradient(135deg, rgba(22,119,255,.08), transparent); }
+.fi-1 { background: linear-gradient(135deg, rgba(82,196,26,.08), transparent); }
+.fi-2 { background: linear-gradient(135deg, rgba(250,173,20,.08), transparent); }
+.fi-3 { background: linear-gradient(135deg, rgba(114,46,209,.08), transparent); }
+
+/* ===== 有任务：两栏布局 ===== */
+.layout { display: flex; gap: 14px; align-items: flex-start; flex: 1; min-height: 0; }
+.list-card { width: 400px; flex-shrink: 0; border-radius: 10px; }
+.list-card :deep(.ant-card-body) { padding: 8px; }
+.list-card :deep(.ant-table-thead > tr > th) { font-size: 12px; }
+.cell-main { font-weight: 600; }
+.acc-num { font-weight: 700; color: var(--ant-color-primary); }
+.detail { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 12px; }
+.empty-detail { padding: 60px 0; text-align: center; }
+.block { border-radius: 10px; width: 100%; }
+.block :deep(.ant-card-head) { min-height: 40px; }
+.run-progress { margin-top: 10px; }
+
+/* ===== 核心指标 ===== */
+.metric-box {
+  text-align: center; padding: 12px 6px; height: 100%;
+  border: 1px solid var(--ant-color-border-secondary); border-radius: 10px;
+  background: var(--ant-color-bg-layout, #fafafa);
+  transition: transform .15s ease;
+}
+.metric-box:hover { transform: translateY(-2px); }
+.metric-value { font-size: 24px; font-weight: 700; line-height: 1.2; }
+.metric-label { font-size: 12px; color: var(--ant-color-text-secondary); margin-top: 4px; }
 .accent-blue { color: var(--ant-color-primary); }
 .accent-cyan { color: var(--ant-color-cyan); }
 .accent-green { color: var(--ant-color-success); }
 .accent-red { color: var(--ant-color-error); }
 .accent-orange { color: var(--ant-color-warning); }
-.dm-row { margin-top: 10px; display: flex; flex-wrap: wrap; gap: 4px; }
-.concl-row { margin-top: 12px; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.dm-row { margin-top: 12px; display: flex; flex-wrap: wrap; gap: 4px; }
+.concl-row { margin-top: 14px; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 .grade-tag { font-size: 14px; font-weight: 700; padding: 2px 10px; }
 .radar-chart { width: 100%; max-width: 360px; height: 220px; margin: 8px auto 0; }
+
+/* ===== 控制台 / 样本 ===== */
 .console {
   background: var(--ant-color-bg-layout, #141414);
   color: #d6deeb; font-size: 12px; line-height: 1.5;
@@ -418,4 +511,10 @@ onMounted(async () => {
 }
 .tok-cell { font-size: 12px; color: var(--ant-color-text-secondary); }
 :deep(.row-active) td { background: var(--ant-color-primary-bg); }
+
+/* 响应式：窄屏回退纵向 */
+@media (max-width: 900px) {
+  .layout { flex-direction: column; }
+  .list-card { width: 100%; }
+}
 </style>

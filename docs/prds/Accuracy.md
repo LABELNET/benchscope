@@ -1,7 +1,7 @@
-# benchscope Accuracy 页面 — 功能与约束说明
+·# benchscope Accuracy 页面 — 功能与约束说明
 
 > **版本**：v1.0.8
-> **最后更新**：2026-08-30
+> **最后更新**：2026-08-31
 > **文档状态**：Accuracy（独立精度测试模块）页面功能、实现策略与约束说明
 > **关联文档**：[Performance.md](./Performance.md) · [Dashboard.md](./Dashboard.md) · [Datas.md](./Datas.md) · [../rules/AccuracyEngine.md](../rules/AccuracyEngine.md)
 
@@ -18,7 +18,7 @@ Accuracy 页面为**独立精度测试模块**的主页面（1.0.8 落地，替�
 
 ## 1. 任务列表（无任务 → 介绍页）
 
-- **无任务**：介绍页（标题 + 三张特性卡：双模式评测 / 基线对标 / Token 预估强提醒）+「创建精度任务」按钮。
+- **无任务（1.0.8 对齐 Performance）**：介绍页与 Performance 默认页结构/样式一致——`.perf-intro` + `.planned-card` + `a-result`（标题「精度测试」/描述一句话/主色图标 `FundOutlined`（与主导航 Accuracy 项一致）/CTA「创建精度任务」）+ `.features` 三张特性卡（**模型链路精度测评 / 离线模型精度测评 / 模型精度基准对比**，各 ≤2 行说明，居中、`text-align:center`、antd 语义色）。
 - **有任务**：任务表格（任务 ID / 模型（LoRA 标签）/ 模式（Native|Serving）/ 数据集 / 状态 / accuracy 或运行进度 / 停止 / 删除）+ 点击行进入详情；「刷新」「创建精度任务」按钮。
 
 ## 2. 创建任务（/accuracy/create 三步向导）

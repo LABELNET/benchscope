@@ -152,9 +152,9 @@
                   <div v-if="streaming" class="loading-spinner"></div>
                   <span
                     class="send-text"
-                    :class="{ 'send-active': inputText.trim() && !streaming }"
+                    :class="{ 'send-active': streaming || (inputText.trim() && !streaming), 'send-stop': streaming }"
                     @click="onSendClick"
-                  >{{ t('send') }}</span>
+                  >{{ streaming ? t('stop') : t('send') }}</span>
                 </div>
               </div>
             </div>
@@ -186,6 +186,7 @@ const inputText = ref('')
 const streaming = ref(false)
 const streamBuffer = ref('')
 const streamThinking = ref('')
+const streamAbort = ref(null)
 const streamThinkingOpen = ref(false)
 const msgBox = ref(null)
 
@@ -346,9 +347,18 @@ async function clearAllSessions() {
   } catch (e) { message.error(e.message) }
 }
 
-// 发送按钮(文字):有内容且未流式时才可点击
+// 发送/停止按钮(文字):流式中显示"停止"，点击中止数据流；否则有内容才可发送
 function onSendClick() {
+  if (streaming.value) {
+    stopStream()
+    return
+  }
   if (inputText.value.trim() && !streaming.value) sendMessage()
+}
+
+// 停止当前流式：中止请求，数据流立即停止，文字改回"发送"
+function stopStream() {
+  streamAbort.value?.abort()
 }
 
 async function sendMessage() {
@@ -372,6 +382,7 @@ async function sendMessage() {
   streamBuffer.value = ''
   streamThinking.value = ''
   streamThinkingOpen.value = false
+  streamAbort.value = new AbortController()
   let assistantContent = ''
   let assistantThinking = ''
   const startTime = Date.now()
@@ -409,6 +420,7 @@ async function sendMessage() {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ message: text, model: selectedModel.value || undefined, quality: selectedQuality.value, enable_thinking: enableThinking.value, provider_id: selectedProviderId.value }),
+      signal: streamAbort.value?.signal,
     })
 
     const reader = resp.body.getReader()
@@ -488,13 +500,28 @@ async function sendMessage() {
 
     await loadSessions()
   } catch (e) {
-    message.error(e.message)
+    if (e.name === 'AbortError') {
+      // 手动停止：保存已流式生成的部分内容（若有），不报错
+      if ((assistantContent || assistantThinking) && activeSession.value) {
+        activeSession.value.messages.push({
+          role: 'assistant',
+          content: assistantContent,
+          thinking: assistantThinking || '',
+          timestamp: new Date().toISOString().slice(0, 19).replace('T', ' '),
+          model: selectedModel.value || '',
+          _thinkingOpen: false,
+        })
+      }
+    } else {
+      message.error(e.message)
+    }
   } finally {
     streaming.value = false
     livePerf.value = null
     streamBuffer.value = ''
     streamThinking.value = ''
     streamThinkingOpen.value = false
+    streamAbort.value = null
   }
 }
 
@@ -1014,6 +1041,13 @@ onMounted(() => {
 }
 .send-active:hover {
   color: #4096ff;
+}
+.send-stop {
+  color: #fa541c;
+  cursor: pointer;
+}
+.send-stop:hover {
+  color: #ff7a45;
 }
 
 .thinking-toggle {

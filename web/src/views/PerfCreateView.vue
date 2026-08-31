@@ -143,6 +143,58 @@
         </div>
       </div>
 
+      <!-- 启动前 token 使用预警弹窗（仅前端估算） -->
+      <a-modal
+        v-model:open="tokenWarningVisible"
+        :title="t('tokenWarningTitle')"
+        centered
+        :width="640"
+        :mask-closable="false"
+      >
+        <div class="token-warning">
+          <a-alert :message="t('tokenWarningAlert')" type="warning" show-icon class="token-alert" />
+          <div v-for="g in tokenEstimate.groups" :key="g.id" class="token-group">
+            <div class="token-group-label">
+              {{ t('datasetLabel') }}: {{ g.label }}
+            </div>
+            <table class="token-table">
+              <thead>
+                <tr>
+                  <th>{{ t('tokenRequests') }}</th>
+                  <th>{{ t('tokenInputTotal') }}</th>
+                  <th>{{ t('tokenOutputTotal') }}</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="r in g.rows" :key="`${g.id}-${r.requests}`">
+                  <td>{{ r.requests }}</td>
+                  <td>{{ r.inputTokens.toLocaleString() }}</td>
+                  <td>{{ r.outputTokens.toLocaleString() }}</td>
+                </tr>
+              </tbody>
+            </table>
+            <div class="token-group-sum">
+              {{ t('tokenGroupTotal') }}: {{ t('tokenInputTotal') }} {{ g.groupIn.toLocaleString() }}
+              / {{ t('tokenOutputTotal') }} {{ g.groupOut.toLocaleString() }}
+            </div>
+          </div>
+          <div class="token-total">
+            <span class="token-total-item">
+              {{ t('tokenAllInput') }}: <b>{{ toMillions(tokenEstimate.totalIn) }}</b> {{ t('tokenMillion') }}
+            </span>
+            <span class="token-total-item">
+              {{ t('tokenAllOutput') }}: <b>{{ toMillions(tokenEstimate.totalOut) }}</b> {{ t('tokenMillion') }}
+            </span>
+          </div>
+        </div>
+        <template #footer>
+          <a-button size="small" @click="tokenWarningVisible = false">{{ t('cancel') }}</a-button>
+          <a-button size="small" type="primary" :loading="submitting" @click="doLaunch">
+            {{ t('confirm') }}
+          </a-button>
+        </template>
+      </a-modal>
+
       <!-- footer 操作按钮：右侧 -->
       <div class="panel-footer">
         <a-space>
@@ -325,6 +377,75 @@ const previewCommand = ref('')
 const step1Saving = ref(false)
 const step2Saving = ref(false)
 const submitting = ref(false)
+
+// ---- 启动前 token 使用预警（仅前端估算） ----
+const tokenWarningVisible = ref(false)
+
+// 从 Step2 引擎参数中取 num-prompts（每个并发的请求数；0/inf 表示请求数=并发数）
+const numPrompts = computed(() => {
+  const line = (engineParams.value?.lines || []).find((l) => l.key === 'num-prompts')
+  const v = Number(line?.value)
+  return Number.isFinite(v) && v > 0 ? v : 0
+})
+
+// 阈值模式阶梯：1, 2, 4, ... <= maxRequests（2 的次方）
+function thresholdSteps() {
+  const cap = Number(maxRequests.value) || 4096
+  const steps = []
+  for (let n = 1; n <= cap; n *= 2) steps.push(n)
+  return steps
+}
+
+// token 预估：并发模式按每个请求数独立计算；阈值模式按阶梯累计（前面全部 2 的次方之和）
+const tokenEstimate = computed(() => {
+  const groups = []
+  let totalIn = 0
+  let totalOut = 0
+  const np = numPrompts.value
+
+  for (const c of conditions.value) {
+    const inLen = Number(c.inputLen) || 0
+    const outLen = Number(c.outputLen) || 0
+    const rows = []
+
+    if (mode.value === 'threshold') {
+      // 阶梯累计：每个阶梯 = 前面所有 2 的次方之和 + 自身
+      const steps = thresholdSteps()
+      let cumReq = 0
+      for (const n of steps) {
+        cumReq += np > 0 ? np : n
+        rows.push({
+          requests: n,
+          inputTokens: inLen * cumReq,
+          outputTokens: outLen * cumReq,
+        })
+      }
+    } else {
+      // 并发模式：每个请求数独立（非累计）
+      for (const n of c.requestRates || []) {
+        const req = np > 0 ? np : n
+        rows.push({
+          requests: n,
+          inputTokens: inLen * req,
+          outputTokens: outLen * req,
+        })
+      }
+    }
+
+    const groupIn = rows.reduce((s, r) => s + r.inputTokens, 0)
+    const groupOut = rows.reduce((s, r) => s + r.outputTokens, 0)
+    totalIn += groupIn
+    totalOut += groupOut
+    groups.push({ id: c.id, label: `${inLen}x${outLen}`, rows, groupIn, groupOut })
+  }
+
+  return { groups, totalIn, totalOut }
+})
+
+// 百万单位格式化（保留 2 位小数）
+function toMillions(v) {
+  return (Number(v || 0) / 1_000_000).toFixed(2)
+}
 
 const previewConditions = computed(() => {
   const lines = []
@@ -593,26 +714,25 @@ function goSettings() {
 
 async function submit() {
   if (!validateStep1()) return
-  Modal.confirm({
-    title: t('startTestConfirm'),
-    okText: t('launch'),
-    cancelText: t('cancel'),
-    onOk: async () => {
-      submitting.value = true
-      try {
-        syncEngineParams()
-        const resp = await test.createTask(buildPayload())
-        await test.startTask(resp.task_id)
-        test.setActiveTask(resp.task_id)
-        message.success(t('startTest'))
-        router.push('/performance')
-      } catch (e) {
-        message.error(e.message || '启动测试失败')
-      } finally {
-        submitting.value = false
-      }
-    },
-  })
+  // 启动前弹出 token 使用预警（仅前端估算）：确认后才真正启动任务
+  tokenWarningVisible.value = true
+}
+
+async function doLaunch() {
+  submitting.value = true
+  try {
+    syncEngineParams()
+    const resp = await test.createTask(buildPayload())
+    await test.startTask(resp.task_id)
+    test.setActiveTask(resp.task_id)
+    tokenWarningVisible.value = false
+    message.success(t('startTest'))
+    router.push('/performance')
+  } catch (e) {
+    message.error(e.message || '启动测试失败')
+  } finally {
+    submitting.value = false
+  }
 }
 
 onMounted(async () => {
@@ -727,6 +847,59 @@ onMounted(async () => {
   padding: 10px 12px;
   margin-bottom: 12px;
   background: var(--ant-color-bg-container, #fff);
+}
+/* 启动前 token 使用预警弹窗 */
+.token-warning {
+  max-height: 420px;
+  overflow-y: auto;
+}
+.token-alert {
+  margin-bottom: 12px;
+}
+.token-group {
+  margin-bottom: 14px;
+}
+.token-group-label {
+  font-size: 13px;
+  font-weight: 600;
+  margin-bottom: 6px;
+}
+.token-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+.token-table th,
+.token-table td {
+  border: 1px solid var(--ant-color-border-secondary, #f0f0f0);
+  padding: 4px 8px;
+  text-align: right;
+}
+.token-table th:first-child,
+.token-table td:first-child {
+  text-align: left;
+}
+.token-table th {
+  background: var(--ant-color-bg-layout, #fafafa);
+  font-weight: 600;
+}
+.token-group-sum {
+  margin-top: 4px;
+  font-size: 12px;
+  color: var(--ant-color-text-secondary, #666);
+}
+.token-total {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid var(--ant-color-border-secondary, #f0f0f0);
+  font-size: 13px;
+}
+.token-total-item b {
+  color: var(--ant-color-warning, #faad14);
+  font-size: 14px;
 }
 .maxreq-line {
   display: flex;

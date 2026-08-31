@@ -229,6 +229,180 @@
 
 ---
 
+### 迭代 7（2026-08-31）：性能测试启动前 Token 使用预警（前端估算）
+
+**功能概述**：
+- Performance/创建任务页 Step3 点 **Launch** 后，弹出 **Token 使用预估弹窗**（仅前端计算与提示，不改后端启动流程）
+- 按并发 / 阈值两种模式分别估算每组输入/输出 token 与全部总输入/输出 token（百万单位）
+- footer 显示 **确定 / 取消**：取消则弹窗消失不启动；确定才创建并启动任务
+
+**变更内容**：
+
+1. **并发模式 token 预估**：每组（condition）按 `requestRates` 每个请求数独立计算——`输入 token = inputLen × 请求数`、`输出 token = outputLen × 请求数`（`num-prompts`>0 时请求数取 num-prompts）；每组汇总 + 全部总计（百万单位）
+2. **阈值模式 token 预估（阶梯累计）**：按 2 的次方阶梯（1, 2, 4, … ≤ maxRequests）逐级**累计**——`请求 N` 的行 = 前面所有 2 的次方之和（含自身）× inputLen/outputLen（如 请求 2 = (1+2)×1024、请求 4 = (1+2+4)×1024）
+3. **预警弹窗 UI**：`PerfCreateView.vue` 加 `<a-modal>`（`.token-warning`）——`a-alert` 警告 + 每组 token 表（请求数/输入/输出）+ 组内合计 + 底部总输入/总输出（百万单位）；footer 自定义 **取消 / 确定（Confirm）**
+4. `submit()` 改为先弹预警；新增 `doLaunch()`（确定后执行原创建+启动流程）；新增 `tokenEstimate` computed / `numPrompts` / `thresholdSteps` / `toMillions`
+5. **i18n**：新增 `tokenWarningTitle/Alert/Requests/InputTotal/OutputTotal/GroupTotal/AllInput/AllOutput/Million` 中英双语
+6. **测试**：`tests/webui/test_ui.py` 新增 `test_create_page_token_warning_concurrency`、`test_create_page_token_warning_threshold`（并发独立计算 + 阈值阶梯累计校验 + footer 取消）
+
+**验证（增量）**：
+- WebUI：`-k "create_page or perf_create or token_warning"` 9 项全部通过（含 2 个新增）
+- Playwright 实测：并发模式 9 行阶梯 + 总 0.30M/0.30M；阈值模式 13 行阶梯累计（1→1024、2→3072、4→7168、8→15360）正确；footer Cancel/Confirm
+- lint 无错误
+
+**TODO 状态**：
+- [x] UI — 创建页 Step3 Launch 后中间弹窗显示 Token 使用预估（每组输入/输出 + 总输入/输出百万单位）
+- [x] 逻辑 — 并发模式按输入输出 × 全部请求数计算每组与总计
+- [x] 逻辑 — 阈值模式按输入输出 × 2 的次方阶梯累计（请求 1/64/128 每组 3 条代表）预估
+- [x] footer — 确定/取消：取消消失，确定启动任务
+- [x] 测试与文档 — WebUI 断言新增 + VERSION / Performance-Create 同步
+
+---
+
+### 迭代 8（2026-08-31）：Accuracy 默认页整体 UI 优化
+
+**功能概述**：
+- 精度测试默认页（AccuracyView）整体 UI 现代化：无任务介绍页 hero 增强 + 有任务改为「左任务列表 + 右详情」两栏布局
+- 指标卡、卡片、表格、控制台、响应式等样式统一细化
+
+**变更内容**：
+
+1. **无任务介绍页（hero 增强）**：`.intro-hero` 渐变背景 + 徽标（`hero-badge`）+ 大标题 + 副标题 + CTA + 统计条（2 模式 / 9 数据集 / S·A·B·C 评级）；3 张特性卡片带彩色渐变图标背景 + hover 上浮
+2. **有任务两栏布局**：`.layout` 改 `flex-row`——左侧 `.list-card`（任务列表，固定宽 400px，内部表格纵向滚动）+ 右侧 `.detail`（详情卡片流，flex 滚动）；900px 以下回退纵向
+3. **详情卡片美化**：`metric-box` 指标卡（悬浮上浮、边框圆角、背景区分）、`a-descriptions`/进度条、雷达图、控制台、样本表样式统一；卡片圆角 + header 紧凑
+4. **新 i18n 键**：`accModeTag / accModes / accDatasets / accGrades`（中英）
+5. **测试**：`test_accuracy_landing_intro` 选择器 `.intro-head` → `.intro-hero` + `.hero-cta`，并断言 hero 徽标/统计存在
+
+**验证（增量）**：
+- Playwright 实测：无任务 hero（徽标/标题/CTA/统计/3 卡片）+ 有任务两栏（列表卡片 + 任务行 + 详情区），无 JS 错误
+- WebUI：`-k "accuracy"` 4 项全部通过
+- lint 无错误
+
+**TODO 状态**：
+- [x] UI — 无任务介绍页 hero 增强（渐变/徽标/统计/特性卡片）
+- [x] UI — 有任务两栏布局（左列表 + 右详情）+ 指标卡/卡片/表格/控制台美化
+- [x] i18n — hero 统计与徽标中英文案
+- [x] 测试与文档 — Accuracy WebUI 断言更新 + VERSION 同步
+
+---
+
+### 迭代 9（2026-08-31）：Accuracy 默认页对齐 Performance 默认页结构
+
+**功能概述**：
+- Accuracy 默认页（无任务介绍页）结构与字体样式改为**与 Performance 默认页一致**（`a-result` + 特性卡片）
+
+**变更内容**：
+
+1. **介绍页结构对齐 Performance**：`.intro-hero` 自定义 hero 改为 `.perf-intro` + `.planned-card` + `a-result`（标题/副标题/主色图标 `RobotOutlined` 72px / CTA 按钮）+ `.features` 特性卡片（居中 `a-row`，3 张）
+2. **字体颜色与样式对齐**：`.feature-card` 特性卡 `text-align:center`、圆角 8px、meta-title 用 `--ant-color-text`、desc 用 `--ant-color-text-secondary`；`.result-icon` 用 `--ant-color-primary`（与 Performance 一致）
+3. `.accuracy-page` 改 `flex-column`，`.perf-intro` flex 居中、`.layout` flex:1 填满
+4. 移除上轮自定义 hero（`.hero-badge/.hero-title/.hero-stats` 等）及其 i18n 键使用；新增 `RobotOutlined / PlayCircleOutlined` 图标 import
+5. **测试**：`test_accuracy_landing_intro` 选择器改为 `.perf-intro/.planned-card/.ant-result-extra button`，断言 a-result 结构与特性卡
+
+**验证（增量）**：
+- Playwright 实测：`a-result` 结构 + result-icon 主色 `rgb(22,119,255)` + 3 特性卡（text-align center）+ CTA，无 JS 错误
+- WebUI：`-k "accuracy"` 4 项全部通过
+- lint 无错误
+
+**TODO 状态**：
+- [x] UI — Accuracy 默认页改为与 Performance 一致的 `a-result` + 特性卡片结构
+- [x] UI — 字体颜色与样式对齐 Performance（语义色/居中/圆角）
+- [x] 测试与文档 — Accuracy WebUI 断言更新 + VERSION 同步
+
+---
+
+### 迭代 10（2026-08-31）：Accuracy 默认页大图标与主导航一致
+
+**功能概述**：
+- Accuracy 默认页介绍页的大图标（`result-icon`）改用与**主导航 Accuracy 项一致**的图标 `FundOutlined`
+
+**变更内容**：
+
+1. `AccuracyView.vue`：介绍页 `result-icon` 图标由 `RobotOutlined` 改为 **`FundOutlined`**（与 TopBar 主导航 Accuracy 项同一图标），保持主色 `--ant-color-primary`
+2. import 相应更新（`FundOutlined` 替换 `RobotOutlined`）
+
+**验证（增量）**：
+- Playwright 实测：result-icon 为 `FundOutlined`（viewBox 64 64 896 896），主色 rgb(22,119,255)
+- lint 无错误；前端已重建
+
+**TODO 状态**：
+- [x] UI — Accuracy 默认页大图标与主导航一致（FundOutlined）
+- [x] 文档 — VERSION / Accuracy.md 同步
+
+---
+
+### 迭代 11（2026-08-31）：Performance 默认页阈值搜索介绍精简为 2 行
+
+**功能概述**：
+- Performance 默认页特性卡片「阈值搜索」介绍内容过多，精简为 2 行
+
+**变更内容**：
+
+1. **i18n 文案精简**：`featThresholdModeDesc` 中英精简为一句（`设置 TTFT / TPOT / 吞吐阈值，自动搜索满足阈值的最大并发。` / `Set TTFT/TPOT/throughput thresholds; auto-find the max concurrency still satisfying them.`）
+2. **CSS 2 行截断**：`PerformanceView.vue` `.feature-card .ant-card-meta-description` 加 `-webkit-line-clamp: 2`（配合精简文案稳定 2 行）
+3. **测试**：`test_perf_landing_intro_cards` 断言由"含逐步搜索机制"改为"含 max concurrency / 最大并发"
+
+**验证（增量）**：
+- Playwright 实测：阈值搜索描述 2 行（`设置 TTFT / TPOT / 吞吐阈值，自动搜索满足阈值的最大并发。`）
+- WebUI：`-k "perf_landing_intro_cards"` 通过
+- lint 无错误；前端已重建
+
+**TODO 状态**：
+- [x] UI — 阈值搜索介绍精简为 2 行（文案 + line-clamp）
+- [x] 测试与文档 — WebUI 断言更新 + VERSION 同步
+
+---
+
+### 迭代 12（2026-08-31）：Accuracy 默认页标题简化 + 描述一句话
+
+**功能概述**：
+- Accuracy 默认页标题由「独立精度测试」简化为「精度测试」，描述信息改为一句话
+
+**变更内容**：
+
+1. **标题**：`accIntroTitle` 改为 `精度测试` / `Accuracy Testing`（去掉"独立"前缀）
+2. **描述一句话**：`accIntroDesc` 精简为一句（`对模型进行标准精度评测，支持 Native 原生与 Serving 链路双模式、基线对标与 Token 预估。` / `Evaluate model accuracy: Native & Serving dual-mode, baseline benchmarking and token estimation.`）
+
+**验证（增量）**：
+- Playwright 实测：标题「精度测试」、描述一句话
+- lint 无错误；前端已重建
+
+**TODO 状态**：
+- [x] UI — 标题简化为「精度测试」、描述一句话
+- [x] 文档 — VERSION 同步
+
+---
+
+### 迭代 13（2026-08-31）：精度特性卡改名 + 会话发送/停止按钮
+
+**功能概述**：
+- 精度默认页三张特性卡改名（模型链路/离线模型/模型精度基准对比）+ 说明 ≤2 行
+- 会话界面发送按钮：流式中显示「停止」，点击停止数据流并改回「发送」
+
+**变更内容**：
+
+1. **精度特性卡改名**（`accFeat1/2/3Title/Desc` 中英）：
+   - 卡1 **模型链路精度测评**（Model Serving Accuracy Evaluation）— 对 OpenAI 兼容 Serving 链路端到端精度测评
+   - 卡2 **离线模型精度测评**（Offline Model Accuracy Evaluation）— 直接评测本地 transformers 权重
+   - 卡3 **模型精度基准对比**（Model Accuracy Benchmark Comparison）— 自动对标开源基线（差值/S·A·B·C/排名）
+   - 每卡说明均 ≤2 行（沿用 `.feature-card` line-clamp:2）
+2. **会话发送/停止按钮**（`SessionsView.vue`）：
+   - 发送按钮文案随流式切换：`streaming ? 停止 : 发送`（`.send-stop` 红色样式）
+   - 点击逻辑：流式中点按 → `stopStream()`（AbortController.abort 中止数据流，保存已生成部分，不报错）；否则 `sendMessage()`
+   - 新增 `streamAbort` ref，`sendMessage` 用 `signal` 中止，catch 处理 `AbortError`，finally 清空
+
+**验证（增量）**：
+- Playwright 实测：精度三卡标题/说明 2 行；会话按钮 发送 → 停止 → 发送（数据流停止）
+- WebUI：`-k "accuracy or sessions or perf_landing"` 8 项全部通过
+- lint 无错误；前端已重建
+
+**TODO 状态**：
+- [x] UI — 精度默认页特性卡改名 + 说明 ≤2 行
+- [x] UI — 会话发送/停止按钮（流式停止 + 文案切换）
+- [x] 测试与文档 — WebUI 确认 + VERSION 同步
+
+---
+
 ## 4. TODO 清单
 
 （1.0.8 待办，按 P1–P16 实施路径分解；每项落地后勾选并在 §3 记录迭代明细）
@@ -347,6 +521,15 @@
 - [x] `./tests/run_tests.sh` 全量（API + WebUI）+ `check:i18n` + `npm run build`
 - [x] docs 同步：`prds/Accuracy.md` 全面改写（真实功能 PRD）、`prds/Dashboard.md`、`prds/Datas.md`、`rules/Architecture.md`、`rules/Software.md`、`Roadmap.md` 状态
 - [x] `VERSION_1_0_8.md`「版本功能清单（Release Notes）」双语区块（发布前 AI 总结）
+
+---
+
+### 阶段六：性能测试启动前 Token 使用预警（前端估算）
+
+- [x] `PerfCreateView.vue` 并发模式：按 requestRates × inputLen/outputLen 计算每组与全部总输入/输出 token（百万单位）
+- [x] `PerfCreateView.vue` 阈值模式：按 2 的次方阶梯累计（请求 1/64/128 代表，前面全部 2 的次方之和）预估
+- [x] Step3 Launch 后中间弹窗显示 Token 使用预估 + footer 确定/取消（取消消失、确定启动）
+- [x] i18n 中英文案 + WebUI 测试（并发独立 / 阈值累计 + footer 取消）
 
 ---
 
