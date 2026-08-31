@@ -6,9 +6,9 @@
 
 <p align="center"><strong>English</strong> | <a href="README.zh-CN.md">简体中文</a></p>
 
-BenchScope is an open‑source LLM inference benchmarking platform built with herness coding.
+BenchScope is an open‑source LLM inference benchmarking platform built with ~~Vibe Coding~~ Herness Coding.
 
-A visualization testing platform for LLM model **performance & accuracy**, supporting models deployed with vLLM / SGLang and any OpenAI-compatible inference service.
+A visualization testing platform for LLM model **performance & accuracy**, supporting models inference with vLLM / SGLang and any OpenAI‑compatible API.
 
 <div align="center">
   <img src="asserts/main-performance.png" width="72%" alt="BenchScope main performance screenshot" />
@@ -20,7 +20,7 @@ A visualization testing platform for LLM model **performance & accuracy**, suppo
 
 - **Easy to install** — `pip install` and one command starts the whole web platform.
 - **Performance testing dual mode** — Concurrency Mode (multi-level concurrency load) and Threshold Mode (auto-search the max concurrency meeting the threshold).
-- **Accuracy testing dual mode** — Online / offline testing (planned, v5.0).
+- **Accuracy testing dual mode** —  Native（local model weights）/ Serving（API）double model tasks。
 - **Real-time data feedback** — every concurrency result streams into tables, charts and progress in real time.
 - **Visualization curves** — multi-dimensional charts for throughput / TTFT / TPOT / ITL.
 - **Log cache & download** — run logs, mean/P99 summaries and Excel export with online preview & download.

@@ -6,9 +6,9 @@
 
 <p align="center"><a href="README.md">English</a> | <strong>简体中文</strong></p>
 
-BenchScope 基于 herness coding 开发的开源大模型推理测试平台。
+BenchScope 基于 ~~Vibe Coding~~ Herness Coding 开发的开源大模型推理测试平台。
 
-A visualization testing platform for LLM model **performance & accuracy**, supporting models deployed with vLLM / SGLang and any OpenAI-compatible inference service.
+面向大语言模型性能与精度的可视化测试平台，支持基于 vLLM / SGLang 的模型推理，以及所有兼容 OpenAI 协议的接口。
 
 <div align="center">
   <img src="asserts/main-performance.png" width="72%" alt="BenchScope 性能测试示意图" />
@@ -20,7 +20,7 @@ A visualization testing platform for LLM model **performance & accuracy**, suppo
 
 - **安装简单** — `pip install` 后一条命令即可启动整个 Web 平台。
 - **性能测试双模式** — 并发压测（Concurrency Mode）与阈值探测（Threshold Mode，自动寻找满足条件的最大并发）。
-- **精度测试双模式** — 在线测试 / 离线测试（规划中，v5.0）。
+- **精度测试双模式** — 原生模式Native（本地权重）/ 服务模式Serving（OpenAI 兼容链路）双模式任务。
 - **实时数据反馈** — 每个并发结果实时流入表格、曲线与进度。
 - **可视化曲线** — 吞吐 / TTFT / TPOT / ITL 多维统计图。
 - **日志缓存下载** — 运行日志、mean/P99 汇总与 Excel 导出，支持在线预览与下载。
