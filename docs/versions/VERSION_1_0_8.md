@@ -199,38 +199,6 @@
 
 ---
 
-## 版本功能清单（Release Notes）
-
-### Feature Highlights
-
-- **Independent Accuracy Testing Module**: fully decoupled from the performance module — independent task manager, storage (task / result / per-sample traceability under `evals/`), scheduling and reports
-- **Dual-mode evaluation**: Serving-link accuracy (any OpenAI-compatible API, aiohttp) and Native accuracy (transformers local weights, optional extras `benchscope[accuracy-native]`, CUDA environment check); fully independent and runnable separately
-- **Built-in CLI command `benchscope eval`**: same evaluation core as Web tasks; prints accuracy metrics and persists artifacts importable into Datas/evals
-- **Accuracy engines in the bench engines system**: `benchscope` (serving), `native-hf` (local weights), `mock` (controllable accuracy) with env-check and an "Eval Support" comparison dimension
-- **9 built-in eval datasets**: MMLU / CMMLU / C-Eval / GSM8K / MATH / HumanEval / MBPP / MT-Bench / GAOKAO-Bench (registered in `configs/datasets.yaml`, reused by Settings → Datasets) + custom local-path / uploaded JSONL datasets
-- **Scoring engines**: choice (per-subject accuracy) / math (exact_match with normalization) / code (sandboxed pass@1) / MT-Bench LLM-as-judge (turn & sub-dimension scores)
-- **Token estimation & strong reminder (Serving)**: pre-run estimate dialog (built-in constants + measured stats), estimate-vs-actual deviation after the task
-- **Open-source baseline benchmarking**: built-in baseline pool (Llama3 / Qwen2 / InternLM2 / Mistral / Chinese-special), diff pp, S/A/B/C grade, same-size ranking, ability radar chart and automatic conclusions
-- **Model & dataset sources from Settings**: model catalog reuse + custom model name / local weight path; **LoRA fine-tuned incremental models (`lora_path`)** supported for both accuracy and performance testing (peft on Native, server-registered adapter on Serving)
-- **Reports & linkage**: realtime task detail, per-sample traceability with wrong-set export, Native-vs-Serving consistency report, Datas/evals records page and Dashboard Eval Records
-- **Performance test enhancements**: Step2/3 create page UX (token-warning estimate dialog, copy icons, preview command synced with preview conditions incl. threshold statistic), Realtime **Peak output aligned to vLLM** (completion-time 1s window), `inf` high-concurrency support, UI aligned to Ant Design design tokens
-
-### 功能清单
-
-- **独立精度测试模块**：与性能模块彻底解耦——独立任务管理器、独立落库（`evals/` 三件套：task.json / result.json / samples.jsonl）、独立调度与报表
-- **双模式精度评测**：Serving 链路精度（任意 OpenAI 兼容服务）/ Native 原生精度（transformers 本地权重，可选依赖 + CUDA 环境校验），互不依赖可单独执行
-- **内置命令 `benchscope eval`**：与 Web 任务共用评测核心，终端输出精度指标，产物可导入 Datas/evals
-- **bench engines 并入精度内容**：benchscope（serving）/ native-hf（本地权重）/ mock（可控正确率）精度引擎，含环境校验与对比表「精度评测」维度
-- **9 个内置评测数据集**：MMLU / CMMLU / C-Eval / GSM8K / MATH / HumanEval / MBPP / MT-Bench / GAOKAO-Bench（datasets.yaml 注册、Settings → Datasets 展示）+ 自定义路径 / 上传 JSONL
-- **精度打分引擎**：客观题分学科判分 / 数学 exact_match（规范化等价）/ 代码沙箱 pass@1 / MT-Bench LLM-as-judge（单轮 / 多轮 / 分项）
-- **Token 预估与强提醒**（Serving 专属）：创建前置预估弹窗（内置常量表 + 实测统计），任务结束预估 vs 实际偏差
-- **开源基线对标**：内置基线库（含中文专项），差值百分点、S/A/B/C 档位、同尺寸排名、能力雷达图、自动结论（含风险预警）
-- **模型与数据集沿用设置界面**：Settings → Models 厂商目录选模型 + 自定义模型名 / 本地权重路径；**LoRA 微调增量模型（lora_path）** 精度与性能均可测
-- **报表与联动**：任务实时详情、单样本溯源与错题集导出、Native vs Serving 一致性对比、Datas/evals 记录页、Dashboard Eval Records 接通
-- **性能测试增强**：创建页 Step2/3 交互优化（Token 预估强提醒、复制图标、预览命令与预览条件对齐含阈值统计量）、Realtime **Peak output 对齐 vLLM**（完成时刻 1s 滑窗）、`inf` 高并发支持、UI 对齐 Ant Design 设计令牌
-
----
-
 ### 迭代 7（2026-08-31）：性能测试启动前 Token 使用预警（前端估算）
 
 **功能概述**：
@@ -564,6 +532,38 @@
 - [x] Step3 — 预览命令随 Provider/模型/条件/参数变化实时刷新，与预览条件对齐
 - [x] Realtime — Peak output 列默认不显示（Columns 可手动开启）
 - [x] 文档 — Performance-Create / Performance / VERSION 同步
+
+---
+
+## 版本功能清单（Release Notes）
+
+### Feature Highlights
+
+- **Independent Accuracy Testing Module**: fully decoupled from the performance module — independent task manager, storage (task / result / per-sample traceability under `evals/`), scheduling and reports
+- **Dual-mode evaluation**: Serving-link accuracy (any OpenAI-compatible API, aiohttp) and Native accuracy (transformers local weights, optional extras `benchscope[accuracy-native]`, CUDA environment check); fully independent and runnable separately
+- **Built-in CLI command `benchscope eval`**: same evaluation core as Web tasks; prints accuracy metrics and persists artifacts importable into Datas/evals
+- **Accuracy engines in the bench engines system**: `benchscope` (serving), `native-hf` (local weights), `mock` (controllable accuracy) with env-check and an "Eval Support" comparison dimension
+- **9 built-in eval datasets**: MMLU / CMMLU / C-Eval / GSM8K / MATH / HumanEval / MBPP / MT-Bench / GAOKAO-Bench (registered in `configs/datasets.yaml`, reused by Settings → Datasets) + custom local-path / uploaded JSONL datasets
+- **Scoring engines**: choice (per-subject accuracy) / math (exact_match with normalization) / code (sandboxed pass@1) / MT-Bench LLM-as-judge (turn & sub-dimension scores)
+- **Token estimation & strong reminder (Serving)**: pre-run estimate dialog (built-in constants + measured stats), estimate-vs-actual deviation after the task
+- **Open-source baseline benchmarking**: built-in baseline pool (Llama3 / Qwen2 / InternLM2 / Mistral / Chinese-special), diff pp, S/A/B/C grade, same-size ranking, ability radar chart and automatic conclusions
+- **Model & dataset sources from Settings**: model catalog reuse + custom model name / local weight path; **LoRA fine-tuned incremental models (`lora_path`)** supported for both accuracy and performance testing (peft on Native, server-registered adapter on Serving)
+- **Reports & linkage**: realtime task detail, per-sample traceability with wrong-set export, Native-vs-Serving consistency report, Datas/evals records page and Dashboard Eval Records
+- **Performance test enhancements**: Step2/3 create page UX (token-warning estimate dialog, copy icons, preview command synced with preview conditions incl. threshold statistic), Realtime **Peak output aligned to vLLM** (completion-time 1s window), `inf` high-concurrency support, UI aligned to Ant Design design tokens
+
+### 功能清单
+
+- **独立精度测试模块**：与性能模块彻底解耦——独立任务管理器、独立落库（`evals/` 三件套：task.json / result.json / samples.jsonl）、独立调度与报表
+- **双模式精度评测**：Serving 链路精度（任意 OpenAI 兼容服务）/ Native 原生精度（transformers 本地权重，可选依赖 + CUDA 环境校验），互不依赖可单独执行
+- **内置命令 `benchscope eval`**：与 Web 任务共用评测核心，终端输出精度指标，产物可导入 Datas/evals
+- **bench engines 并入精度内容**：benchscope（serving）/ native-hf（本地权重）/ mock（可控正确率）精度引擎，含环境校验与对比表「精度评测」维度
+- **9 个内置评测数据集**：MMLU / CMMLU / C-Eval / GSM8K / MATH / HumanEval / MBPP / MT-Bench / GAOKAO-Bench（datasets.yaml 注册、Settings → Datasets 展示）+ 自定义路径 / 上传 JSONL
+- **精度打分引擎**：客观题分学科判分 / 数学 exact_match（规范化等价）/ 代码沙箱 pass@1 / MT-Bench LLM-as-judge（单轮 / 多轮 / 分项）
+- **Token 预估与强提醒**（Serving 专属）：创建前置预估弹窗（内置常量表 + 实测统计），任务结束预估 vs 实际偏差
+- **开源基线对标**：内置基线库（含中文专项），差值百分点、S/A/B/C 档位、同尺寸排名、能力雷达图、自动结论（含风险预警）
+- **模型与数据集沿用设置界面**：Settings → Models 厂商目录选模型 + 自定义模型名 / 本地权重路径；**LoRA 微调增量模型（lora_path）** 精度与性能均可测
+- **报表与联动**：任务实时详情、单样本溯源与错题集导出、Native vs Serving 一致性对比、Datas/evals 记录页、Dashboard Eval Records 接通
+- **性能测试增强**：创建页 Step2/3 交互优化（Token 预估强提醒、复制图标、预览命令与预览条件对齐含阈值统计量）、Realtime **Peak output 对齐 vLLM**（完成时刻 1s 滑窗）、`inf` 高并发支持、UI 对齐 Ant Design 设计令牌
 
 ---
 
