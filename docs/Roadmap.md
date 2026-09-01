@@ -4,10 +4,18 @@ benchscope 按版本迭代推进，**倒序**列出各版本（最新在前）�
 
 ---
 
-## 1.0.8（开发中 / In Development）
+## 1.0.9（开发中 / In Development）
 
 - **发布时间**：待定
-- **迭代记录**（详见 [docs/versions/VERSION_1_0_8.md](versions/VERSION_1_0_8.md)）：
+- **迭代记录**（详见 [docs/versions/VERSION_1_0_9.md](versions/VERSION_1_0_9.md)）：
+- **规划**：1.0.8 发布后开启的下一迭代版本，待规划（后续按需求补充目标范围与 TODO）
+
+---
+
+## 1.0.8（已发布 / Released）
+
+- **发布时间**：2026-09-01
+- **迭代记录**（已归档，详见 [docs/versions/VERSION_1_0_8.md](versions/VERSION_1_0_8.md)）：
 
 **主目标：独立精度测试模块（Accuracy）落地**（规划来源：《BenchScope 独立精度测试模块完整功能规划》需求附件，实施路径 P1–P16 详见版本文档）
 
