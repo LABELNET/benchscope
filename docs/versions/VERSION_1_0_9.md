@@ -96,6 +96,92 @@
 
 ---
 
+### 迭代 4（2026-09-01 22:30:44）：Settings 四类 UI 细化
+
+**功能概述**：
+
+- Settings 页四类细节优化：侧边栏字号缩小、Root Dir 变更加确认弹窗、子目录只读改灰字无框、Provider 模型列表化加复制图标。
+
+**变更内容**：
+
+1. **前端 — SettingsView.vue**
+   - **侧边栏字号**：`.menu-item` 14px→**13px**、`.menu-icon` 18px→**16px**，区别于顶部主导航（14px）
+   - **Cache Paths / Root Dir 变更确认**：编辑框后附加小 **Save 按钮**（`.dir-save-btn`，不使用失焦/回车自动保存）；点击 Save 或按回车时若值有变更，弹出确认弹窗（`.dir-confirm-modal`）——**确定**保存新空白路径（原数据不迁移）；**取消**不保存、恢复原路径；新增 `confirmSaveDir/doSaveDir/cancelSaveDir` 与 `dirConfirmOpen/dirConfirmTarget`
+   - **Cache Paths / 子目录**：`.dir-value.readonly` 由浅蓝底+描边改**纯灰色文字、无框**
+   - **Providers / 模型**：模型由横排 `a-tag` 改**纵向内部列表**（`.provider-models-list`，`panel-row column`）——一行一个、左对齐、文字 12px、每行带复制图标（`.pm-copy`，`CopyOutlined`，点击复制模型名，新增 `copyModel`）
+2. **i18n — en.js / zh.js**：新增 `rootDirChangeTitle` / `rootDirChangeContent` / `copyModel`（en/zh 双语，`check-i18n` 通过）
+3. **测试 — tests/webui/test_ui.py**：更新 `test_settings_providers_no_activate_with_status`（模型标签 `.provider-model-tag` → 模型列表 `.pm-item` / `.pm-copy`）；新增 `test_settings_root_dir_confirm_cancel`（取消恢复原路径）、`test_settings_root_dir_confirm_ok_saves`（确定保存，结束后恢复原根目录防污染）
+4. **文档**：`docs/prds/Settings.md` §1.2 / §2 / §9 同步更新
+
+**验证（增量）**：
+
+- 前端 `npm run build` 成功；`check-i18n` OK；`py_compile test_ui.py` 通过
+- （本沙箱缺 pytest/playwright/Chromium，WebUI 测试未在本机执行；API 后端不受前端改动影响，构建产物已在开发环境 8080 验证可达）
+- **沙箱 500 根因与修复**：沙箱内 `~/.benchscope`（Home 目录）不可写，Root Dir 确认保存触发 `save()` 写 `settings.json` 时 `PermissionError` → 500。已按沙箱开发模式约定将后端以 `BENCHSCOPE_DATA_DIR=<workspace>/.dev-data` 重启（数据根落在可写工作区内），`POST /api/config/dirs` 实测返回 200 + 8 子目录重置新根，500 消除。
+
+**TODO 状态**：
+
+- [x] 前端 — 侧边栏字号 / Root Dir 确认弹窗 / 子目录灰字 / Provider 模型列表 + 复制
+- [x] i18n — 新增 rootDirChange* / copyModel（en/zh）
+- [x] 测试 — test_ui 更新与新增
+- [x] 文档 — Settings / VERSION 同步
+
+---
+
+### 迭代 5（2026-09-01 23:37:30）：Bench Engines 卡片边框按来源标色
+
+**功能概述**：
+
+- Settings → Bench Engines 每个引擎卡片边框加色：**内置引擎蓝色、用户上传自定义引擎紫色**。
+
+**变更内容**：
+
+1. **后端 — benchs.py**：`engine_summary` 新增 `origin` 字段（`builtin` / `custom`），依 `BUILTIN_ENGINE_IDS`（随包内置引擎 id 集：benchscope / vllm-0.23 / sglang-0.5.10 / native-hf / mock）判定；上传新增的引擎 id 不在集内 → `custom`
+2. **前端 — SettingsView.vue**：`.bench-card` 依 `eng.origin` 附加 `.bench-origin-builtin`（蓝，`--ant-color-primary`）/ `.bench-origin-custom`（紫，`--ant-color-purple`）边框类
+3. **文档**：`docs/prds/Settings.md` §5.2 同步
+
+**验证（增量）**：
+
+- `py_compile benchs.py` 通过；`npm run build` 成功
+- 实测 `GET /api/benchs`：现有 5 引擎均返回 `origin=builtin`（定制引擎经 Upload 导入后为 `custom`）
+- 前端构建产物已含两条边框规则，dev 后端（重启加载新代码）8080 可达
+
+**TODO 状态**：
+
+- [x] 后端 — engine_summary 加 origin（builtin/custom）
+- [x] 前端 — 引擎卡片边框蓝/紫
+- [x] 文档 — Settings / VERSION 同步
+
+---
+
+### 迭代 6（2026-09-01 23:45:12）：Performance 默认卡片对齐 Accuracy + Provider 模型改回绿色标签
+
+**功能概述**：
+
+- Performance 默认页三张介绍卡片样式与 Accuracy 默认页一致，图标补充渐变背景色；
+- Settings → Providers 卡片模型由「一行一个列表」改回「绿色标签框 + 复制小图标」。
+
+**变更内容**：
+
+1. **前端 — PerformanceView.vue**：`feature-card` 图标按序号附加 `fi-${idx % 4}` 渐变底色类（蓝/绿/橙/紫，对齐 Accuracy 的 `.fi-0..3`）；卡片标题/描述样式同步 Accuracy（标题 14px/600、描述次级色 2 行截断）
+2. **前端 — SettingsView.vue**：Provider 模型行改回**绿色标签框**（`a-tag color="green"` `.provider-model-tag`，可换行），标签内带**复制小图标**（`.tag-copy`，点击复制模型名）；移除上一版的 `.provider-models-list` / `.pm-item` / `.pm-copy` 列表样式
+3. **测试 — tests/webui/test_ui.py**：`test_settings_providers_no_activate_with_status` 改回断言 `.provider-model-tag` / `.tag-copy`
+4. **文档**：`docs/prds/Settings.md` §2、`docs/prds/Performance.md` §0.1 同步
+
+**验证（增量）**：
+
+- `npm run build` 成功；`check-i18n` OK；`py_compile test_ui.py` 通过
+- 实测 dev 8080：Performance 构建产物含 `.fi-0..3` 渐变类、Settings 构建产物含 `.tag-copy` 样式，均 HTTP 200 可达
+
+**TODO 状态**：
+
+- [x] 前端 — Performance 三卡图标背景色 + 卡片样式对齐 Accuracy
+- [x] 前端 — Provider 模型改回绿色标签 + 复制图标
+- [x] 测试 — test_ui 更新
+- [x] 文档 — Settings / Performance / VERSION 同步
+
+---
+
 ## 4. TODO 清单
 
 （1.0.9 待办，按规划补充后逐项勾选）

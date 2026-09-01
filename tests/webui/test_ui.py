@@ -483,6 +483,62 @@ def test_settings_sidebar(page):
     _visible(page, ".settings-sidebar .sidebar-title")
 
 
+def test_settings_root_dir_confirm_cancel(page):
+    """Root Dir 变更：点击 Save 后弹确认弹窗；点击取消不修改并恢复原值。"""
+    page.goto(f"{BASE_URL}/settings", wait_until="domcontentloaded")
+    _visible(page, ".settings-page")
+    # General 为默认栏：找到 Root Dir 可编辑项并读取原始值
+    row = page.locator(".dir-row").filter(has_text="Root Dir").first
+    row.wait_for(state="visible", timeout=10000)
+    original = row.locator(".dir-value.editable").inner_text()
+
+    # 点击进入编辑，改值后点击 Save（触发弹确认，而非直接保存/失焦）
+    row.locator(".dir-value.editable").click()
+    input_el = row.locator(".dir-input")
+    input_el.wait_for(state="visible", timeout=5000)
+    input_el.fill(original + "__cancel_test")
+    row.locator(".dir-save-btn").click()
+
+    # 确认弹窗出现
+    modal = page.locator(".dir-confirm-modal")
+    modal.wait_for(state="visible", timeout=8000)
+    # 点击取消 → 弹窗关闭，值恢复原路径
+    page.locator(".dir-confirm-modal .ant-btn").filter(has_text="Cancel").first.click()
+    page.wait_for_timeout(400)
+    row = page.locator(".dir-row").filter(has_text="Root Dir").first
+    assert row.locator(".dir-value.editable").inner_text() == original, "取消后应恢复原路径"
+
+
+def test_settings_root_dir_confirm_ok_saves(page):
+    """Root Dir 变更：确认后保存为新空白路径（无迁移）；测试结束恢复原值，避免污染后续用例。"""
+    page.goto(f"{BASE_URL}/settings", wait_until="domcontentloaded")
+    _visible(page, ".settings-page")
+    row = page.locator(".dir-row").filter(has_text="Root Dir").first
+    row.wait_for(state="visible", timeout=10000)
+    original = row.locator(".dir-value.editable").inner_text()
+
+    def change_to(value):
+        row = page.locator(".dir-row").filter(has_text="Root Dir").first
+        row.locator(".dir-value.editable").click()
+        page.locator(".dir-input").wait_for(state="visible", timeout=5000)
+        page.locator(".dir-input").fill(value)
+        row.locator(".dir-save-btn").click()
+        page.locator(".dir-confirm-modal").wait_for(state="visible", timeout=8000)
+        page.locator(".dir-confirm-modal .ant-btn-primary").first.click()
+        page.locator(".dir-confirm-modal").wait_for(state="hidden", timeout=8000)
+
+    try:
+        change_to(original + "__ok_test")
+        acts = [el.inner_text() for el in page.locator(".dir-row").filter(has_text="Root Dir").locator(".dir-value.editable").all()]
+        assert any("__ok_test" in a for a in acts), f"确认后应保存新路径: {acts}"
+    finally:
+        # 恢复原根目录，保持被测服务配置一致
+        try:
+            change_to(original)
+        except Exception:
+            pass
+
+
 def test_sessions_new_chat(page):
     """Sessions 新建会话 -> 列表出现会话项。"""
     page.goto(f"{BASE_URL}/sessions", wait_until="domcontentloaded")
@@ -786,7 +842,7 @@ def test_settings_providers_no_activate_with_status(page):
 
     # 状态显示在面板内（online/offline）
     assert card.locator(".env-status").count() >= 1, "Provider 面板应显示在线状态"
-    # 模型行：等待探测完成（在线显示模型标签 / 离线显示「暂无模型」）
+    # 模型行：等待探测完成（在线显示绿色模型标签 / 离线显示「暂无模型」）
     page.wait_for_function(
         "() => { const c = document.querySelector('.provider-card');"
         " return c && (c.querySelector('.provider-model-tag') || c.querySelector('.no-model')); }",
@@ -794,6 +850,9 @@ def test_settings_providers_no_activate_with_status(page):
     )
     card = page.locator(".provider-card").first
     assert card.locator(".provider-model-tag, .no-model").count() >= 1, "模型行应显示模型标签或暂无模型"
+    # 模型标签为绿色框且带复制图标
+    if card.locator(".provider-model-tag").count():
+        assert card.locator(".provider-model-tag .tag-copy").count() >= 1, "每个模型标签应带复制图标"
 
 
 def test_sessions_provider_select_header_color(page):

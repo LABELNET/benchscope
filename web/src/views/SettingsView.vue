@@ -41,27 +41,41 @@
               <span class="field-desc">{{ dirDesc(d) }}</span>
             </div>
             <div class="dir-right">
-              <!-- Root Dir（可编辑）：失焦即保存并创建子目录，无需重启、无提醒 -->
+              <!-- Root Dir（可编辑）：编辑框 + 小 Save 按钮，点击 Save 弹确认（不使用失焦） -->
               <template v-if="!d.readonly">
-                <a-input
-                  v-if="editingKey === d.key"
-                  v-model:value="editValue"
-                  size="small"
-                  class="dir-input"
-                  @pressEnter="saveDir(d)"
-                  @blur="saveDir(d)"
-                />
+                <span v-if="editingKey === d.key" class="dir-edit">
+                  <a-input
+                    v-model:value="editValue"
+                    size="small"
+                    class="dir-input"
+                    @pressEnter="confirmSaveDir(d)"
+                  />
+                  <a-button type="primary" size="small" class="dir-save-btn" @click="confirmSaveDir(d)">
+                    {{ t('save') }}
+                  </a-button>
+                </span>
                 <span
                   v-else
                   class="dir-value editable"
                   @click="startEdit(d)"
                 >{{ d.value }}</span>
               </template>
-              <!-- 子目录（只读高亮展示，不可修改） -->
+              <!-- 子目录（只读灰色文字展示，不可修改） -->
               <span v-else class="dir-value readonly" :title="d.value">{{ d.value }}</span>
             </div>
           </div>
         </a-card>
+
+        <!-- Root Dir 变更确认：确定后创建新空白存储路径，原数据不迁移；取消则恢复原值 -->
+        <a-modal
+          v-model:open="dirConfirmOpen"
+          class="dir-confirm-modal"
+          :title="t('rootDirChangeTitle')"
+          @ok="doSaveDir"
+          @cancel="cancelSaveDir"
+        >
+          <p class="dir-confirm-content">{{ t('rootDirChangeContent') }}</p>
+        </a-modal>
       </div>
 
       <!-- Environment：本地测试环境面板 -->
@@ -124,7 +138,10 @@
             <span class="panel-value">
               <a-spin v-if="p._probing" size="small" />
               <template v-else>
-                <a-tag v-for="m in (p._models || [])" :key="m" color="blue" class="provider-model-tag">{{ m }}</a-tag>
+                <a-tag v-for="m in (p._models || [])" :key="m" color="green" class="provider-model-tag">
+                  <span class="tag-text">{{ m }}</span>
+                  <CopyOutlined class="tag-copy" :title="t('copyModel')" @click="copyModel(m)" />
+                </a-tag>
                 <span v-if="!(p._models || []).length" class="no-model">{{ t('noModel') }}</span>
               </template>
             </span>
@@ -349,7 +366,11 @@
                 v-for="eng in benches"
                 :key="eng.id"
                 class="bench-card"
-                :class="{ 'bench-default': eng.id === defaultEngineId }"
+                :class="{
+                  'bench-default': eng.id === defaultEngineId,
+                  'bench-origin-builtin': eng.origin === 'builtin',
+                  'bench-origin-custom': eng.origin === 'custom',
+                }"
               >
                 <div class="bench-head">
                   <div class="bench-head-left">
@@ -615,7 +636,7 @@ import { computed, onMounted, reactive, ref } from 'vue'
 import { message } from 'ant-design-vue'
 import {
   ControlOutlined, CloudServerOutlined, RobotOutlined, DatabaseOutlined,
-  ExperimentOutlined, ApiOutlined, BookOutlined,
+  ExperimentOutlined, ApiOutlined, BookOutlined, CopyOutlined,
 } from '@ant-design/icons-vue'
 import { api } from '@/api'
 import { useConfigStore } from '@/store/config'
@@ -773,6 +794,9 @@ const dirs = ref([])
 const editingKey = ref('')
 const editValue = ref('')
 const savingDirKey = ref('')
+// Root Dir 变更确认弹窗：确定后创建新空白存储路径，取消恢复原路径
+const dirConfirmOpen = ref(false)
+const dirConfirmTarget = ref(null) // { key, value }
 
 const form = reactive({
   locale: 'en',
@@ -871,6 +895,55 @@ async function saveDir(d) {
     loadDirs()
   } finally {
     savingDirKey.value = ''
+  }
+}
+
+// Root Dir（可编辑）失焦/回车时：值有变更则弹确认弹窗；确定→保存为新空白路径，取消→恢复原路径
+function confirmSaveDir(d) {
+  const val = (editValue.value || '').trim()
+  if (!val || val === d.value) {
+    cancelEdit()
+    return
+  }
+  dirConfirmTarget.value = { key: d.key, value: val }
+  dirConfirmOpen.value = true
+}
+
+// 确认 → 保存为新的空白存储路径（原数据不迁移，后端按新根目录创建子目录）
+async function doSaveDir() {
+  const target = dirConfirmTarget.value
+  dirConfirmOpen.value = false
+  dirConfirmTarget.value = null
+  if (!target) return
+  savingDirKey.value = target.key
+  try {
+    await api.updateDirs({ [target.key]: target.value })
+    cancelEdit()
+    await loadDirs()
+  } catch (e) {
+    message.error(e.message || t('saveFail'))
+    loadDirs()
+  } finally {
+    savingDirKey.value = ''
+  }
+}
+
+// 取消 → 不保存，编辑内容丢弃，恢复显示原路径
+function cancelSaveDir() {
+  dirConfirmOpen.value = false
+  dirConfirmTarget.value = null
+  cancelEdit()
+}
+
+// 复制 Provider 模型名
+async function copyModel(name) {
+  const text = String(name || '')
+  if (!text) return
+  try {
+    await navigator.clipboard.writeText(text)
+    message.success(t('copyModel') + ': ' + text)
+  } catch {
+    message.warning(t('copyFailed'))
   }
 }
 
@@ -1219,7 +1292,7 @@ async function downloadSkill(s) {
   padding: 10px 14px;
   border-radius: 10px;
   cursor: pointer;
-  font-size: 14px;
+  font-size: 13px;
   color: var(--ant-color-text-secondary, #555);
   transition: all 0.2s;
 }.menu-item:hover{
@@ -1230,7 +1303,7 @@ async function downloadSkill(s) {
   color: var(--ant-color-primary, #1677ff);
   font-weight: 500;
 }.menu-icon{
-  font-size: 18px;
+  font-size: 16px;
 }/* ===== 右侧内容 ===== */.settings-content{
   flex: 1;
   overflow-y: auto;
@@ -1315,6 +1388,15 @@ async function downloadSkill(s) {
   flex-shrink: 0;
 }.dir-input{
   width: 340px;
+}.dir-edit{
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}.dir-save-btn{
+  height: 24px;
+  line-height: 24px;
+  font-size: 12px;
+  padding: 0 10px;
 }.dir-value{
   display: inline-flex;
   align-items: center;
@@ -1332,12 +1414,9 @@ async function downloadSkill(s) {
 }.dir-value.editable:hover{
   color: var(--ant-color-primary-hover, #4096ff);
 }.dir-value.readonly{
-  /* 子目录：只读高亮展示（跟随 Root Dir，不可修改） */
-  background: rgba(22, 119, 255, 0.08);
-  border: 1px solid rgba(22, 119, 255, 0.18);
-  border-radius: 4px;
-  padding: 1px 8px;
-  color: var(--ant-color-text, #333);
+  /* 子目录：只读灰色文字展示，无需框（跟随 Root Dir，不可修改） */
+  color: var(--ant-color-text-secondary, #666);
+  font-weight: 400;
   max-width: 460px;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1738,14 +1817,40 @@ async function downloadSkill(s) {
   font-size: 13px;
   max-width: 520px;
 }
+/* Provider 面板：模型以绿色标签（框）展示，标签内带复制小图标，可换行 */
 .provider-model-tag {
-  max-width: 220px;
+  max-width: 240px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 1px 6px 1px 7px;
+  overflow: hidden;
+  white-space: nowrap;
+}
+.provider-model-tag .tag-text {
   overflow: hidden;
   text-overflow: ellipsis;
+}
+.provider-model-tag .tag-copy {
+  flex-shrink: 0;
+  font-size: 12px;
+  cursor: pointer;
+  color: rgba(0, 0, 0, 0.55);
+  transition: color 0.15s;
+}
+.provider-model-tag .tag-copy:hover {
+  color: var(--ant-color-primary, #1677ff);
 }
 .no-model {
   font-size: 12px;
   color: var(--ant-color-text-tertiary, #999);
+}
+/* Root Dir 变更确认弹窗内容 */
+.dir-confirm-content {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.7;
+  color: var(--ant-color-text, #333);
 }
 
 /* ---------------- Bench 引擎面板 ---------------- *//* 整页即引擎列表：顶部操作栏固定，列表区可滑动 */.bench-tab{
@@ -1861,6 +1966,10 @@ async function downloadSkill(s) {
   color: var(--ant-color-text-secondary, #666);
 }.bench-card.bench-default{
   border-color: var(--ant-color-primary, #1677ff);
+}.bench-card.bench-origin-builtin{
+  border-color: var(--ant-color-primary, #1677ff);
+}.bench-card.bench-origin-custom{
+  border-color: var(--ant-color-purple, #722ed1);
 }.bench-head{
   display: flex;
   align-items: center;

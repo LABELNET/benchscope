@@ -184,6 +184,7 @@ export default {
   providerNameRequired: 'Provider Name is required',
   providerModels: 'Models',
   noModel: 'No models',
+  copyModel: 'Copy model',
   selectInferenceProvider: 'Select Provider',
   noProvider: 'No providers yet — click Add Provider to create one',
   // ---- Create task: max requests (1.0.7) ----
@@ -255,6 +256,9 @@ export default {
   migrating: 'Migrating data...',
   restarting: 'Restarting service, please wait...',
   restartFail: 'Failed to restart service',
+  // ---- Settings → General → Root Dir change confirm (1.0.9) ----
+  rootDirChangeTitle: 'Change data storage path',
+  rootDirChangeContent: 'Click OK to create a new blank storage path from the new Root Dir. Existing data will NOT be migrated. Continue?',
 
   refresh: 'Refresh',
   service: 'Service',

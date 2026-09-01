@@ -1,7 +1,7 @@
 # benchscope Performance 任务执行页 — 双模式核心逻辑与联动说明
 
-> **版本**：v1.0.8  
-> **最后更新**：2026-09-01  
+> **版本**：v1.0.9  
+> **最后更新**：2026-09-01 23:45:12  
 > **文档状态**：Performance 任务执行页双模式（并发 / 阈值）核心逻辑策略与联动关系说明  
 > **前置文档**：[VERSION_1_0_5.md](../versions/VERSION_1_0_5.md)
 
@@ -25,6 +25,7 @@ Performance 任务执行页存在两种执行模式，由任务创建时的 `mod
 - **Threshold Search 描述精简为 2 行**（1.0.8，i18n `featThresholdModeDesc` 中英双语）：
   设置 TTFT / TPOT / 吞吐阈值，自动搜索满足阈值的最大并发。
 - **描述 2 行截断**（1.0.8）：`.feature-card .ant-card-meta-description` 加 `-webkit-line-clamp: 2`（配合精简文案稳定 2 行）。
+- **图标背景色（1.0.9，与 Accuracy 一致）**：每张卡片 `feature-icon` 按序号附加 `fi-${idx % 4}` 渐变底色类（`.fi-0` 蓝 / `.fi-1` 绿 / `.fi-2` 橙 / `.fi-3` 紫），与 Accuracy 默认页三卡样式一致；卡片标题/描述样式同步 Accuracy（标题 14px/600、描述次级色 2 行）。
 
 ---
 

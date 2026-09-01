@@ -24,6 +24,10 @@ log = logging.getLogger("benchscope.benchs")
 CONFIGS_DIR = Path(__file__).resolve().parent / "configs"
 BENCHS_YAML = CONFIGS_DIR / "benchs.yaml"
 
+# 随包内置的引擎 id（引擎卡边框标色用：内置蓝 / 用户上传自定义紫）。
+# 用户通过 Settings → Upload Engine 上传/新增的引擎 id 不在本集内，归为 custom。
+BUILTIN_ENGINE_IDS = {"benchscope", "vllm-0.23", "sglang-0.5.10", "native-hf", "mock"}
+
 # 版本比较：轻量实现，避免新增 packaging 依赖
 _VER_RE = re.compile(r"^(\d+)(?:\.(\d+))?(?:\.(\d+))?(.*)$")
 
@@ -269,6 +273,7 @@ def engine_summary(engine: dict, with_env: bool = True) -> dict:
     out = {
         "id": engine.get("id"),
         "kind": engine.get("kind"),
+        "origin": "builtin" if engine.get("id") in BUILTIN_ENGINE_IDS else "custom",
         "framework": engine.get("framework"),
         "version": engine.get("version"),
         "name": engine.get("name"),

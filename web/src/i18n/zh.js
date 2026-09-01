@@ -191,6 +191,7 @@ export default {
   providerNameRequired: 'Provider Name 为必填项',
   providerModels: '模型',
   noModel: '暂无模型',
+  copyModel: '复制模型名',
   selectInferenceProvider: '选择 Provider',
   noProvider: '暂无 Provider，点击右上角 Add Provider 添加',
   // ---- 创建任务：最大请求数（1.0.7） ----
@@ -262,6 +263,9 @@ export default {
   migrating: '正在迁移数据...',
   restarting: '服务重启中，请稍候...',
   restartFail: '重启服务失败',
+  // ---- Settings → General → Root Dir 变更确认（1.0.9） ----
+  rootDirChangeTitle: '更改数据存储路径',
+  rootDirChangeContent: '点击确定将根据新的 Root Dir 创建新的空白数据存储路径，原有数据不会迁移。是否继续？',
 
   // 通用
   service: '服务',

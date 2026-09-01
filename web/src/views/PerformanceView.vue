@@ -27,10 +27,10 @@
         </a-result>
         <div class="features">
           <a-row :gutter="[24, 24]" justify="center">
-            <a-col :xs="24" :sm="8" v-for="feat in features" :key="feat.title">
+            <a-col :xs="24" :sm="8" v-for="(feat, idx) in features" :key="feat.title">
               <a-card size="small" class="feature-card" hoverable>
                 <template #cover>
-                  <div class="feature-icon">{{ feat.icon }}</div>
+                  <div class="feature-icon" :class="`fi-${idx % 4}`">{{ feat.icon }}</div>
                 </template>
                 <a-card-meta :title="feat.title" :description="feat.desc" />
               </a-card>
@@ -772,10 +772,14 @@ onMounted(async () => {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ant-color-text, rgba(0, 0, 0, 0.88));
 }
 .feature-card :deep(.ant-card-meta-description) {
   line-height: 20px;
   margin-top: 4px;
+  color: var(--ant-color-text-secondary, #666);
   display: -webkit-box;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
@@ -785,6 +789,10 @@ onMounted(async () => {
   font-size: 48px;
   padding-top: 24px;
 }
+.fi-0 { background: linear-gradient(135deg, rgba(22,119,255,.08), transparent); }
+.fi-1 { background: linear-gradient(135deg, rgba(82,196,26,.08), transparent); }
+.fi-2 { background: linear-gradient(135deg, rgba(250,173,20,.08), transparent); }
+.fi-3 { background: linear-gradient(135deg, rgba(114,46,209,.08), transparent); }
 .result-icon {
   font-size: 72px;
   color: var(--ant-color-primary, #1677ff);

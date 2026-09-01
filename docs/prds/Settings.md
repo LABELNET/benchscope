@@ -1,7 +1,7 @@
 # benchscope Settings 页面 — 功能与约束说明
 
-> **版本**：v1.0.7  
-> **最后更新**：2026-08-30 23:00:00  
+> **版本**：v1.0.9  
+> **最后更新**：2026-09-01 23:45:12  
 > **文档状态**：Settings 页面七个侧边栏（General / Providers / Models / Datasets / Bench Engines / Skills / Plugins）的功能与约束条件说明  
 > **关联文档**：[Performance.md](./Performance.md) · [Dashboard.md](./Dashboard.md)
 
@@ -49,8 +49,10 @@ Settings 页面左侧 7 个侧边栏：
 | Plugins | `plugins_dir` | `~/.benchscope/plugins` | 插件安装加载目录，子目录，只读 |
 
 **交互（1.0.9 改版）**：
-- **Root Dir（`data_dir`）可编辑**：点击值 → 输入框；**失焦（blur）或回车即保存**，保存后后端立即把 8 个子目录重置为新根下的默认子目录并创建目录；**静默、无任何提醒**（无重启确认 / 无迁移弹窗 / 无 toast）。
-- **8 个子目录只读高亮展示**（`.dir-value.readonly`：浅蓝底 + 描边 + 圆角），不可点击编辑；值跟随 Root Dir 自动更新。
+- **Root Dir（`data_dir`）可编辑**：点击值 → 输入框 + 输入框后紧跟**小 Save 按钮**（`.dir-save-btn`，不使用失焦/回车自动保存）；点击 **Save**（或按回车）时若值有变更，弹出确认弹窗（`.dir-confirm-modal`）：
+  - **确定（OK）** → 保存新 Root Dir，后端立即把 8 个子目录重置为新根下的默认子目录并创建目录（**新空白存储路径，旧数据不迁移**）；
+  - **取消（Cancel）** → 不保存、编辑内容丢弃，恢复显示原路径。
+- **8 个子目录只读灰色文字展示**（`.dir-value.readonly`：仅灰色文字、**无边框无底色**），不可点击编辑；值跟随 Root Dir 自动更新。
 - **修改 Root Dir 无需重启服务，以环境变量形式使用**：后端 `ConfigManager` 在更新时把数据根目录同步到 `os.environ['BENCHSCOPE_DATA_DIR']`；`runner.py` 的 `minimal_env` 将该环境变量**透传给 bench 子进程**（vllm / sglang / bench CLI），因此改根目录对子进程即时生效，无需重启服务。
 - **旧数据不迁移**：改 Root Dir 不迁移旧根目录数据（旧数据原样留在旧位置）。
 - **删除重启/迁移流程（1.0.9）**：移除改 Data 弹「重启 + 迁移」确认、迁移进度 Modal、`POST /api/config/restart` 的前端调用（后端接口保留兼容）。
@@ -69,7 +71,7 @@ Settings 页面左侧 7 个侧边栏：
 - **每个 Provider 面板**：
   - 字段：Provider Name / Base URL / API Key（`Edit` → 编辑 → `Save`，逐面板独立编辑态）
   - **模型状态行**：探测该 Provider 的 `{base_url}/v1/models` → 展示在线状态（在线绿 `a-badge success` / 离线红 `error`）与模型数
-  - **模型行**：列出该 Provider 可用模型（`a-tag .provider-model-tag`）；无模型显示「无模型」（`.no-model`）
+  - **模型行（1.0.9 改版）**：列出该 Provider 可用模型为**绿色标签框**（`a-tag color="green"` `.provider-model-tag`，可换行），**标签内带复制小图标**（`.tag-copy`，`CopyOutlined`，点击复制模型名）；无模型显示「无模型」（`.no-model`）
   - **Delete**：删除该 Provider；新增 / 编辑 / 删除后自动重新探测状态与模型
   - 原 **Activate 按钮与 Active 标签已移除**（1.0.7）：不再需要激活
 - **使用处自行选择 Provider（1.0.7）**：
@@ -175,6 +177,7 @@ Settings 页面左侧 7 个侧边栏：
   - **左侧 title**：引擎名称（Bench CLI / vLLM 0.23 / SGLang 0.5.10）+ 标识（默认标记 + kind 标签 `builtin` 紫 / `vllm`、`sglang` 青）
   - **右侧**：版本号（`.bench-version`，如 `v0.23`）
 - 内容区：环境状态标签（`Ready` / `Not Satisfied`）、介绍文案、亮点列表（`highlights`）
+- **卡片边框按来源标色（1.0.9）**：内置引擎（`origin=builtin`）边框蓝色（`.bench-origin-builtin`，`--ant-color-primary`）；用户上传自定义引擎（`origin=custom`）边框紫色（`.bench-origin-custom`，`--ant-color-purple`）。`origin` 由后端 `engine_summary` 依 `BUILTIN_ENGINE_IDS`（随包内置 id 集）判定，上传新增的引擎 id 不在集内 → custom。
 - 环境要求明细（`requires`）：要求版本 / 已安装 / OK-FAIL；不满足时展示安装提示
 - **Bench CLI（自研引擎）无 `requires`**，展示「无框架环境依赖，安装即用」
 
@@ -282,6 +285,7 @@ Settings 页面左侧 7 个侧边栏：
 | 面板样式 | 均为 `size="small"` 卡片，标签 12px，与 Dashboard 面板字体保持一致 |
 | 语言切换 | 立即生效并持久化；默认英文 |
 | 布局 | 左侧一级菜单（General/Providers/Models/Datasets/Bench Engines/Skills/Plugins）+ 右侧内容区；Models/Datasets/Bench Engines/Skills 四个栏位均用 `.content-fill`（副侧边栏贴右主导航 + 内容区内部滚动，padding `22px 16px 18px`） |
+| 侧边栏字号（1.0.9） | **左侧一级菜单字体缩小**（`.menu-item` 13px、`.menu-icon` 16px），区别于顶部主导航（Ant Design 横向菜单 14px） |
 | Bench Engines 布局 | 整页为可滑动引擎列表 + 右上角文字按钮（操作入口）；对比表与上传/教程均为弹框，不内联占用页面 |
 
 ## 10. 相关文档约定
