@@ -114,8 +114,11 @@
   - **原生引擎（vllm / sglang）** → 对应 CLI 命令（`vllm bench serve` / `python -m sglang.bench_serving`），
     Step2 编辑的引擎参数以 `--key=value` 附加
 - **命令与预览条件一致（1.0.8）**：自研引擎阈值模式下，预览命令体现真实执行的阈值探测参数——
-  追加 `--mode threshold --ttft-threshold-ms --tpot-threshold-ms --output-threshold --max-requests`
-  （阈值取该组 `length_pairs` 第 5 元素，缺省回退任务级字段），与「预览条件」展示的 TTFT/TPOT/Output/Max Requests 一致
+  追加 `--mode threshold --ttft-statistic --tpot-statistic --ttft-threshold-ms --tpot-threshold-ms --output-threshold --max-requests`
+  （阈值取该组 `length_pairs` 第 5 元素，缺省回退任务级字段），与「预览条件」展示的 TTFT/TPOT/Output/Max Requests **及所选统计量**（mean/median/p99）一致；
+  `--ttft-statistic` / `--tpot-statistic` 携带该组所选统计量（阈值判定按该统计量比较，CLI `benchscope perf --mode threshold` 同源对齐 Web 执行策略）
+- **预览命令与预览条件实时对齐（1.0.8）**：预览命令**随 Provider / 模型 / 引擎参数 / 条件 / 模式变化实时刷新**（`watch` 监听源 + 250ms 防抖，停留 Step3 且模型已选时自动重新 `loadPreview()`），切换 Provider 后命令中的 `--base-url` 等与预览条件的 Base URL 保持一致
+- **预览命令展示（1.0.8）**：命令为**单行可复制**（`pre-wrap` 软换行展示，`copyCommand` 复制原始单行可直接粘贴终端执行）；不再强制每参数拆行
 - Bench CLI 预览命令**可直接复制到终端执行**（新增 `benchscope perf` 子命令，见 [rules/BenchEngine.md](../rules/BenchEngine.md)）
 - 「启动」→ **Token 使用预警弹窗（1.0.8，仅前端估算）** → Modal 确认 → `createTask` + `startTask` + 设为当前任务 → 跳回 `/performance` 任务执行页
 - **Token 预警弹窗 UI（1.0.8）**：header 为标题；内容=灰色小字提示（`.token-hint`，**不滚动**）+ 分组 token 计算列表（`.token-groups`，**列表滚动**）；footer=左侧总输入/输出 token（百万单位）+ 右侧取消/确定

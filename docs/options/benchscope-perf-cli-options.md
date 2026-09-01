@@ -64,6 +64,8 @@ benchscope perf --model Qwen2.5-7B --mode threshold \
 | `--ttft-threshold-ms` | float | `0.0` | TTFT 阈值（ms），`0` = 不判定 |
 | `--tpot-threshold-ms` | float | `100.0` | TPOT 阈值（ms），`0` = 不判定 |
 | `--output-threshold` | float | `0.0` | 输出吞吐阈值（tok/s），**低于**该值判为不满足，`0` = 不判定 |
+| `--ttft-statistic` | str | `mean` | TTFT 阈值判定的统计量：`mean` / `median` / `p99` |
+| `--tpot-statistic` | str | `mean` | TPOT 阈值判定的统计量：`mean` / `median` / `p99` |
 | `--max-concurrency-search` | int | `4096` | 阈值搜索上限：达到仍满足阈值则取上限为最佳并发 |
 | `--max-requests` | int | `4096` | 阈值探测中并发数超过该上限则强制结束（Finish） |
 

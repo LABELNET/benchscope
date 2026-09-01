@@ -223,7 +223,7 @@
 </template>
 
 <script setup>
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { message, Modal } from 'ant-design-vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ArrowLeftOutlined, CopyOutlined } from '@ant-design/icons-vue'
@@ -725,6 +725,29 @@ async function loadPreview() {
     message.error(e.message || '生成预览命令失败')
   }
 }
+
+// 预览命令与预览条件实时对齐：Provider / 模型 / 引擎参数 / 条件 / 模式变化时，
+// 若停留在 Step3 则自动重新生成命令（保证切换 Provider 后命令中的 base url 等与预览条件一致）
+let previewRefreshTimer = null
+watch(
+  [
+    providerId,
+    model,
+    mode,
+    maxRequests,
+    () => engineParams.value.content,
+    () => JSON.stringify(conditions.value),
+  ],
+  () => {
+    clearTimeout(previewRefreshTimer)
+    previewRefreshTimer = setTimeout(() => {
+      if (step.value === 3 && model.value) {
+        syncEngineParams()
+        loadPreview()
+      }
+    }, 250)
+  }
+)
 
 function cancel() {
   goBack()

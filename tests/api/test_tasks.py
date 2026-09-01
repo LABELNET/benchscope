@@ -48,6 +48,9 @@ def test_preview_builtin_threshold_command(client, base_url):
     cmd = r.json()["commands"][0]["cmd"]
     assert "--engine benchscope" in cmd
     assert "--mode threshold" in cmd, f"阈值模式预览命令应含 --mode threshold: {cmd}"
+    # 阈值统计量随预览条件展示（TTFT(median) / TPOT(p99)），命令需一致携带
+    assert "--ttft-statistic median" in cmd, cmd
+    assert "--tpot-statistic p99" in cmd, cmd
     assert "--ttft-threshold-ms 50" in cmd, cmd
     assert "--tpot-threshold-ms 120" in cmd, cmd
     assert "--output-threshold 200" in cmd, cmd

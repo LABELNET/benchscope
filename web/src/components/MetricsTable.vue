@@ -117,7 +117,7 @@ const ALL_COLUMNS = computed(() => [
   // 吞吐
   { key: 'request_throughput', title: t('requestThroughputCol'), group: 'throughput', width: 140, default: false },
   { key: 'output_mean', title: t('outputThroughputCol'), group: 'throughput', width: 140, default: true },
-  { key: 'peakoutput_mean', title: t('peakOutputThroughputCol'), group: 'throughput', width: 150, default: true },
+  { key: 'peakoutput_mean', title: t('peakOutputThroughputCol'), group: 'throughput', width: 150, default: false },
   { key: 'peak_concurrent', title: t('peakConcurrentCol'), group: 'throughput', width: 130, default: false },
   { key: 'total_mean', title: t('totalThroughputCol'), group: 'throughput', width: 140, default: true },
   // TTFT

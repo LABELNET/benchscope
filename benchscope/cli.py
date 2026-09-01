@@ -126,11 +126,14 @@ def _perf_threshold(args, run_one) -> int:
     out_thr = args.output_threshold
     search_cap = args.max_concurrency_search
     max_requests = args.max_requests
+    # 阈值统计量：mean / median / p99（与创建页预览条件/执行策略的 statistic 一致）
+    ttft_key = f"ttft_{args.ttft_statistic or 'mean'}"
+    tpot_key = f"tpot_{args.tpot_statistic or 'mean'}"
 
     def violated(m) -> bool:
-        if ttft_thr > 0 and m.get("ttft_mean") is not None and float(m["ttft_mean"]) > ttft_thr:
+        if ttft_thr > 0 and m.get(ttft_key) is not None and float(m[ttft_key]) > ttft_thr:
             return True
-        if tpot_thr > 0 and m.get("tpot_mean") is not None and float(m["tpot_mean"]) > tpot_thr:
+        if tpot_thr > 0 and m.get(tpot_key) is not None and float(m[tpot_key]) > tpot_thr:
             return True
         if out_thr > 0 and m.get("output_mean") is not None and float(m["output_mean"]) < out_thr:
             return True
@@ -451,6 +454,10 @@ def _add_perf_args(p: argparse.ArgumentParser) -> None:
                    help="TPOT 阈值（ms），0 = 不判定")
     p.add_argument("--output-threshold", type=float, default=0.0,
                    help="输出吞吐阈值（tok/s），低于该值判为不满足，0 = 不判定")
+    p.add_argument("--ttft-statistic", default="mean", choices=["mean", "median", "p99"],
+                   help="TTFT 阈值判定的统计量（mean/median/p99，默认 mean）")
+    p.add_argument("--tpot-statistic", default="mean", choices=["mean", "median", "p99"],
+                   help="TPOT 阈值判定的统计量（mean/median/p99，默认 mean）")
     p.add_argument("--max-concurrency-search", type=int, default=4096,
                    help="阈值搜索上限：达到仍满足阈值则取上限为最佳并发")
     p.add_argument("--max-requests", type=int, default=4096,

@@ -72,7 +72,7 @@ N         输出 token 数         → 服务端 usage.completion_tokens
 | **`tpot_{mean,median,p99}`** | **`(E2E - TTFT) / (completion_tokens - 1)`**（ms） |
 | `itl_{mean,median,p99}` | 相邻 chunk 间隔 `t_i - t_{i-1}`（ms） |
 | `e2e_{mean,median,p99}` | `t_end - t0`（ms） |
-| `peakoutput_mean` | 1 秒滑窗内最大完成 token 数 |
+| `peakoutput_mean` | 1 秒滑窗内**完成请求**的输出 token 数峰值（vLLM `output_tps_peak` 口径：完成时刻整段记入） |
 | `single_user` | 用户 QPS = `1000 / tpot_mean` |
 | `successful/failed_requests` | 成功 / 失败计数 |
 

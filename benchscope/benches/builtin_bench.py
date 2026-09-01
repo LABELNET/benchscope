@@ -168,6 +168,8 @@ def build_command(opts: "BuiltinOptions", engine_id: str = "benchscope") -> list
     if opts.mode == "threshold":
         cmd += [
             "--mode", "threshold",
+            "--ttft-statistic", opts.ttft_statistic or "mean",
+            "--tpot-statistic", opts.tpot_statistic or "mean",
             "--ttft-threshold-ms", f"{_as_float(opts.ttft_threshold_ms, 0.0):g}",
             "--tpot-threshold-ms", f"{_as_float(opts.tpot_threshold_ms, 0.0):g}",
             "--output-threshold", f"{_as_float(opts.output_throughput_threshold, 0.0):g}",
@@ -185,7 +187,7 @@ class RequestRecord:
     first_token: Optional[float] = None   # t_first
     end: Optional[float] = None           # t_end
     itls: list = field(default_factory=list)      # 相邻 chunk 间隔（ms）
-    output_events: list = field(default_factory=list)  # (t, tokens)：逐 chunk 产出 token 时间序列（peak 滑窗用）
+    output_events: list = field(default_factory=list)  # (t, tokens)：逐 chunk 产出 token 时间序列（信息性，含 usage 增量估算）
     completion_tokens: int = 0
     prompt_tokens: int = 0
     error: str = ""
@@ -216,6 +218,8 @@ class BuiltinOptions:
     ttft_threshold_ms: float = 0.0            # 阈值模式：TTFT 阈值（0 = 不判定）
     tpot_threshold_ms: float = 100.0          # 阈值模式：TPOT 阈值（0 = 不判定）
     output_throughput_threshold: float = 0.0  # 阈值模式：输出吞吐阈值（0 = 不判定）
+    ttft_statistic: str = "mean"              # 阈值模式：TTFT 统计量（mean/median/p99）
+    tpot_statistic: str = "mean"              # 阈值模式：TPOT 统计量（mean/median/p99）
 
 
 # ---------------------------------------------------------------------------
@@ -467,29 +471,33 @@ def compute_metrics(records: list[RequestRecord], duration: float, concurrency: 
 
 
 def _peak_output_throughput(oks: list[RequestRecord], duration: float) -> float:
-    """峰值输出吞吐（vLLM 语义）：1 秒滑窗内**实际产出**的最大 token 数。
+    """峰值输出吞吐（vLLM 语义）：1 秒滑窗内**完成请求**的输出 token 数峰值。
 
-    与 vLLM 一致：基于每个输出 token / chunk 的**产出时刻**做滑动窗口统计，
-    反映窗口内真实产出速率（而非在请求结束时刻一次性记入整段 token）。
-    回退：请求无逐 chunk 产出记录时，用请求完成时刻整段 token 估算。
+    与 vLLM `serve.py` 的 output_tps_peak 一致：每个成功请求在**完成时刻**把
+    整段输出 token（completion_tokens）记入，再以 1 秒滑窗统计窗内完成请求的
+    token 总数最大值 / 滑窗时长——反映的是「任意 1 秒内最多完成了多少输出 token」。
+
+    注意：不是按逐 chunk 产出时刻统计（那会因各请求首尾交错而低估/口径不同），
+    而是对齐 vLLM 的「完成时刻批量记入」口径，保证与原生引擎结果可比。
     """
     if not oks or duration <= 0:
         return 0.0
     window = 1.0
-    # 逐 chunk 产出事件（含跨请求）：(t, tokens)
-    events = sorted(
-        (t, max(int(tok), 0)) for r in oks if r.end is not None for t, tok in (r.output_events or [])
+    # 每个成功请求在完成时刻贡献整段输出 token
+    completed = sorted(
+        (r.end, max(int(r.completion_tokens or 0), 0))
+        for r in oks if r.end is not None
     )
-    if not events:
-        # 回退：按请求完成时刻整段 token（旧口径）
-        events = sorted((r.end, int(r.completion_tokens or 0)) for r in oks if r.end is not None)
+    if not completed:
+        return 0.0
+    prefix = [0]
+    for _, tok in completed:
+        prefix.append(prefix[-1] + tok)
     best = 0
     j = 0
-    prefix = [0]
-    for _, tok in events:
-        prefix.append(prefix[-1] + tok)
-    for i, (t, _) in enumerate(events):
-        while j < len(events) and events[j][0] - t <= window:
+    n = len(completed)
+    for i, (t, _) in enumerate(completed):
+        while j < n and completed[j][0] - t <= window:
             j += 1
         best = max(best, prefix[j] - prefix[i])
     return round(float(best) / window, 4)

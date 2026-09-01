@@ -170,10 +170,12 @@ def build_builtin_command_lines(payload: dict, config, engine: dict) -> list[dic
                 concurrency=int(conc),
                 api_key=api.get("api_key") or "",
             )
-            # 阈值模式：命令体现真实执行的阈值探测参数（与 previewConditions 一致）
+            # 阈值模式：命令体现真实执行的阈值探测参数（与 previewConditions / 执行策略同源）
             if mode == "threshold":
                 opts.mode = "threshold"
                 opts.max_requests = int(payload.get("max_requests") or 4096)
+                opts.ttft_statistic = grp_thr.get("ttft_statistic") or payload.get("ttft_statistic") or "mean"
+                opts.tpot_statistic = grp_thr.get("tpot_statistic") or payload.get("tpot_statistic") or "mean"
                 opts.ttft_threshold_ms = float(grp_thr.get("ttft_threshold_ms") or payload.get("ttft_threshold_ms") or 0.0)
                 opts.tpot_threshold_ms = float(grp_thr.get("tpot_threshold_ms") or payload.get("tpot_threshold_ms") or 100.0)
                 opts.output_throughput_threshold = float(grp_thr.get("output_throughput_threshold") or payload.get("output_throughput_threshold") or 0.0)

@@ -213,6 +213,7 @@
 - **Open-source baseline benchmarking**: built-in baseline pool (Llama3 / Qwen2 / InternLM2 / Mistral / Chinese-special), diff pp, S/A/B/C grade, same-size ranking, ability radar chart and automatic conclusions
 - **Model & dataset sources from Settings**: model catalog reuse + custom model name / local weight path; **LoRA fine-tuned incremental models (`lora_path`)** supported for both accuracy and performance testing (peft on Native, server-registered adapter on Serving)
 - **Reports & linkage**: realtime task detail, per-sample traceability with wrong-set export, Native-vs-Serving consistency report, Datas/evals records page and Dashboard Eval Records
+- **Performance test enhancements**: Step2/3 create page UX (token-warning estimate dialog, copy icons, preview command synced with preview conditions incl. threshold statistic), Realtime **Peak output aligned to vLLM** (completion-time 1s window), `inf` high-concurrency support, UI aligned to Ant Design design tokens
 
 ### 功能清单
 
@@ -226,6 +227,7 @@
 - **开源基线对标**：内置基线库（含中文专项），差值百分点、S/A/B/C 档位、同尺寸排名、能力雷达图、自动结论（含风险预警）
 - **模型与数据集沿用设置界面**：Settings → Models 厂商目录选模型 + 自定义模型名 / 本地权重路径；**LoRA 微调增量模型（lora_path）** 精度与性能均可测
 - **报表与联动**：任务实时详情、单样本溯源与错题集导出、Native vs Serving 一致性对比、Datas/evals 记录页、Dashboard Eval Records 接通
+- **性能测试增强**：创建页 Step2/3 交互优化（Token 预估强提醒、复制图标、预览命令与预览条件对齐含阈值统计量）、Realtime **Peak output 对齐 vLLM**（完成时刻 1s 滑窗）、`inf` 高并发支持、UI 对齐 Ant Design 设计令牌
 
 ---
 
@@ -467,7 +469,7 @@
    - 预览条件 + 预览命令各加**复制小图标**（`CopyOutlined`，`copyConditions`/`copyCommand`）
    - 命令预览 `cmd-text` 换行展示（`white-space: pre-wrap`）
 3. **token 预警面板 UI 优化**：header 标题；内容=灰色小字提示（`.token-hint`，不滚动）+ 分组 token 列表（`.token-groups`，滚动）；footer=左侧总输入/输出 token（百万）+ 右侧取消/确定
-4. **Realtime Peak output 重算**（`builtin_bench.py`）：`RequestRecord` 加 `output_events`（逐 chunk 产出 token 时间序列），`_request_once` 记录每个 chunk 的产出 token（优先 usage 增量、否则文本长度/4），`_peak_output_throughput` 改为按产出时刻滑窗（vLLM 语义），无产出记录时回退请求结束时刻
+4. **Realtime Peak output 重算**（`builtin_bench.py`）：`RequestRecord` 加 `output_events`（逐 chunk 产出 token 时间序列），`_request_once` 记录每个 chunk 的产出 token（优先 usage 增量、否则文本长度/4），`_peak_output_throughput` 改为按产出时刻滑窗（vLLM 语义），无产出记录时回退请求结束时刻。**（迭代 18 已修正为 vLLM「完成时刻整段记入」滑窗口径，见下）**
 5. **perf 并发 inf 支持**（`task_manager.py`）：并发循环中 `conc=="inf"` 由「跳过」改为映射高并发执行（`max_concurrency_search` 或默认 256），支持不限量/高并发压测
 
 **验证（增量）**：
@@ -509,6 +511,59 @@
 - [x] Step3 — 自研引擎阈值模式预览命令体现真实阈值探测（--mode threshold + 阈值参数），与预览条件一致
 - [x] 前端 — 重建 webui 资产（Step3 上一步/换行/复制/token 预警正式生效）
 - [x] 测试与文档 — 后端测试 + VERSION/Performance-Create 同步
+
+---
+
+### 迭代 18（2026-09-01 18:00:58）：Step3 阈值命令携带统计量 + Peak 对齐 vLLM 完成时刻滑窗
+
+**背景**：在迭代 16/17 基础上进一步校正两处口径：
+① Step3 预览条件展示 TTFT/TPOT 所选**统计量**（mean/median/p99），但预览命令与 CLI 阈值判定此前仅按 mean 比较——与预览条件不一致；
+② Peak output 列在迭代 16 采用「逐 chunk 产出滑窗」，并非 vLLM 真实口径——vLLM 是按请求**完成时刻**整段记入再滑窗。
+
+**变更内容**：
+
+1. **Step3 阈值命令携带统计量**（`builtin_bench.py` / `test_manager.py` / `cli.py`）：
+   - `BuiltinOptions` 新增 `ttft_statistic` / `tpot_statistic`（默认 mean）
+   - `build_command` 阈值模式追加 `--ttft-statistic --tpot-statistic`，随命令一并展示所选统计量
+   - `build_builtin_command_lines` 按每组 `_per_case_threshold` 取 statistic（缺省回退任务级 / mean）
+   - CLI `benchscope perf` 新增 `--ttft-statistic` / `--tpot-statistic`（choices mean/median/p99），`_perf_threshold.violated` 改按对应统计量键比较（`ttft_{stat}` / `tpot_{stat}`），与 Web 执行策略（`task_manager._execute_case_threshold`）同源一致
+2. **Peak output 对齐 vLLM 完成时刻滑窗**（`builtin_bench.py`）：`_peak_output_throughput` 改为每个成功请求在**结束时刻**整段 `completion_tokens` 记入，对完成时刻做 1 秒滑窗取窗内 token 总和最大值 / 1s（对齐 vLLM `serve.py` `output_tps_peak`）；`RequestRecord.output_events` 保留为信息性采集，不再参与 peak 计算
+3. **Step3 预览命令换行展示**（`PerfCreateView.vue`）：`.cmd-text` 用 `previewCommandDisplay` 按 ` --` 拆分，**每个 `--参数 值` 独立成行**展示；复制仍取原始单行（`previewCommand`）可直接执行
+
+**验证（增量）**：
+- 后端：`test_builtin_bench` + `test_tasks` 共 27 项全部通过；`test_preview_builtin_threshold_command` 新增断言 `--ttft-statistic median` / `--tpot-statistic p99`；peak 测试改用完成时刻语义（同窗 16.0 / 相隔超 1s 取单请求 10.0）
+- CLI：`benchscope perf --help` 已含 `--ttft-statistic` / `--tpot-statistic`
+- 前端构建成功（`PerfCreateView-CCjOfYY2.js` 重建到 `benchscope/webui`）；`check-i18n` OK
+- 说明：本迭代后端变更需重启 :8080 服务生效（沙箱无法重启父命名空间服务，见迭代 17 背景）
+
+**TODO 状态**：
+- [x] Step3 — 阈值命令携带所选统计量（--ttft-statistic / --tpot-statistic），与预览条件一致；命令每参数独立成行展示**（迭代 19 已改回单行展示，见下）**
+- [x] Peak — 对齐 vLLM 完成时刻滑窗口径（修正逐 chunk 产出口径）
+- [x] CLI — `benchscope perf` 阈值统计量参数与判定
+- [x] 测试与文档 — VERSION/Performance/Performance-Create/BenchCore 同步
+
+---
+
+### 迭代 19（2026-09-01 18:32:28）：Step3 命令实时对齐 + 恢复单行 + Peak 默认不显示
+
+**背景**：用户复查 Step3 反馈三点——① 预览命令不要强制每参数一行，恢复原来的单行展示；② 切换 Provider 后预览命令的 `--base-url` 仍是旧的、未与预览条件对齐；③ Realtime Data 的 Peak output 列希望默认不显示。
+
+**变更内容**：
+
+1. **预览命令恢复单行展示**（`PerfCreateView.vue`）：移除迭代 18 的 `previewCommandDisplay`（按 ` --` 强行拆行），恢复 `.cmd-text` 直接渲染单行 `previewCommand`（`pre-wrap` 软换行展示；`copyCommand` 复制原始单行可执行）
+2. **预览命令与预览条件实时对齐**（`PerfCreateView.vue`）：新增 `watch`（监听 `providerId` / `model` / `mode` / `maxRequests` / `engineParams.content` / `conditions`）+ 250ms 防抖——停留 Step3 且模型已选时自动重新 `loadPreview()`；切换 Provider 后命令中 `--base-url` 等随之刷新，与预览条件的 Base URL 一致（此前命令是 Step3 一次性快照，Provider 变更后不更新）
+3. **Peak 列默认不显示**（`MetricsTable.vue`）：`peakoutput_mean` 列 `default: true → false`，Realtime Data 默认列集不再含 Peak，可在 Columns 设置手动勾选显示
+
+**验证（增量）**：
+- 前端 `npm run build` 成功 → `benchscope/webui`（入口 `index-DB_QqaCF.js` 引用 `PerfCreateView-CFofDfRO.js`）；`check-i18n` OK
+- 反查 bundle：旧的 `previewCommandDisplay` 已移除、含 `clearTimeout` 防抖刷新（minify 混淆变量名，逻辑在位）
+- 后端无改动（本迭代全为前端）
+
+**TODO 状态**：
+- [x] Step3 — 预览命令恢复单行（移除每参数拆行）
+- [x] Step3 — 预览命令随 Provider/模型/条件/参数变化实时刷新，与预览条件对齐
+- [x] Realtime — Peak output 列默认不显示（Columns 可手动开启）
+- [x] 文档 — Performance-Create / Performance / VERSION 同步
 
 ---
 

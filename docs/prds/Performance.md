@@ -150,8 +150,9 @@ bestRow.best = true
 ### 3.5 Peak Output Token Throughput（1.0.8 按 vLLM 重算）
 
 - 列 `Peak output token throughput (tok/s)` 数据来自 `row.metrics.peakoutput_mean`。
-- **vLLM 语义（1.0.8 重算）**：基于**逐 chunk 产出 token 时间序列**做 1 秒滑窗——`_request_once` 记录每个输出 chunk 的 `(产出时刻, token 数)`（`RequestRecord.output_events`，token 数优先 usage 增量、否则文本长度/4 估算），`_peak_output_throughput` 统计 1 秒窗口内**实际产出**的最大 token 数 / 1s；无逐 chunk 记录（旧数据）时回退请求结束时刻整段 token。
-- 旧口径（1.0.7 及之前）：只在请求**结束时刻**一次性记入整段 `completion_tokens`，无法反映窗口内真实产出速率（偏低/失真）。
+- **默认不显示（1.0.8）**：该列在 Realtime Data（MetricsTable）中 `default: false`，默认列集不含 Peak，需在 Columns 设置中手动勾选显示。
+- **vLLM 语义（1.0.8）**：`_peak_output_throughput` 按**请求完成时刻**整段 `completion_tokens` 记入（对齐 vLLM `serve.py` 的 `output_tps_peak`）——每个成功请求在**结束时刻**贡献其全部输出 token，再对完成时刻做 1 秒滑窗，取窗内完成 token 总数最大值 / 1s。反映「任意 1 秒内最多完成了多少输出 token」，与原生 vLLM 引擎结果可比。
+- 旧口径（1.0.7/早期 1.0.8）：曾按**逐 chunk 产出时刻**（`output_events` 时间序列）滑窗统计，与 vLLM「完成时刻批量记入」口径不符，导致 Peak 列数值偏离真实合理值，已修正。
 
 ### 3.6 并发 `inf`（1.0.8）
 
