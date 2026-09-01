@@ -1,7 +1,7 @@
 # docs 文档目录
 
 > **文档状态**：benchscope 文档体系说明与维护约定  
-> **最后更新**：2026-08-31 17:30:00
+> **最后更新**：2026-09-01 10:40:00
 
 本目录组织项目全部技术文档。**开发更新功能时，必须同步更新对应文档**（见文末「维护约定」）。
 
@@ -68,24 +68,26 @@ Skills（给 AI 消费的技能包）的**说明文档归口**；技能可分发
 
 | 文档 | 内容 |
 | --- | --- |
+| [agents/Memory.md](../agents/Memory.md) | **项目记忆**：项目速查 + 全部强制约定（文档同步/测试/git/发布/技能/命名）+ 恢复上下文清单；切换模型时优先读 |
 | [Roadmap.md](Roadmap.md) | 版本路线（各版本目标范围与状态；后续重新规划） |
 | [Projects.md](Projects.md) | 项目功能总览（基于现有功能生成） |
+| [agents/Readme.md](../agents/Readme.md) | **项目 harness 约定**（项目级维护约定：git/测试/发布/版本/技能/i18n/命名/最小改动等） |
+| [agents/Harness.md](../agents/Harness.md) | **通用 harness 规范**（Harness Coding：有规划、有测试、有反馈；模型/项目无关） |
 
 ---
 
-## 维护约定（强制）
+## 文档更新约定（强制）
 
-> 开发更新功能时，请按以下规则同步维护文档：
+> **项目级维护约定**（git 提交/推送、测试、发布、版本迭代、技能、i18n、命名、最小改动等）见
+> **[agents/Readme.md](../agents/Readme.md)**；本文件只保留**文档体系自身的更新约定**。
+>
+> 开发更新功能时，按以下规则同步维护文档：
 > 1. **页面功能/界面/逻辑/策略/UI 调整** → 更新 `prds/` 对应页面文档；
 > 2. **版本功能与 todo** → 更新 `versions/VERSION_x_y_z.md`；
 > 3. **架构/方案/设计/开发规范/软件依赖变更** → 更新 `rules/` 对应文档；**软件依赖**（Python `pyproject.toml` / 前端 `web/package.json` 的新增、升级、移除）必须同步 `rules/Software.md` §2 技术栈与 §3 依赖清单；
-> 4. 文档间引用使用相对链接，移动/改名后需同步修正引用。
->
-> **版本迭代规则**：未特别说明版本号时，项目内容所有变更默认归属当前版本 **v1.0.8**（开发中显示 `v1.0.8-dev`），全部迭代到 `versions/VERSION_1_0_8.md`；**除非用户明确说「迭代下一个版本」**，才创建 `VERSION_x_y_z.md` 并同步升级版本号（`__init__.py` / `pyproject.toml`），否则不得擅自变更版本号。
->
-> **发布规则（强制）**：**发布 = 打包推送 PyPI + 推送 GitHub Release 总结 + 推送版本 tag**（三者缺一不算完整发布）。执行 `./scripts/release.sh X.Y.Z`（自动升版本 → 构建 → `twine upload` → 创建 GitHub Release（`gh` 或 `GITHUB_TOKEN`，说明默认取自 `VERSION_x_y_z.md` 的「版本功能清单（Release Notes）」区块，可 `--notes <file>` 覆盖）→ `git tag` + push）；**发布完成后必须同步更改 docs 文件状态并提交**——将 `VERSION_x_y_z.md` 状态置为「已发布（Released）」+ 发布时间、`docs/Readme.md` 版本表标记已发布并刷新「最后更新」日期、`docs/Roadmap.md` 更新状态，然后按 git 提交规范（英文简短）提交并推送。
-> **Release 功能清单规则（强制）**：GitHub Release 说明为**按功能总结的功能清单**，**不能直接搬迭代记录**（不带迭代标题、不带时间、非逐迭代记录）；**功能清单由 AI 读取版本内容总结（release.sh 不做机械提取）**，**格式先英文清单、后中文清单**——发布前用 AI 总结功能清单与核心功能变化，写入 `VERSION_x_y_z.md` 的「版本功能清单（Release Notes）」双语区块（`### Feature Highlights` 英文 + `### 功能清单` 中文），release.sh 原样读取，详见 `rules/Development.md` §5。
+> 4. **技能说明/变更** → 更新 `docs/skills/<BsXxxYyy>.md`（一个技能一个说明文档）；
+> 5. 文档间引用使用相对链接，移动/改名后需同步修正引用；
+> 6. 本文件头部「最后更新」日期在每次文档更新时同步刷新；
+> 7. **项目约定/记忆变更**（强制约定、测试/发布/git/技能约定等调整）→ 同步 `Memory.md`（项目记忆）与 `agents/Readme.md`。
 >
 > **时间记录规则（重要）**：**所有迭代变更记录的时间必须记录精确时间——年-月-日 时:分:秒**（含 commit 号，取自提交/落地时刻），禁止仅写日期；主导航相关变更另须在 `prds/TopBar.md` §5 追加记录（同样精确到秒）。
->
-> **git 提交规范（强制）**：提交描述一律使用**英文**、**简短总结**（Conventional Commits，如 `feat:` / `fix:` / `docs:` / `refactor:` / `test:` 前缀），禁止中文或冗长描述；发布后同步 docs 状态也按此规范提交（如 `docs: mark vX.Y.Z as released`）。**不自动 commit 与 push**——每个任务默认不做自动 `git commit` 和 `git push`，所有提交/推送须用户明确发出指令后才执行。详见 `rules/Development.md` §4。

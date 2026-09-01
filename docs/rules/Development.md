@@ -49,6 +49,8 @@ python -m benchscope.cli --port 8081 --no-browser                            # �
 
 ## 4. 变更流程与文档同步
 
+> **先读 harness 规范**：[agents/Harness.md](../../agents/Harness.md)（通用：有规划、有测试、有反馈）+ [agents/Readme.md](../../agents/Readme.md)（本项目约定）；动手前读规范、定位影响面、最小改动；任何 AI / 开发者切换均遵循同一套约定。
+
 1. 修改代码（后端 `benchscope/` / 前端 `web/` / 脚本 `scripts/` / mock `mocks/` / 依赖 `pyproject.toml`、`web/package.json`）。
 2. **文档同步（强制）**：设计/界面修改、逻辑与策略调整、UI 调整、依赖与架构变更，**必须同步更新**对应文档：
    - 页面功能与约束 → `docs/prds/`（Performance / Performance-Create / Dashboard / Accuracy / Sessions / Settings / Datas / TopBar）
