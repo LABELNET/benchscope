@@ -42,6 +42,7 @@
 | 8 | **git 英文简短提交** | Conventional Commits（`feat:`/`fix:`/`docs:`/`refactor:`/`test:`），禁止中文或冗长 |
 | 9 | **只读不改的边界** | `README.md` / `README.zh-CN.md` 以仓库最新版为准（用户自行更新，勿按历史版本修改） |
 | 10 | **如实汇报** | 完成项、改动文件、验证结果、遗留问题清晰列出；失败不隐藏 |
+| 11 | **开发模式分环境** | **沙箱环境启动「沙箱开发模式」、主机环境启动「主机开发模式」**：两套独立启动/数据/端口；涉及代码更新的任务执行完毕须重启对应环境的开发模式（见 §10 开发模式） |
 
 ---
 
@@ -122,4 +123,48 @@
 - [ ] 读 `docs/rules/`（Development / Architecture / Software / Design）
 - [ ] 读当前版本 `docs/versions/VERSION_x_y_z.md`（迭代记录 + TODO）
 - [ ] 读目标页面 `docs/prds/<页面>.md`
-- [ ] 开发模式：`./scripts/dev.sh start`（mock 8001 + 前端构建 + 后端 8080）
+- [ ] 开发模式：**主机环境** `./scripts/dev.sh start`（mock 8001 + 前端构建 + 后端 8080）；**沙箱环境**手动起 mock + 后端（见 §10）
+
+---
+
+## 10. 开发模式（分环境启动，强制）
+
+> 约定来源（2026-09-01）：**沙箱环境启动「沙箱开发模式」，主机环境启动「主机开发模式」**；
+> 两套环境**独立启动、独立数据目录、独立端口占位**，互不干扰；
+> **每执行完一个涉及代码更新的任务，须重启对应环境的开发模式**以加载最新代码。
+
+### 主机开发模式
+
+```bash
+cd /home/yuanmingzhuo/benchscope
+./scripts/dev.sh start    # mock OpenAI :8001 + 前端构建 + 后端 :8080（FAKE）
+./scripts/dev.sh stop     # 停止全部
+./scripts/dev.sh status   # 查看状态
+```
+
+- 每 `start` 自动 `npm run build` → `benchscope/webui`；后端 `BENCHSCOPE_FAKE_BENCH=1`，数据目录默认 `~/.benchscope`。
+- 适用于在有完整进程上下文的主机 shell 中启动 / 验证。
+
+### 沙箱开发模式
+
+> 沙箱（bwrap `--unshare-pid`）**看不到主进程的 PID，无法 stop/kill 主环境服务**；端口/网络与主环境隔离（沙箱内进程连不上主环境的 mock）。故沙箱内**自起一套**，与主环境端口错开或确认主环境未占用。
+
+```bash
+# 1) 沙箱 mock（:8001；若主环境 mock 占用可换端口）
+cd /home/yuanmingzhuo/benchscope
+env PYTHONPATH=$PWD python3 -m mocks.openai_server --host 127.0.0.1 --port 8001 &
+# 2) 沙箱后端+前端（:8080，FAKE + 独立临时数据目录）
+BENCHSCOPE_FAKE_BENCH=1 BENCHSCOPE_DATA_DIR=$(mktemp -d /tmp/bs-dev.XXXXXX) \
+  env PYTHONPATH=$PWD python3 -m benchscope.cli --port 8080 --no-browser &
+# 3) 把后端 api/Provider 指向 mock
+curl -X POST http://127.0.0.1:8080/api/config -H "Content-Type: application/json" -d '{"api":{"base_url":"http://127.0.0.1:8001"}}'
+curl -X PUT http://127.0.0.1:8080/api/config/providers/provider_default -H "Content-Type: application/json" -d '{"base_url":"http://127.0.0.1:8001"}'
+```
+
+- 前后端用后台 job 常驻（`run_in_background`），数据目录用 `mktemp -d` 隔离，前端读取共享的 `benchscope/webui`（沙箱内 `npm run build` 会直接写入主环境可见的该目录）。
+- **重启沙箱开发模式**：先停掉旧的后台 job（`job_kill`）释放端口，再按上面重起，确保加载最新代码。
+
+### 验证
+
+- `curl -s http://127.0.0.1:8080/api/version` 应返回当前开发版本（如 `1.0.9.dev0`）。
+- 端到端：创建并启动一个自研引擎并发任务，`status=done` 且 `metrics.successful_requests>0` 即为可用。

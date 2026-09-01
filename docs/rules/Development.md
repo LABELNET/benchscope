@@ -7,6 +7,11 @@
 
 ## 1. 开发模式（FAKE，无需真实推理环境）
 
+> **分环境启动（强制约定，2026-09-01）**：**沙箱环境启动「沙箱开发模式」，主机环境启动「主机开发模式」**——
+> 两套环境**独立启动 / 独立数据目录 / 端口占位互不干扰**；**每个涉及代码更新的任务执行完毕，须重启对应环境的开发模式**以加载最新代码。
+> - **主机开发模式**：用下面的 `./scripts/dev.sh start|status|stop`（进程完整可管理）；
+> - **沙箱开发模式**：沙箱因 `bwrap --unshare-pid` 看不到主进程 PID、连不上主环境 mock，需在沙箱内**自起 mock + 后端**（后台 job + `mktemp -d` 独立数据目录），详见 [agents/Memory.md §10](../../agents/Memory.md)。
+
 ```bash
 ./scripts/dev.sh start      # mock OpenAI :8001 + 统一入口 :8080（FAKE bench，自动重建前端）
 ./scripts/dev.sh status     # 查看服务状态
