@@ -57,6 +57,9 @@ class ConfigManager:
         self._data: dict = deepcopy(DEFAULT_CONFIG)
         self._redirect_default_dirs()
         self.load()
+        # 「以环境变量形式使用」：启动时把数据根目录同步到环境变量（子进程透传，见 runner.py）
+        root = str(Path(os.path.expanduser(self._data.get("data_dir", DEFAULT_CONFIG["data_dir"]))).resolve())
+        os.environ["BENCHSCOPE_DATA_DIR"] = root
 
     def _redirect_default_dirs(self) -> None:
         """测试隔离：设置 BENCHSCOPE_DATA_DIR 时，把默认缓存目录重定向到该根目录下。
@@ -130,21 +133,19 @@ class ConfigManager:
 
     def update(self, patch: dict) -> dict:
         with self._lock:
-            # data_dir 联动：当数据根目录变化时，未自定义的子目录跟随新 data_dir
+            # data_dir 联动：当数据根目录变化时，**全部子目录重置为新根目录下的默认子目录**
+            # （用户约定：Root Dir 修改后，8 个子目录一律回到 新根/默认子目录，仅高亮展示）
             new_data = patch.get("data_dir")
             if new_data:
-                old_data = self._data.get("data_dir", DEFAULT_CONFIG["data_dir"])
-                old_root = str(Path(os.path.expanduser(old_data)).resolve())
                 new_root = str(Path(os.path.expanduser(new_data)).resolve())
                 for key, sub in DATA_SUBDIRS.items():
                     if key in patch:  # 本次显式指定，不联动
                         continue
-                    cur = self._data.get(key)
-                    if cur:
-                        cur_resolved = str(Path(os.path.expanduser(cur)).resolve())
-                        if cur_resolved == str(Path(old_root) / sub):
-                            patch[key] = str(Path(new_root) / sub)
+                    patch[key] = str(Path(new_root) / sub)
             self._merge(self._data, patch)
+            # 「以环境变量形式使用」：数据根目录即时同步到环境变量（子进程经 runner 透传，无需重启服务）
+            root = str(Path(os.path.expanduser(self._data.get("data_dir", DEFAULT_CONFIG["data_dir"]))).resolve())
+            os.environ["BENCHSCOPE_DATA_DIR"] = root
             self.save()
             self.ensure_dirs()
             return deepcopy(self._data)

@@ -34,7 +34,6 @@
         <a-card size="small" :bordered="true" class="panel-card">
           <template #title>
             <span>{{ t('cachePaths') }}</span>
-            <a-tag v-if="perfRunning" color="orange" class="running-tag">{{ t('runningLocked') }}</a-tag>
           </template>
           <div v-for="d in dirs" :key="d.key" class="panel-row dir-row">
             <div class="dir-info">
@@ -42,33 +41,24 @@
               <span class="field-desc">{{ dirDesc(d) }}</span>
             </div>
             <div class="dir-right">
-              <template v-if="editingKey === d.key">
+              <!-- Root Dir（可编辑）：失焦即保存并创建子目录，无需重启、无提醒 -->
+              <template v-if="!d.readonly">
                 <a-input
+                  v-if="editingKey === d.key"
                   v-model:value="editValue"
                   size="small"
                   class="dir-input"
-                  :disabled="d.locked"
                   @pressEnter="saveDir(d)"
-                  @blur="cancelEdit()"
+                  @blur="saveDir(d)"
                 />
-                <a-button
-                  type="primary"
-                  size="small"
-                  :loading="savingDirKey === d.key"
-                  :disabled="d.locked"
-                  @mousedown.prevent
-                  @click="saveDir(d)"
-                >{{ t('save') }}</a-button>
+                <span
+                  v-else
+                  class="dir-value editable"
+                  @click="startEdit(d)"
+                >{{ d.value }}</span>
               </template>
-              <span
-                v-else
-                class="dir-value"
-                :class="{ editable: !d.locked }"
-                @click="d.locked ? notifyLocked() : startEdit(d)"
-              >
-                {{ d.value }}
-                <a-tag v-if="!d.exists" color="red" size="small">{{ t('dirMissing') }}</a-tag>
-              </span>
+              <!-- 子目录（只读高亮展示，不可修改） -->
+              <span v-else class="dir-value readonly" :title="d.value">{{ d.value }}</span>
             </div>
           </div>
         </a-card>
@@ -617,27 +607,17 @@
       </template>
     </a-modal>
 
-    <!-- Data 目录迁移进度弹窗 -->
-    <a-modal v-model:open="migrateOpen" :footer="null" :closable="false" :keyboard="false" :mask-closable="false" :width="420">
-      <div class="migrate-box">
-        <a-spin :spinning="migratePhase !== 'restarting'" />
-        <div class="migrate-title">{{ migratePhase === 'restarting' ? t('restarting') : t('migrating') }}</div>
-        <a-progress :percent="migratePercent" :status="migratePhase === 'restarting' ? 'active' : 'normal'" />
-        <div class="migrate-msg">{{ migrateMessage }}</div>
-      </div>
-    </a-modal>
-
   </div>
 </template>
 
 <script setup>
-import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
-import { message, notification, Modal } from 'ant-design-vue'
+import { computed, onMounted, reactive, ref } from 'vue'
+import { message } from 'ant-design-vue'
 import {
   ControlOutlined, CloudServerOutlined, RobotOutlined, DatabaseOutlined,
   ExperimentOutlined, ApiOutlined, BookOutlined,
 } from '@ant-design/icons-vue'
-import { api, wsUrl } from '@/api'
+import { api } from '@/api'
 import { useConfigStore } from '@/store/config'
 import { t, setLocale, i18nState } from '@/i18n'
 import { modelCatalog } from '@/data/modelCatalog'
@@ -790,22 +770,9 @@ const skillsLoading = ref(false)
 
 // ---- Cache Paths 目录管理 ----
 const dirs = ref([])
-const perfRunning = ref(false)
 const editingKey = ref('')
 const editValue = ref('')
 const savingDirKey = ref('')
-// Data 目录迁移/重启
-const migrateOpen = ref(false)
-const migratePhase = ref('connecting')
-const migrateProgress = ref({ done: 0, total: 0 })
-const migrateMessage = ref('')
-let migrateSocket = null
-
-const migratePercent = computed(() => {
-  const { done, total } = migrateProgress.value
-  if (!total) return migratePhase.value === 'migrating' ? 0 : 100
-  return Math.min(100, Math.round((done / total) * 100))
-})
 
 const form = reactive({
   locale: 'en',
@@ -868,7 +835,6 @@ async function loadDirs() {
   try {
     const resp = await api.getDirs()
     dirs.value = resp.dirs || []
-    perfRunning.value = !!resp.perf_running
   } catch {
     dirs.value = []
   }
@@ -884,19 +850,10 @@ function cancelEdit() {
   editValue.value = ''
 }
 
-function notifyLocked() {
-  notification.warning({
-    message: t('lockedTitle'),
-    description: t('lockedDesc'),
-    placement: 'topRight',
-    duration: 4,
-  })
-}
-
 async function saveDir(d) {
   const val = (editValue.value || '').trim()
   if (!val) {
-    message.warning(t('dirEmpty'))
+    cancelEdit()
     return
   }
   if (val === d.value) {
@@ -905,85 +862,17 @@ async function saveDir(d) {
   }
   savingDirKey.value = d.key
   try {
-    const resp = await api.updateDirs({ [d.key]: val })
+    // Root Dir：保存后无需重启、无需迁移，后端已按新根目录创建子目录（配置即时生效 + 环境变量同步）
+    await api.updateDirs({ [d.key]: val })
     cancelEdit()
-    message.success(t('saved'))
     await loadDirs()
-    // Data 根目录修改后需重启服务生效
-    if (d.key === 'data_dir' && resp.requires_restart) {
-      Modal.confirm({
-        title: t('restartTitle'),
-        content: t('restartContent'),
-        okText: t('confirm'),
-        cancelText: t('cancel'),
-        onOk: () => askMigrate(),
-      })
-    }
   } catch (e) {
     message.error(e.message || t('saveFail'))
-    loadDirs() // 若因任务运行中拒绝，刷新锁定状态
+    loadDirs()
   } finally {
     savingDirKey.value = ''
   }
 }
-
-function askMigrate() {
-  Modal.confirm({
-    title: t('migrateTitle'),
-    content: t('migrateContent'),
-    okText: t('migrateYes'),
-    cancelText: t('migrateNo'),
-    onOk: () => restartWithMigrate(true),
-    onCancel: () => restartWithMigrate(false),
-  })
-}
-
-function restartWithMigrate(migrate) {
-  if (migrate) {
-    migrateOpen.value = true
-    migratePhase.value = 'connecting'
-    migrateProgress.value = { done: 0, total: 0 }
-    migrateMessage.value = t('migrating')
-    openMigrateSocket()
-  }
-  api.restartService(migrate).catch((e) => {
-    message.error(e.message || t('restartFail'))
-    if (migrate) {
-      migrateOpen.value = false
-      closeMigrateSocket()
-    }
-  })
-}
-
-function openMigrateSocket() {
-  try {
-    migrateSocket = new WebSocket(wsUrl())
-  } catch { return }
-  migrateSocket.onmessage = (ev) => {
-    try {
-      const msg = JSON.parse(ev.data)
-      if (msg.type !== 'migration') return
-      migratePhase.value = msg.phase
-      if (msg.phase === 'migrating') {
-        migrateProgress.value = { done: msg.done || 0, total: msg.total || 0 }
-        migrateMessage.value = msg.message || t('migrating')
-      } else if (msg.phase === 'restarting') {
-        migrateMessage.value = t('restarting')
-      }
-    } catch { /* ignore */ }
-  }
-}
-
-function closeMigrateSocket() {
-  if (migrateSocket) {
-    try { migrateSocket.close() } catch { /* ignore */ }
-    migrateSocket = null
-  }
-}
-
-onBeforeUnmount(() => {
-  closeMigrateSocket()
-})
 
 async function loadDatasets() {
   datasetsLoading.value = true
@@ -1405,9 +1294,7 @@ async function downloadSkill(s) {
 }.field-desc{
   font-size: 12px;
   color: var(--ant-color-text-tertiary, #999);
-}/* ===== Cache Paths 目录管理 ===== */.running-tag{
-  margin-left: 8px;
-}.dir-row{
+}/* ===== Cache Paths 目录管理 ===== */.dir-row{
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -1444,20 +1331,17 @@ async function downloadSkill(s) {
   text-underline-offset: 3px;
 }.dir-value.editable:hover{
   color: var(--ant-color-primary-hover, #4096ff);
-}/* ===== 迁移进度弹窗 ===== */.migrate-box{
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 16px;
-  padding: 12px 8px;
-}.migrate-title{
-  font-size: 15px;
-  font-weight: 600;
+}.dir-value.readonly{
+  /* 子目录：只读高亮展示（跟随 Root Dir，不可修改） */
+  background: rgba(22, 119, 255, 0.08);
+  border: 1px solid rgba(22, 119, 255, 0.18);
+  border-radius: 4px;
+  padding: 1px 8px;
   color: var(--ant-color-text, #333);
-}.migrate-msg{
-  font-size: 12px;
-  color: var(--ant-color-text-secondary, #666);
-  word-break: break-all;
+  max-width: 460px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }.section-desc{
   font-size: 12px;
   color: var(--ant-color-text-tertiary, #999);

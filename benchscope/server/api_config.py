@@ -321,33 +321,33 @@ def download_dataset(req: DatasetDownloadRequest):
 # 目录展示配置：key -> {label_zh/label_en, desc_zh/desc_en, sub（data_dir 下的默认子目录名或 None）}
 # 双语字段供前端按界面语言（zh/en）渲染，替换旧单语言 label/desc
 CACHE_DIR_INFO = [
-    {"key": "data_dir", "label_zh": "数据", "label_en": "Data", "sub": None,
-     "desc_zh": "数据根目录（服务端数据持久化 / 任务 / 会话等），修改后需重启服务并可选迁移数据",
-     "desc_en": "Data root directory (server persistence / tasks / sessions). Changing it requires a service restart with optional data migration"},
+    {"key": "data_dir", "label_zh": "根目录", "label_en": "Root Dir", "sub": None,
+     "desc_zh": "数据根目录（服务端数据持久化根）。修改后即时生效（无需重启）；子目录自动重置为新根下的默认目录",
+     "desc_en": "Data root directory (server persistence root). Changes take effect immediately (no restart); subdirectories reset under the new root"},
     {"key": "perfs_dir", "label_zh": "性能", "label_en": "Perf", "sub": "perfs",
-     "desc_zh": "性能测试任务目录，有运行中的任务时不可修改",
-     "desc_en": "Perf test task directory; locked while tasks are running"},
+     "desc_zh": "性能测试任务目录（跟随 Root Dir，只读展示）",
+     "desc_en": "Perf test task directory (follows Root Dir, read-only)"},
     {"key": "evals_dir", "label_zh": "精度", "label_en": "Eval", "sub": "evals",
-     "desc_zh": "精度测试任务目录，有运行中的任务时不可修改",
-     "desc_en": "Accuracy test task directory; locked while tasks are running"},
+     "desc_zh": "精度测试任务目录（跟随 Root Dir，只读展示）",
+     "desc_en": "Accuracy test task directory (follows Root Dir, read-only)"},
     {"key": "analysis_dir", "label_zh": "分析", "label_en": "Analysis", "sub": "analysys",
-     "desc_zh": "数据分析目录，联动主导航 / Datas 相关缓存",
-     "desc_en": "Analysis data directory, linked to Datas caches"},
+     "desc_zh": "数据分析目录（跟随 Root Dir，只读展示；联动 Datas 缓存）",
+     "desc_en": "Analysis data directory (follows Root Dir, read-only; linked to Datas caches)"},
     {"key": "logs_dir", "label_zh": "日志", "label_en": "Logs", "sub": "logs",
-     "desc_zh": "日志目录：runtime_年月日.log 与任务终端输出（perf/eval_runID_月日时分秒.log）",
-     "desc_en": "Logs directory: runtime_YYYYMMDD.log and task terminal output (perf/eval_runID_MMDDHHMMSS.log)"},
+     "desc_zh": "日志目录（跟随 Root Dir，只读展示）",
+     "desc_en": "Logs directory (follows Root Dir, read-only)"},
     {"key": "sessions_dir", "label_zh": "会话", "label_en": "Sessions", "sub": "sessions",
-     "desc_zh": "会话缓存目录，每个会话保存的路径",
-     "desc_en": "Session cache directory, saved path for each session"},
+     "desc_zh": "会话缓存目录（跟随 Root Dir，只读展示）",
+     "desc_en": "Session cache directory (follows Root Dir, read-only)"},
     {"key": "models_dir", "label_zh": "模型", "label_en": "Models", "sub": "models",
-     "desc_zh": "模型下载目录，联动 Settings / Models 管理",
-     "desc_en": "Model download directory, linked to Settings / Models"},
+     "desc_zh": "模型下载目录（跟随 Root Dir，只读展示；联动 Settings/Models）",
+     "desc_en": "Model download directory (follows Root Dir, read-only; linked to Settings/Models)"},
     {"key": "datasets_dir", "label_zh": "数据集", "label_en": "Datasets", "sub": "datasets",
-     "desc_zh": "数据集下载目录，联动 Settings / Datasets 管理",
-     "desc_en": "Dataset download directory, linked to Settings / Datasets"},
+     "desc_zh": "数据集下载目录（跟随 Root Dir，只读展示；联动 Settings/Datasets）",
+     "desc_en": "Dataset download directory (follows Root Dir, read-only; linked to Settings/Datasets)"},
     {"key": "plugins_dir", "label_zh": "插件", "label_en": "Plugins", "sub": "plugins",
-     "desc_zh": "插件安装加载目录，联动 Settings / Plugins",
-     "desc_en": "Plugin installation directory, linked to Settings / Plugins"},
+     "desc_zh": "插件安装加载目录（跟随 Root Dir，只读展示；联动 Settings/Plugins）",
+     "desc_en": "Plugin installation directory (follows Root Dir, read-only; linked to Settings/Plugins)"},
 ]
 
 
@@ -362,6 +362,8 @@ def get_cache_dirs():
     for info in CACHE_DIR_INFO:
         key = info["key"]
         value = cfg.get(key) or DEFAULT_CONFIG.get(key, "")
+        # 子目录（非 Root Dir）只读、仅高亮展示；Root Dir 可编辑
+        readonly = key != "data_dir"
         result.append({
             "key": key,
             "label": info.get("label") or info["label_en"],
@@ -373,7 +375,8 @@ def get_cache_dirs():
             "value": value,
             "default": DEFAULT_CONFIG.get(key, ""),
             "exists": cfg.resolve_dir(key).exists() if key else True,
-            "locked": (perf_running if key in ("perfs_dir", "evals_dir") else False),
+            "readonly": readonly,
+            "locked": False,
         })
     return {"dirs": result, "perf_running": perf_running}
 
@@ -394,8 +397,10 @@ class CacheDirPatch(BaseModel):
 def update_cache_dirs(patch: CacheDirPatch):
     """更新缓存目录配置。
 
-    - data_dir 变化：需要重启服务（前端弹窗引导），重启可迁移数据。
+    - data_dir（Root Dir）修改：**即时生效、无需重启**（ConfigManager 把根目录同步到
+      BENCHSCOPE_DATA_DIR 环境变量并透传子进程）；8 个子目录全部重置为新根下的默认子目录。
     - perfs_dir / evals_dir：有运行中的任务时拒绝修改。
+    - 子目录（非 data_dir）只读展示，前端不可编辑。
     """
     data = patch.model_dump(exclude_none=True)
     if not data:
@@ -411,17 +416,12 @@ def update_cache_dirs(patch: CacheDirPatch):
             )
 
     cfg = state.config
-    old_data = str(cfg.data_dir)
     old_snapshot = {k: cfg.get(k) for k in data.keys()}
     cfg.update(data)
-    new_data = str(cfg.data_dir)
-    requires_restart = "data_dir" in data and new_data != old_data
-    if requires_restart:
-        # 记录迁移来源：本次修改前的 data_dir（重启迁移时使用）
-        state.migration_source = old_data
     return {
         "ok": True,
-        "requires_restart": requires_restart,
+        # 兼容字段：Root Dir 修改已无需重启（Keep for backward compat）
+        "requires_restart": False,
         "changed": {k: {"old": old_snapshot.get(k), "new": cfg.get(k)} for k in data.keys()},
     }
 

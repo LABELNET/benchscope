@@ -32,27 +32,29 @@ Settings 页面左侧 7 个侧边栏：
 - 语言选择：English / 中文（`a-select`，立即生效 + 持久化 `locale`）。
 - 切换后全局文案实时切换（`setLocale`）。
 
-### 1.2 Cache Paths 面板（缓存路径，1.0.6 重构为 9 目录体系）
+### 1.2 Cache Paths 面板（缓存路径，1.0.9 改版）
 
-数据根目录 `data_dir` + 8 个功能子目录，**子目录未自定义时跟随 `data_dir`**（联动解析）：
+数据根目录 **Root Dir（`data_dir`）** + 8 个功能子目录。子目录**全部自动跟随 Root Dir**（改 Root Dir 即重置为新根下的默认子目录），**只读高亮展示、不可修改**：
 
 | 项 | 配置键 | 默认值 | 说明 |
 | --- | --- | --- | --- |
-| Data | `data_dir` | `~/.benchscope` | **数据根目录**（服务端数据持久化根），修改后需重启服务并可迁移数据 |
-| Perf | `perfs_dir` | `~/.benchscope/perfs` | 性能测试任务目录（run_dir），有运行中任务时锁定 |
-| Eval | `evals_dir` | `~/.benchscope/evals` | 精度测试任务目录（run_dir），有运行中任务时锁定 |
-| Analysis | `analysis_dir` | `~/.benchscope/analysys` | 数据分析目录（联动 Datas / 缓存） |
-| Logs | `logs_dir` | `~/.benchscope/logs` | 日志目录：`runtime_年月日.log` + 任务终端输出（`perf\|eval_runID_月日时分秒.log`） |
-| Sessions | `sessions_dir` | `~/.benchscope/sessions` | 会话缓存目录 |
-| Models | `models_dir` | `~/.benchscope/models` | 模型下载缓存目录（联动 Settings/Models） |
-| Datasets | `datasets_dir` | `~/.benchscope/datasets` | 数据集下载缓存目录（联动 Settings/Datasets，内置数据集缓存到 `datasets_dir/{id}/`） |
-| Plugins | `plugins_dir` | `~/.benchscope/plugins` | 插件安装加载目录（联动 Settings/Plugins，v5.0） |
+| Root Dir（根目录） | `data_dir` | `~/.benchscope` | **数据根目录**（服务端数据持久化根）。修改后**即时生效、无需重启**；8 个子目录自动重置为新根下的默认目录 |
+| Perf | `perfs_dir` | `~/.benchscope/perfs` | 性能测试任务目录（run_dir），子目录，只读 |
+| Eval | `evals_dir` | `~/.benchscope/evals` | 精度测试任务目录（run_dir），子目录，只读 |
+| Analysis | `analysis_dir` | `~/.benchscope/analysys` | 数据分析目录（联动 Datas / 缓存），子目录，只读 |
+| Logs | `logs_dir` | `~/.benchscope/logs` | 日志目录，子目录，只读 |
+| Sessions | `sessions_dir` | `~/.benchscope/sessions` | 会话缓存目录，子目录，只读 |
+| Models | `models_dir` | `~/.benchscope/models` | 模型下载缓存目录，子目录，只读 |
+| Datasets | `datasets_dir` | `~/.benchscope/datasets` | 数据集下载缓存目录，子目录，只读 |
+| Plugins | `plugins_dir` | `~/.benchscope/plugins` | 插件安装加载目录，子目录，只读 |
 
-**交互（行内编辑）**：
-- 点击目录值 → 变为输入框 + 保存按钮；`Enter` 保存、失焦取消；保存成功**静默持久化**（无 toast）。
-- 目录不存在显示红色「Missing」标签；后端 `ConfigManager` 对路径做 `expanduser` + `resolve`。
-- **Perf / Eval 目录在存在运行中任务时锁定**（`locked`）：面板标题显示「运行中锁定」橙色标签，点击值弹警告通知（后端 409 兜底校验）。
-- 修改 **Data 根目录** → 确认重启 → 确认是否迁移数据 → `POST /api/config/restart`（`migrate: true/false`）；迁移时 WebSocket 监听 `migration` 进度事件（进度 Modal + spinner）。
+**交互（1.0.9 改版）**：
+- **Root Dir（`data_dir`）可编辑**：点击值 → 输入框；**失焦（blur）或回车即保存**，保存后后端立即把 8 个子目录重置为新根下的默认子目录并创建目录；**静默、无任何提醒**（无重启确认 / 无迁移弹窗 / 无 toast）。
+- **8 个子目录只读高亮展示**（`.dir-value.readonly`：浅蓝底 + 描边 + 圆角），不可点击编辑；值跟随 Root Dir 自动更新。
+- **修改 Root Dir 无需重启服务，以环境变量形式使用**：后端 `ConfigManager` 在更新时把数据根目录同步到 `os.environ['BENCHSCOPE_DATA_DIR']`；`runner.py` 的 `minimal_env` 将该环境变量**透传给 bench 子进程**（vllm / sglang / bench CLI），因此改根目录对子进程即时生效，无需重启服务。
+- **旧数据不迁移**：改 Root Dir 不迁移旧根目录数据（旧数据原样留在旧位置）。
+- **删除重启/迁移流程（1.0.9）**：移除改 Data 弹「重启 + 迁移」确认、迁移进度 Modal、`POST /api/config/restart` 的前端调用（后端接口保留兼容）。
+- **Root Dir 命名（1.0.9）**：`Data` → **Root Dir（英文）/ 根目录（中文）**。
 - **双语标签**（1.0.6）：目录项名称与描述使用双语字段（`label_zh/label_en`、`desc_zh/desc_en`），随界面语言实时切换（`GET /api/config/dirs` 返回，后端 `CACHE_DIR_INFO` 定义）。
 
 ---

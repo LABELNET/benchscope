@@ -62,6 +62,40 @@
 
 ---
 
+### 迭代 3（2026-09-01 19:35:50）：Settings/Cache Paths 改版 —— Root Dir 即时生效 + 子目录只读
+
+**功能概述**：
+
+- Cache Paths 面板：**Data → Root Dir（根目录）**；改 Root Dir **无需重启服务**，以环境变量形式透传子进程；失焦即创建子目录；8 个子目录只读高亮；去掉重启/迁移流程。
+
+**变更内容**：
+
+1. **后端 — config.py**：
+   - `update()` 的 data_dir 联动改为**全部子目录重置为新根下的默认子目录**（不再只联动"未自定义"项）
+   - 启动与更新时把数据根目录同步到 `os.environ['BENCHSCOPE_DATA_DIR']`（以环境变量形式使用）
+2. **后端 — benches/runner.py**：`minimal_env` 显式透传 `BENCHSCOPE_DATA_DIR` 给 bench 子进程（vllm / sglang / bench CLI）
+3. **后端 — server/api_config.py**：
+   - `update_cache_dirs` 去掉 `requires_restart`（改 Root Dir 不再要求重启），移除 `state.migration_source`
+   - `get_cache_dirs` 子目录项加 `readonly: True`（data_dir 可编辑）；`CACHE_DIR_INFO` `data_dir` 命名 `Root Dir / 根目录`，子目录 desc 更新
+4. **前端 — SettingsView.vue**：
+   - Cache Paths：Root Dir 失焦（blur）/回车即保存并创建子目录，**静默无提醒**；8 个子目录只读高亮展示（`.dir-value.readonly`）
+   - 移除"运行中锁定"标签、重启/迁移 Modal、`notifyLocked`/`askMigrate`/`restartWithMigrate`/迁移 WS 逻辑与相关 import/样式
+
+**验证（增量）**：
+
+- 后端：`tests/api/test_config.py` 全量 22 项通过，新增 3 项 —— `test_cache_dirs_root_readonly_contract`（Root Dir 可编辑、子目录 readonly、命名 Root Dir/根目录）、`test_update_data_dir_no_restart_and_subdirs_reset`（requires_restart=False + 子目录重置新根）、`test_config_update_creates_subdirs_and_sync_env`（同进程创建子目录 + 环境变量同步）
+- 前端 `npm run build` 成功；`check-i18n` OK
+- 实测量：改 Root Dir → `requires_restart=false`、8 子目录重置为新根、共享磁盘上子目录真实创建
+
+**TODO 状态**：
+
+- [x] 后端 — Root Dir 改名 / 子目录重置 / 去重启 / env 注入 + runner 透传
+- [x] 前端 — Root Dir 失焦保存 + 子目录只读高亮 + 去迁移弹窗
+- [x] 测试 — test_config（契约 / 重置 / 创建 / env）+ 构建
+- [x] 文档 — Settings / Architecture / VERSION 同步
+
+---
+
 ## 4. TODO 清单
 
 （1.0.9 待办，按规划补充后逐项勾选）

@@ -130,6 +130,73 @@ def test_cache_dirs(client, base_url):
     assert all(d["value"] for d in data["dirs"])
 
 
+def test_cache_dirs_root_readonly_contract(client, base_url):
+    """Root Dir（data_dir）可编辑；其余子目录只读 + 高亮展示。"""
+    r = client.get(f"{base_url}/api/config/dirs", timeout=10)
+    assert r.status_code == 200, r.text
+    dirs = {d["key"]: d for d in r.json()["dirs"]}
+    assert dirs["data_dir"]["readonly"] is False
+    # 子目录（非 data_dir）一律只读
+    for d in r.json()["dirs"]:
+        if d["key"] != "data_dir":
+            assert d["readonly"] is True, d["key"]
+    # Root Dir 命名：英文 Root Dir / 中文 根目录
+    assert dirs["data_dir"]["label_en"] == "Root Dir"
+    assert dirs["data_dir"]["label_zh"] == "根目录"
+
+
+def test_update_data_dir_no_restart_and_subdirs_reset(client, base_url):
+    """改 Root Dir：无需重启（requires_restart=False），8 个子目录全部重置为新根下的默认子目录。"""
+    import os
+    import tempfile
+
+    new_root = tempfile.mkdtemp(prefix="bs-root-")
+
+    r = client.post(f"{base_url}/api/config/dirs", json={"data_dir": new_root}, timeout=10)
+    assert r.status_code == 200, r.text
+    data = r.json()
+    assert data["requires_restart"] is False, "Root Dir 修改不应再要求重启"
+    assert data["ok"] is True
+
+    # 子目录全部跟随新根目录（断配置值；文件系统创建行为由单元测试 test_config_update_creates_subdirs 覆盖）
+    r2 = client.get(f"{base_url}/api/config/dirs", timeout=10)
+    dirs = {d["key"]: d for d in r2.json()["dirs"]}
+    sub_map = {"perfs_dir": "perfs", "evals_dir": "evals", "analysis_dir": "analysys",
+               "logs_dir": "logs", "sessions_dir": "sessions", "models_dir": "models",
+               "datasets_dir": "datasets", "plugins_dir": "plugins"}
+    for key, sub in sub_map.items():
+        expected = os.path.join(new_root, sub)
+        assert os.path.realpath(dirs[key]["value"]) == os.path.realpath(expected), key
+
+
+def test_config_update_creates_subdirs_and_sync_env():
+    """ConfigManager.update(data_dir)：同进程内应创建新根下的子目录，并把 data_dir 同步到环境变量。"""
+    import os
+    import tempfile
+    from pathlib import Path
+
+    from benchscope.config import ConfigManager
+
+    cfg = ConfigManager(path=Path(tempfile.mkdtemp(prefix="bs-cfg-unit-")) / "settings.json")
+    new_root = tempfile.mkdtemp(prefix="bs-root-unit-")
+
+    cfg.update({"data_dir": new_root})
+
+    assert cfg.get("data_dir") == new_root
+    # 8 个子目录全部重置为新根下的默认子目录
+    for key, sub in [("perfs_dir", "perfs"), ("evals_dir", "evals"), ("analysis_dir", "analysys"),
+                     ("logs_dir", "logs"), ("sessions_dir", "sessions"), ("models_dir", "models"),
+                     ("datasets_dir", "datasets"), ("plugins_dir", "plugins")]:
+        assert os.path.realpath(cfg.get(key)) == os.path.realpath(os.path.join(new_root, sub)), key
+        # ensure_dirs 已创建
+        assert os.path.isdir(os.path.join(new_root, sub)), sub
+    # 环境变量同步（「以环境变量形式使用」）
+    assert os.environ.get("BENCHSCOPE_DATA_DIR") == os.path.realpath(new_root)
+
+    # 恢复环境变量，避免影响其他测试
+    os.environ.pop("BENCHSCOPE_DATA_DIR", None)
+
+
 def test_model_catalog(client, base_url):
     r = client.get(f"{base_url}/api/config/model-catalog", timeout=10)
     assert r.status_code == 200, r.text

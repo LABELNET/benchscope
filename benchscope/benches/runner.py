@@ -177,6 +177,9 @@ class BenchRunner:
             "TERM": os.environ.get("TERM", "xterm-256color"),
             "SHELL": os.environ.get("SHELL", "/bin/bash"),
         }
+        # 数据根目录以环境变量形式透传给 bench 子进程（改 Root Dir 后无需重启服务，ConfigManager 已同步 os.environ）
+        if os.environ.get("BENCHSCOPE_DATA_DIR"):
+            minimal_env["BENCHSCOPE_DATA_DIR"] = os.environ["BENCHSCOPE_DATA_DIR"]
         # 保留 conda 相关环境变量（如果有）
         for key in ("CONDA_EXE", "CONDA_PREFIX", "CONDA_DEFAULT_ENV"):
             if key in os.environ:
