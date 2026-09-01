@@ -6,7 +6,7 @@
 
 <p align="center"><strong>English</strong> | <a href="README.zh-CN.md">简体中文</a></p>
 
-BenchScope is an open‑source LLM inference benchmarking platform built with ~~Vibe Coding~~ Herness Coding.
+BenchScope is an open‑source LLM inference benchmarking platform built with ~~Vibe Coding~~ Harness Coding.
 
 A visualization testing platform for LLM model **performance & accuracy**, supporting models inference with vLLM / SGLang and any OpenAI‑compatible API.
 

@@ -6,7 +6,7 @@
 
 <p align="center"><a href="README.md">English</a> | <strong>简体中文</strong></p>
 
-BenchScope 基于 ~~Vibe Coding~~ Herness Coding 开发的开源大模型推理测试平台。
+BenchScope 基于 ~~Vibe Coding~~ Harness Coding 开发的开源大模型推理测试平台。
 
 面向大语言模型性能与精度的可视化测试平台，支持基于 vLLM / SGLang 的模型推理，以及所有兼容 OpenAI 协议的接口。
 
