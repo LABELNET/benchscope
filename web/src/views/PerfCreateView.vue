@@ -110,7 +110,7 @@
             v-if="engineParams.lines?.length"
             :version="engineParams.version"
             :version-label="t('benchParamsVersion')"
-            :lines="engineParams.lines"
+            :lines="visibleEngineParams.lines"
             :specs="paramSpecs"
             @save="syncEngineParams"
             @update:version="(v) => { engineParams.version = v; syncEngineParams() }"
@@ -124,6 +124,9 @@
         <div class="launch-block">
           <div class="launch-head">
             <span class="launch-title">{{ t('previewConditionsTitle') }}</span>
+            <a-tooltip :title="t('copy')">
+              <copy-outlined class="copy-icon" @click="copyConditions" />
+            </a-tooltip>
           </div>
           <pre class="cond-text">{{ previewConditions || t('loading') }}</pre>
         </div>
@@ -133,9 +136,9 @@
             <a-tag :color="selectedEngine?.kind === 'builtin' ? 'purple' : 'cyan'" size="small">
               {{ engineName }}
             </a-tag>
-            <a-button size="small" type="text" :disabled="!previewCommand" @click="copyCommand">
-              {{ t('copy') }}
-            </a-button>
+            <a-tooltip :title="t('copy')">
+              <copy-outlined class="copy-icon" :class="{ 'copy-disabled': !previewCommand }" @click="copyCommand" />
+            </a-tooltip>
           </div>
           <pre class="cmd-text">{{ previewCommand || t('loading') }}</pre>
           <div v-if="selectedEngine?.kind === 'builtin'" class="cmd-hint">{{ t('commandHintBuiltin') }}</div>
@@ -152,46 +155,49 @@
         :mask-closable="false"
       >
         <div class="token-warning">
-          <a-alert :message="t('tokenWarningAlert')" type="warning" show-icon class="token-alert" />
-          <div v-for="g in tokenEstimate.groups" :key="g.id" class="token-group">
-            <div class="token-group-label">
-              {{ t('datasetLabel') }}: {{ g.label }}
-            </div>
-            <table class="token-table">
-              <thead>
-                <tr>
-                  <th>{{ t('tokenRequests') }}</th>
-                  <th>{{ t('tokenInputTotal') }}</th>
-                  <th>{{ t('tokenOutputTotal') }}</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr v-for="r in g.rows" :key="`${g.id}-${r.requests}`">
-                  <td>{{ r.requests }}</td>
-                  <td>{{ r.inputTokens.toLocaleString() }}</td>
-                  <td>{{ r.outputTokens.toLocaleString() }}</td>
-                </tr>
-              </tbody>
-            </table>
-            <div class="token-group-sum">
-              {{ t('tokenGroupTotal') }}: {{ t('tokenInputTotal') }} {{ g.groupIn.toLocaleString() }}
-              / {{ t('tokenOutputTotal') }} {{ g.groupOut.toLocaleString() }}
+          <div class="token-hint">{{ t('tokenWarningAlert') }}</div>
+          <div class="token-groups">
+            <div v-for="g in tokenEstimate.groups" :key="g.id" class="token-group">
+              <div class="token-group-label">
+                {{ t('datasetLabel') }}: {{ g.label }}
+              </div>
+              <table class="token-table">
+                <thead>
+                  <tr>
+                    <th>{{ t('tokenRequests') }}</th>
+                    <th>{{ t('tokenInputTotal') }}</th>
+                    <th>{{ t('tokenOutputTotal') }}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-for="r in g.rows" :key="`${g.id}-${r.requests}`">
+                    <td>{{ r.requests }}</td>
+                    <td>{{ r.inputTokens.toLocaleString() }}</td>
+                    <td>{{ r.outputTokens.toLocaleString() }}</td>
+                  </tr>
+                </tbody>
+              </table>
+              <div class="token-group-sum">
+                {{ t('tokenGroupTotal') }}: {{ t('tokenInputTotal') }} {{ g.groupIn.toLocaleString() }}
+                / {{ t('tokenOutputTotal') }} {{ g.groupOut.toLocaleString() }}
+              </div>
             </div>
           </div>
-          <div class="token-total">
+        </div>
+        <template #footer>
+          <div class="token-footer">
             <span class="token-total-item">
               {{ t('tokenAllInput') }}: <b>{{ toMillions(tokenEstimate.totalIn) }}</b> {{ t('tokenMillion') }}
             </span>
             <span class="token-total-item">
               {{ t('tokenAllOutput') }}: <b>{{ toMillions(tokenEstimate.totalOut) }}</b> {{ t('tokenMillion') }}
             </span>
+            <span class="token-footer-spacer"></span>
+            <a-button size="small" @click="tokenWarningVisible = false">{{ t('cancel') }}</a-button>
+            <a-button size="small" type="primary" :loading="submitting" @click="doLaunch">
+              {{ t('confirm') }}
+            </a-button>
           </div>
-        </div>
-        <template #footer>
-          <a-button size="small" @click="tokenWarningVisible = false">{{ t('cancel') }}</a-button>
-          <a-button size="small" type="primary" :loading="submitting" @click="doLaunch">
-            {{ t('confirm') }}
-          </a-button>
         </template>
       </a-modal>
 
@@ -207,6 +213,7 @@
             <a-button size="small" type="primary" :loading="step2Saving" @click="nextToLaunch">{{ t('nextStep') }}</a-button>
           </template>
           <template v-else>
+            <a-button size="small" @click="step = 2">{{ t('prev') }}</a-button>
             <a-button size="small" type="primary" :loading="submitting" @click="submit">{{ t('launch') }}</a-button>
           </template>
         </a-space>
@@ -219,7 +226,7 @@
 import { computed, onMounted, ref } from 'vue'
 import { message, Modal } from 'ant-design-vue'
 import { useRoute, useRouter } from 'vue-router'
-import { ArrowLeftOutlined } from '@ant-design/icons-vue'
+import { ArrowLeftOutlined, CopyOutlined } from '@ant-design/icons-vue'
 import { api } from '@/api'
 import { useConfigStore } from '@/store/config'
 import { useTestStore } from '@/store/test'
@@ -277,6 +284,11 @@ const conditions = ref([
 // Step2 参数 yaml（跟随 Step1 所选引擎：每个引擎一套参数，互不干扰）
 const engineParams = ref({ version: '', lines: [], content: '' })
 const paramsLoading = ref(false)
+// token 换算（chars-per-token）不需要配置：渲染与命令均过滤该参数，后端用默认值 4
+const visibleEngineParams = computed(() => ({
+  ...engineParams.value,
+  lines: (engineParams.value.lines || []).filter((l) => l.key !== 'chars-per-token'),
+}))
 
 // ---- Bench 引擎选择 + 环境校验 ----
 const engineId = ref('benchscope')
@@ -549,7 +561,11 @@ function onModelChange() {}
 // 引擎参数仅在内存中修改（不写入 yaml 文件），修改结果用于预览命令与任务执行
 function buildEngineParamsContent() {
   const p = engineParams.value
-  const body = (p.lines || []).map((l) => `${l.key}: ${l.value}`).join('\n')
+  // token 换算不需要配置：过滤 chars-per-token（后端用默认值 4）
+  const body = (p.lines || [])
+    .filter((l) => l.key !== 'chars-per-token')
+    .map((l) => `${l.key}: ${l.value}`)
+    .join('\n')
   return `version: ${p.version || ''}\n${body ? body + '\n' : ''}`
 }
 
@@ -561,6 +577,16 @@ async function copyCommand() {
   if (!previewCommand.value) return
   try {
     await navigator.clipboard.writeText(previewCommand.value)
+    message.success(t('copied'))
+  } catch {
+    message.warning(t('copyFailed'))
+  }
+}
+
+async function copyConditions() {
+  if (!previewConditions.value) return
+  try {
+    await navigator.clipboard.writeText(previewConditions.value)
     message.success(t('copied'))
   } catch {
     message.warning(t('copyFailed'))
@@ -850,11 +876,20 @@ onMounted(async () => {
 }
 /* 启动前 token 使用预警弹窗 */
 .token-warning {
-  max-height: 420px;
-  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 }
-.token-alert {
-  margin-bottom: 12px;
+.token-hint {
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--ant-color-text-tertiary, #999);
+  flex-shrink: 0;
+}
+.token-groups {
+  max-height: 300px;
+  overflow-y: auto;
+  padding-right: 4px;
 }
 .token-group {
   margin-bottom: 14px;
@@ -888,18 +923,23 @@ onMounted(async () => {
   font-size: 12px;
   color: var(--ant-color-text-secondary, #666);
 }
-.token-total {
+.token-footer {
   display: flex;
-  flex-wrap: wrap;
+  align-items: center;
   gap: 16px;
-  margin-top: 12px;
-  padding-top: 10px;
-  border-top: 1px solid var(--ant-color-border-secondary, #f0f0f0);
-  font-size: 13px;
+  width: 100%;
+  font-size: 12px;
+}
+.token-footer-spacer {
+  flex: 1;
+}
+.token-total-item {
+  white-space: nowrap;
+  color: var(--ant-color-text-secondary, #666);
 }
 .token-total-item b {
   color: var(--ant-color-warning, #faad14);
-  font-size: 14px;
+  font-size: 13px;
 }
 .maxreq-line {
   display: flex;
@@ -1053,5 +1093,19 @@ onMounted(async () => {
   margin-top: 10px;
   font-size: 12px;
   color: var(--ant-color-text-tertiary, #999);
+}
+.copy-icon {
+  font-size: 14px;
+  color: var(--ant-color-text-tertiary, #999);
+  cursor: pointer;
+  margin-left: auto;
+}
+.copy-icon:hover {
+  color: var(--ant-color-primary, #1677ff);
+}
+.copy-disabled {
+  color: rgba(0, 0, 0, 0.25);
+  cursor: not-allowed;
+  pointer-events: none;
 }
 </style>

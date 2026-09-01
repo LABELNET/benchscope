@@ -28,6 +28,32 @@ def test_preview_threshold_mode(client, base_url):
     assert len(data["commands"]) > 0
 
 
+def test_preview_builtin_threshold_command(client, base_url):
+    """自研引擎阈值模式预览命令：应体现真实阈值探测（--mode threshold + 阈值参数），
+    与前端 previewConditions 展示的阈值条件一致。"""
+    payload = {
+        **DEFAULT_PAYLOAD,
+        "engine_id": "benchscope",
+        "mode": "threshold",
+        "concurrency_list": [1],
+        "max_requests": 4096,
+        "dataset": {"type": "random", "length_pairs": [[64, 64, "用例A", "case-a", {
+            "ttft_statistic": "median", "ttft_threshold_ms": 50,
+            "tpot_statistic": "p99", "tpot_threshold_ms": 120,
+            "output_throughput_threshold": 200,
+        }]]},
+    }
+    r = client.post(f"{base_url}/api/tasks/preview", json=payload, timeout=10)
+    assert r.status_code == 200, r.text
+    cmd = r.json()["commands"][0]["cmd"]
+    assert "--engine benchscope" in cmd
+    assert "--mode threshold" in cmd, f"阈值模式预览命令应含 --mode threshold: {cmd}"
+    assert "--ttft-threshold-ms 50" in cmd, cmd
+    assert "--tpot-threshold-ms 120" in cmd, cmd
+    assert "--output-threshold 200" in cmd, cmd
+    assert "--max-requests 4096" in cmd, cmd
+
+
 def test_create_task_threshold_ttft_fields(client, base_url):
     """阈值模式创建：TTFT/TPOT 统计量（mean/median/p99）与阈值字段透传并持久化。
     阈值信息在每组请求配置（length_pairs 第 5 元素）中，透传到每个 case；任务级字段保留（向后兼容）。"""

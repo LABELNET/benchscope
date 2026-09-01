@@ -427,7 +427,10 @@ class TaskManager:
                     for conc in task.payload.get("concurrency_list", []):
                         if runner._stop_flag.is_set():
                             break
-                        if conc == "inf" or conc is None:
+                        # inf 表示不限量/最大并发：映射为高并发值（max_concurrency_search 或默认 256）
+                        if conc == "inf":
+                            conc = int((task.payload or {}).get("max_concurrency_search") or 256)
+                        elif conc is None:
                             continue
                         conc = int(conc)
                         try:

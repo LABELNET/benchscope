@@ -452,6 +452,66 @@
 
 ---
 
+### 迭代 16（2026-09-01）：创建页 Step2/Step3 优化 + Realtime Peak 重算 + perf 并发 inf 支持
+
+**功能概述**：
+- 创建任务页 Step2 移除 token 换算配置、Step3 上一步/预览同步/复制图标/token 预警 UI 优化
+- 任务执行页 Realtime Peak output 按 vLLM 语义重算
+- benchscope perf 支持 inf 高并发（不再跳过）
+
+**变更内容**：
+
+1. **Step2 移除 token 换算配置**（`PerfCreateView.vue`）：`chars-per-token` 从参数面板过滤（`visibleEngineParams`）并从命令（`buildEngineParamsContent`）剔除，后端用默认值 4
+2. **Step3 优化**：
+   - footer 加**上一步**按钮（step→2）
+   - 预览条件 + 预览命令各加**复制小图标**（`CopyOutlined`，`copyConditions`/`copyCommand`）
+   - 命令预览 `cmd-text` 换行展示（`white-space: pre-wrap`）
+3. **token 预警面板 UI 优化**：header 标题；内容=灰色小字提示（`.token-hint`，不滚动）+ 分组 token 列表（`.token-groups`，滚动）；footer=左侧总输入/输出 token（百万）+ 右侧取消/确定
+4. **Realtime Peak output 重算**（`builtin_bench.py`）：`RequestRecord` 加 `output_events`（逐 chunk 产出 token 时间序列），`_request_once` 记录每个 chunk 的产出 token（优先 usage 增量、否则文本长度/4），`_peak_output_throughput` 改为按产出时刻滑窗（vLLM 语义），无产出记录时回退请求结束时刻
+5. **perf 并发 inf 支持**（`task_manager.py`）：并发循环中 `conc=="inf"` 由「跳过」改为映射高并发执行（`max_concurrency_search` 或默认 256），支持不限量/高并发压测
+
+**验证（增量）**：
+- 单测：peak 逐 chunk 滑窗 = 24.0（vLLM 语义）；回退 = 5.0
+- WebUI：`-k "create_page or token_warning or perf_create"` 9 项全部通过（token-footer 选择器更新）
+- 后端：`test_builtin_bench` 9 项 + `test_tasks` 15 项全部通过（无回归）
+- 实测：创建含 `inf` 并发任务 status=done 无 error（不再跳过）
+- 前端构建成功；lint 无错误
+
+**TODO 状态**：
+- [x] Step2 — 移除 token 换算（chars-per-token）配置
+- [x] Step3 — 上一步按钮 + 预览命名换行/同步 + 复制小图标
+- [x] Step3 — token 预警面板 UI（header/灰小提示/分组滚动/footer 左总计右按钮）
+- [x] Realtime — Peak output 按 vLLM 逐 chunk 产出滑窗重算
+- [x] perf — inf 并发不再跳过，映射高并发执行
+- [x] 测试与文档 — WebUI/后端测试 + VERSION/Performance/Performance-Create 同步
+
+---
+
+### 迭代 17（2026-09-01）：Step3 预览命令与条件一致 + 前端重建/服务重启生效
+
+**背景**：用户在已实现 Step3 上一步/换行/复制、Peak 重算的基础上再次反馈——① 预览命令参数不对、应与预览条件信息一致；② Realtime Peak output 列数据仍不对。排查确认为**运行时未生效**（前端 webui 资产未重建、后端服务未重启加载新代码），并对自研引擎阈值模式预览命令做了补齐。
+
+**变更内容**：
+
+1. **自研引擎阈值模式预览命令与条件一致**（`builtin_bench.py` / `test_manager.py`）：
+   - `BuiltinOptions` 新增 `mode` / `max_requests` / `ttft_threshold_ms` / `tpot_threshold_ms` / `output_throughput_threshold` 字段（仅用于命令展示，执行策略由上层决定）
+   - `build_command` 在 `mode==threshold` 时追加 `--mode threshold --ttft-threshold-ms --tpot-threshold-ms --output-threshold --max-requests`，与 CLI `benchscope perf --mode threshold` 一致
+   - `build_builtin_command_lines` 按每组 `length_pairs` 第 5 元素阈值构造（新增 `_per_case_threshold`，缺省回退任务级字段），保证预览命令与「预览条件」展示的 TTFT/TPOT/Output/Max Requests 一致
+2. **前端重建**：`npm run build` 重建 `benchscope/webui` 资产（上一步按钮 / 预览换行 / 复制小图标 / token 预警面板 UI 正式生效）
+3. **后端服务重启**：重启 :8080 开发 / :18081 测试服务，加载 Peak 重算与阈值预览命令新代码
+
+**验证（增量）**：
+- 后端：`test_builtin_bench` + `test_tasks` 共 27 项全部通过（含新增 `test_preview_builtin_threshold_command` 断言阈值命令参数、`test_peak_output_throughput_sliding_window` / `test_compute_metrics_has_peakoutput`）
+- 实测：自研引擎阈值模式预览命令含 `--mode threshold --ttft-threshold-ms 50 --tpot-threshold-ms 120 --output-threshold 200 --max-requests 4096`
+- lint 无错误；前端已重建
+
+**TODO 状态**：
+- [x] Step3 — 自研引擎阈值模式预览命令体现真实阈值探测（--mode threshold + 阈值参数），与预览条件一致
+- [x] 前端 — 重建 webui 资产（Step3 上一步/换行/复制/token 预警正式生效）
+- [x] 测试与文档 — 后端测试 + VERSION/Performance-Create 同步
+
+---
+
 ## 4. TODO 清单
 
 （1.0.8 待办，按 P1–P16 实施路径分解；每项落地后勾选并在 §3 记录迭代明细）

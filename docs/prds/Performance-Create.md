@@ -1,7 +1,7 @@
 # Performance-Create（创建任务页）— 功能与约束说明
 
 > **版本**：v1.0.8  
-> **最后更新**：2026-08-31  
+> **最后更新**：2026-09-01  
 > **文档状态**：Performance 创建任务子页面（`/performance/create`）的三步表单、双模式与约束说明  
 > **关联文档**：[Performance.md](./Performance.md)（任务执行页双模式核心逻辑）
 
@@ -97,7 +97,7 @@
 | `request-rate` | `inf` | 请求速率 req/s；`inf` 为全速（测最大吞吐） |
 | `num-prompts` | `0` | 请求总数；`0` = 跟随并发数 |
 | `num-warmups` | `0` | 预热请求数（不计入指标），消除冷启动影响 |
-| `chars-per-token` | `4` | 字符 / token 近似换算比（英文 4，中文 2） |
+| `chars-per-token` | `4`（**1.0.8 无需配置**） | 字符 / token 近似换算比；已从 Step2 参数面板与命令中过滤，后端用默认值 4 |
 | `timeout` | `600` | 单请求超时（秒），超时计为失败 |
 | `temperature` | `0.0` | 采样温度，压测建议固定 0 保证可复现 |
 | `seed` | `0` | 随机种子，`0` = 不固定 |
@@ -106,14 +106,19 @@
 
 ## 3. Step 3 启动测试
 
-- 预览**任务条件**（测试引擎 / Provider / 模型 / Base URL（取自所选 Provider）/ 数据集组 / 模式相关参数）
+- **footer 按钮（1.0.8）**：取消 / **上一步**（回到 Step2）/ **启动**（Launch）
+- 预览**任务条件**（测试引擎 / Provider / 模型 / Base URL（取自所选 Provider）/ 数据集组 / 模式相关参数），标题行带**复制小图标**（`copyConditions` 复制条件文本）
 - 预览**命令**（`/api/tasks/preview` 生成的首条命令），**命令随引擎变化**（1.0.7）：
   - **Bench CLI（自研，`kind=builtin`）** → `benchscope perf --model ... --concurrency ...`，
-    标题行展示引擎标签与「复制」按钮，附说明 `commandHintBuiltin`
+    标题行展示引擎标签与**复制小图标**（`copyCommand`），命令 `pre-wrap` **换行展示**，附说明 `commandHintBuiltin`
   - **原生引擎（vllm / sglang）** → 对应 CLI 命令（`vllm bench serve` / `python -m sglang.bench_serving`），
     Step2 编辑的引擎参数以 `--key=value` 附加
+- **命令与预览条件一致（1.0.8）**：自研引擎阈值模式下，预览命令体现真实执行的阈值探测参数——
+  追加 `--mode threshold --ttft-threshold-ms --tpot-threshold-ms --output-threshold --max-requests`
+  （阈值取该组 `length_pairs` 第 5 元素，缺省回退任务级字段），与「预览条件」展示的 TTFT/TPOT/Output/Max Requests 一致
 - Bench CLI 预览命令**可直接复制到终端执行**（新增 `benchscope perf` 子命令，见 [rules/BenchEngine.md](../rules/BenchEngine.md)）
-- 「启动」→ **Token 使用预警弹窗（1.0.8，仅前端估算）** → Modal 确认（footer 确定/取消）→ `createTask` + `startTask` + 设为当前任务 → 跳回 `/performance` 任务执行页
+- 「启动」→ **Token 使用预警弹窗（1.0.8，仅前端估算）** → Modal 确认 → `createTask` + `startTask` + 设为当前任务 → 跳回 `/performance` 任务执行页
+- **Token 预警弹窗 UI（1.0.8）**：header 为标题；内容=灰色小字提示（`.token-hint`，**不滚动**）+ 分组 token 计算列表（`.token-groups`，**列表滚动**）；footer=左侧总输入/输出 token（百万单位）+ 右侧取消/确定
 
 ### 3.1 Token 使用预警弹窗（1.0.8，仅前端计算与提示）
 

@@ -117,6 +117,18 @@ def _resolve_engine(payload: dict):
         return None
 
 
+def _per_case_threshold(dataset: dict, case: dict) -> dict:
+    """按 case 取出该组的阈值 dict（length_pairs 第 5 元素），缺省返回空 dict。
+
+    与 `task_manager.build_cases` 解析一致：阈值信息跟随每组请求配置，不跟随主任务。
+    """
+    for item in (dataset or {}).get("length_pairs") or []:
+        il, ol, label, *rest = item
+        if (il, ol, label) == (case.get("input_len"), case.get("output_len"), case.get("label")) and len(rest) > 1 and isinstance(rest[1], dict):
+            return rest[1]
+    return {}
+
+
 def build_builtin_command_lines(payload: dict, config, engine: dict) -> list[dict]:
     """自研引擎（Bench CLI）的命令预览：参数取自该引擎的参数清单。"""
     from benchscope.benches.builtin_bench import (
@@ -144,6 +156,9 @@ def build_builtin_command_lines(payload: dict, config, engine: dict) -> list[dic
             "output_len": case.get("output_len"),
             "path": case.get("path"),
         })
+        # 每组阈值（TTFT/TPOT/Output）跟随 length_pairs 第 5 元素（与 previewConditions / 执行策略同源），
+        # 0 / None 表示该指标不参与判定 → 命令参数为 0
+        grp_thr = _per_case_threshold(dataset, case)
         for conc in conc_list:
             if conc == "inf" or conc is None:
                 continue
@@ -155,6 +170,13 @@ def build_builtin_command_lines(payload: dict, config, engine: dict) -> list[dic
                 concurrency=int(conc),
                 api_key=api.get("api_key") or "",
             )
+            # 阈值模式：命令体现真实执行的阈值探测参数（与 previewConditions 一致）
+            if mode == "threshold":
+                opts.mode = "threshold"
+                opts.max_requests = int(payload.get("max_requests") or 4096)
+                opts.ttft_threshold_ms = float(grp_thr.get("ttft_threshold_ms") or payload.get("ttft_threshold_ms") or 0.0)
+                opts.tpot_threshold_ms = float(grp_thr.get("tpot_threshold_ms") or payload.get("tpot_threshold_ms") or 100.0)
+                opts.output_throughput_threshold = float(grp_thr.get("output_throughput_threshold") or payload.get("output_throughput_threshold") or 0.0)
             lines.append({
                 "case": case["label"],
                 "concurrency": int(conc),

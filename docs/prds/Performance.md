@@ -1,7 +1,7 @@
 # benchscope Performance 任务执行页 — 双模式核心逻辑与联动说明
 
 > **版本**：v1.0.8  
-> **最后更新**：2026-08-31  
+> **最后更新**：2026-09-01  
 > **文档状态**：Performance 任务执行页双模式（并发 / 阈值）核心逻辑策略与联动关系说明  
 > **前置文档**：[VERSION_1_0_5.md](../versions/VERSION_1_0_5.md)
 
@@ -146,6 +146,17 @@ bestRow.best = true
 - Perf 面板不显示 Requests 行（仅保留 Concurrency 行，inf/follow/数值规则不变）。
 - Perf 面板 Framework 行下新增 **Mode 行**：`Concurrency Mode`（并发模式）/ `Threshold Mode`（阈值模式），样式与 Framework 一致（不高亮）。
 - **Mock 运行标识（1.0.7）**：任务快照透出 `use_mock_env`（`task_manager.py::Task.snapshot()`）；Framework 行右侧显示橙色 **Mock** tag（`.mock-env-tag`，title 提示 `mockEnvTagHint`「仿真运行（mocks/ FAKE 模式），非真实引擎输出」），标识 FAKE 仿真任务。
+
+### 3.5 Peak Output Token Throughput（1.0.8 按 vLLM 重算）
+
+- 列 `Peak output token throughput (tok/s)` 数据来自 `row.metrics.peakoutput_mean`。
+- **vLLM 语义（1.0.8 重算）**：基于**逐 chunk 产出 token 时间序列**做 1 秒滑窗——`_request_once` 记录每个输出 chunk 的 `(产出时刻, token 数)`（`RequestRecord.output_events`，token 数优先 usage 增量、否则文本长度/4 估算），`_peak_output_throughput` 统计 1 秒窗口内**实际产出**的最大 token 数 / 1s；无逐 chunk 记录（旧数据）时回退请求结束时刻整段 token。
+- 旧口径（1.0.7 及之前）：只在请求**结束时刻**一次性记入整段 `completion_tokens`，无法反映窗口内真实产出速率（偏低/失真）。
+
+### 3.6 并发 `inf`（1.0.8）
+
+- 并发模式 `concurrency_list` 支持 `inf`（表示不限量/最大并发）——`task_manager._execute` 中 `conc=="inf"` 由「跳过」改为映射高并发执行（取 `max_concurrency_search` 或默认 256），不再静默跳过。
+- 默认并发列表（`1,4,8,16,32,40,64,128`）最大为 128 是**默认值**而非硬限制；`inf` 或更高数值可在创建页请求数 tags 中输入，后端可执行任意并发（`concurrency = max(1, int(...))` 仅保底 ≥1，无上限）。
 - **Realtime Data 分组标题行展示每组阈值条件**（`.group-threshold`，**仅阈值模式**）：分组标题行在 `label + 行数` 右侧追加**该组阈值条件文本**（按每组 case 生成（`groupThresholdTexts`，由 `theTask.cases` → `caseKeyOf(case)` → `caseThresholdText(case)`，与 Cases 面板同一口径，跟随 Groups 不跟随主任务），如 `TTFT-Mean ≤ 50ms · TPOT-Median ≤ 100ms · Output ≤ 200 tok/s`）；宽度不够伪隐藏（ellipsis + title 完整文本）；0 值项不显示
 - **表格导出 Excel**：Realtime Data 表格底部 Columns 右侧有 **下载按钮**（图标+文字），点击后将**当前表格内容**（含分组标题行、当前可见列、Best/BestPerf 标记）导出为 xlsx：
   - 通过 `POST /api/tasks/{task_id}/export` 由后端 `openpyxl` 生成

@@ -684,8 +684,8 @@ def test_create_page_token_warning_concurrency(page):
     # 每组预估：输入/输出 token 表
     assert modal.locator(".token-table").count() >= 1, "应显示每组 token 预估表"
     assert modal.locator(".token-table tbody tr").count() >= 1, "应有请求数行"
-    # 全部总计（百万单位）
-    total_text = modal.locator(".token-total").inner_text()
+    # 全部总计（百万单位，footer 左侧）
+    total_text = modal.locator(".token-footer").inner_text()
     assert "M" in total_text or "百万" in total_text, f"总计应为百万单位: {total_text}"
     # footer 确定/取消
     btns = modal.locator(".ant-modal-footer button").all_inner_texts()
@@ -708,8 +708,8 @@ def test_create_page_token_warning_threshold(page):
         return int(rows.nth(r).locator("td").nth(i).inner_text().replace(",", ""))
     r0_in, r1_in = cell(0, 1), cell(1, 1)
     assert r1_in == r0_in * 3, f"阈值模式第 2 阶梯应累计(1+2=3)倍: {r0_in} -> {r1_in}"
-    # 总计百万单位
-    total_text = modal.locator(".token-total").inner_text()
+    # 总计百万单位（footer 左侧）
+    total_text = modal.locator(".token-footer").inner_text()
     assert "M" in total_text or "百万" in total_text, f"总计应为百万单位: {total_text}"
     # 取消关闭
     modal.locator(".ant-modal-footer button").filter(has_text="Cancel").first.click()

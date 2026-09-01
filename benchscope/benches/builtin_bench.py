@@ -146,7 +146,7 @@ def build_command(opts: "BuiltinOptions", engine_id: str = "benchscope") -> list
     """
     ds = opts.dataset or {}
     rate = "inf" if opts.request_rate == float("inf") else f"{opts.request_rate:g}"
-    return [
+    cmd = [
         "benchscope", "perf",
         "--engine", engine_id,
         "--model", opts.model or "<model>",
@@ -164,6 +164,16 @@ def build_command(opts: "BuiltinOptions", engine_id: str = "benchscope") -> list
         "--temperature", f"{_as_float((opts.extra_body or {}).get('temperature'), 0.0):g}",
         "--seed", str(int(opts.seed or 0)),
     ]
+    # 阈值模式：命令体现真实执行的阈值探测参数（与 CLI --mode threshold 一致，见 cli._perf_threshold）
+    if opts.mode == "threshold":
+        cmd += [
+            "--mode", "threshold",
+            "--ttft-threshold-ms", f"{_as_float(opts.ttft_threshold_ms, 0.0):g}",
+            "--tpot-threshold-ms", f"{_as_float(opts.tpot_threshold_ms, 0.0):g}",
+            "--output-threshold", f"{_as_float(opts.output_throughput_threshold, 0.0):g}",
+            "--max-requests", str(int(opts.max_requests or 4096)),
+        ]
+    return cmd
 
 
 @dataclass
@@ -175,6 +185,7 @@ class RequestRecord:
     first_token: Optional[float] = None   # t_first
     end: Optional[float] = None           # t_end
     itls: list = field(default_factory=list)      # 相邻 chunk 间隔（ms）
+    output_events: list = field(default_factory=list)  # (t, tokens)：逐 chunk 产出 token 时间序列（peak 滑窗用）
     completion_tokens: int = 0
     prompt_tokens: int = 0
     error: str = ""
@@ -200,6 +211,11 @@ class BuiltinOptions:
     extra_body: dict = field(default_factory=dict)
     chars_per_token: float = DEFAULT_CHARS_PER_TOKEN
     seed: Optional[int] = None
+    mode: str = "concurrency"                 # concurrency | threshold（仅用于命令展示，执行策略由上层决定）
+    max_requests: int = 4096                  # 阈值模式：请求数上限（强制结束）
+    ttft_threshold_ms: float = 0.0            # 阈值模式：TTFT 阈值（0 = 不判定）
+    tpot_threshold_ms: float = 100.0          # 阈值模式：TPOT 阈值（0 = 不判定）
+    output_throughput_threshold: float = 0.0  # 阈值模式：输出吞吐阈值（0 = 不判定）
 
 
 # ---------------------------------------------------------------------------
@@ -331,10 +347,15 @@ async def _request_once(
                         rec.itls.append((now - prev) * 1000.0)
                     prev = now
 
-                    # 服务端未返回 usage 时的兜底计数（部分服务每个 chunk 带 usage）
+                    # 逐 chunk 产出 token 时间序列（peak output 滑窗）：优先 usage 增量，否则文本长度/4 估算
+                    chunk_tokens = max(1, int(len(text_piece) / 4))
                     if usage:
-                        rec.completion_tokens = int(usage.get("completion_tokens") or 0)
+                        cur_compl = int(usage.get("completion_tokens") or 0)
+                        if cur_compl > rec.completion_tokens:
+                            chunk_tokens = cur_compl - rec.completion_tokens
+                        rec.completion_tokens = cur_compl
                         rec.prompt_tokens = int(usage.get("prompt_tokens") or 0)
+                    rec.output_events.append((now, chunk_tokens))
 
                 rec.end = time.perf_counter() - t_start
                 rec.ok = True
@@ -446,12 +467,23 @@ def compute_metrics(records: list[RequestRecord], duration: float, concurrency: 
 
 
 def _peak_output_throughput(oks: list[RequestRecord], duration: float) -> float:
-    """峰值输出吞吐：1 秒滑窗内的最大完成 token 数（近似 vLLM peak 语义）。"""
+    """峰值输出吞吐（vLLM 语义）：1 秒滑窗内**实际产出**的最大 token 数。
+
+    与 vLLM 一致：基于每个输出 token / chunk 的**产出时刻**做滑动窗口统计，
+    反映窗口内真实产出速率（而非在请求结束时刻一次性记入整段 token）。
+    回退：请求无逐 chunk 产出记录时，用请求完成时刻整段 token 估算。
+    """
     if not oks or duration <= 0:
         return 0.0
-    events = sorted((r.end, int(r.completion_tokens or 0)) for r in oks if r.end is not None)
-    best = 0
     window = 1.0
+    # 逐 chunk 产出事件（含跨请求）：(t, tokens)
+    events = sorted(
+        (t, max(int(tok), 0)) for r in oks if r.end is not None for t, tok in (r.output_events or [])
+    )
+    if not events:
+        # 回退：按请求完成时刻整段 token（旧口径）
+        events = sorted((r.end, int(r.completion_tokens or 0)) for r in oks if r.end is not None)
+    best = 0
     j = 0
     prefix = [0]
     for _, tok in events:

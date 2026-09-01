@@ -76,6 +76,41 @@ def test_build_prompt_approx_length():
     assert len(p2) < len(p), "更短的目标长度应生成更短 prompt"
 
 
+# ---------------- 峰值输出吞吐（vLLM 语义：逐 chunk 产出滑窗） ----------------
+
+
+def test_peak_output_throughput_sliding_window():
+    """peak output：基于逐 chunk 产出时刻的 1s 滑窗（vLLM 语义），非请求完成时刻整段记入。
+
+    两个请求交错产出：t=0 产出 8 tokens、t=0.6 产出 8 tokens → 1s 窗内峰值 16 tok/s。
+    """
+    from benchscope.benches.builtin_bench import _peak_output_throughput
+
+    # 请求1：t=0 产出 8 tokens（chunk 事件），t=0.3 结束
+    # 请求2：t=0.6 产出 8 tokens（chunk 事件），t=0.9 结束
+    r1 = RequestRecord(ok=True, start=0.0, first_token=0.0, end=0.3,
+                       output_events=[(0.0, 8)], completion_tokens=8, prompt_tokens=0)
+    r2 = RequestRecord(ok=True, start=0.0, first_token=0.6, end=0.9,
+                       output_events=[(0.6, 8)], completion_tokens=8, prompt_tokens=0)
+    peak = _peak_output_throughput([r1, r2], duration=1.0)
+    assert peak == pytest.approx(16.0, abs=0.5), f"1s 窗内两请求合计应为 16 tok/s: {peak}"
+
+    # 同一请求结束时刻回退（无 chunk 事件）：整段 token 在完成时刻记入
+    r3 = RequestRecord(ok=True, start=0.0, first_token=0.0, end=0.5,
+                       output_events=[], completion_tokens=10, prompt_tokens=0)
+    peak_fb = _peak_output_throughput([r3], duration=1.0)
+    assert peak_fb == pytest.approx(10.0, abs=0.5), f"回退应按完成时刻整段记入: {peak_fb}"
+
+
+def test_compute_metrics_has_peakoutput():
+    """compute_metrics 输出 peakoutput_mean 键（实时面板 Peak output 列读取）。"""
+    rec = RequestRecord(ok=True, start=0.0, first_token=0.0, end=0.5,
+                        output_events=[(0.0, 10)], completion_tokens=10, prompt_tokens=0)
+    m = compute_metrics([rec], duration=0.5, concurrency=1)
+    assert "peakoutput_mean" in m
+    assert m["peakoutput_mean"] == pytest.approx(10.0, abs=0.5)
+
+
 # ---------------- 引擎执行（对 mock 服务真实发压） ----------------
 
 
