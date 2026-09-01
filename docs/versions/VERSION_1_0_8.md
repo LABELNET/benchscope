@@ -403,6 +403,55 @@
 
 ---
 
+### 迭代 14（2026-09-01）：Design.md 规范增强（对齐 Ant Design 设计语言）
+
+**功能概述**：
+- 重新优化 `docs/rules/Design.md`，增加 **Ant Design 设计规范**（ant.design/design.md）基准
+
+**变更内容**：
+
+1. **新增 §0 Ant Design 设计规范基准**：
+   - §0.1 设计价值观（四大）：自然 / 确定性 / 意义感 / 生长性 + 本项目落地
+   - §0.2 设计令牌（Design Token）：统一 `var(--ant-color-*)`，禁止硬编码；主题自动跟随
+   - §0.3 设计基础：色彩 / 字体 / 8px 间距 / 24 栅格 / 圆角 / 阴影 / 图标 / 动效 / 无障碍
+2. **现有章节对齐 antd**：布局（8px 网格 + 24 栅格）、字体（antd 字体栈 + 数字等宽）、颜色（补 `--ant-color-info`、色阶派生）
+3. **新增 §7 遵循检查清单**（对齐 antd：无硬编码令牌 / 8px 网格 / 24 栅格 / antd 语义组件 / 图标来源 / 中英双语）
+
+**验证**：
+- lint 无错误
+
+**TODO 状态**：
+- [x] 规范 — Design.md 增加 Ant Design 设计规范基准（价值观/令牌/设计基础）
+- [x] 规范 — 现有章节对齐 antd + 遵循检查清单
+- [x] 文档 — VERSION 同步
+
+---
+
+### 迭代 15（2026-09-01）：webui 代码对齐 Design.md（Ant Design 设计令牌）
+
+**功能概述**：
+- 根据 Design.md（对齐 Ant Design 设计语言）优化 webui 前端源码，将硬编码颜色改为 antd 设计令牌
+
+**变更内容**：
+
+1. **`MetricsTable.vue`**（硬编码最多）：`#999`/`#1677ff`/`#e6f4ff`/`#91caff`/`#bae0ff`/`#fafafa`/`#f5f5f5`/`#d9f7be`/`#c5e8ad`/`#fff1b8`/`#ffe58f` 等全部改为 `var(--ant-*)` 令牌（primary-bg / success-bg / warning-bg / text / fill-secondary 等，保留原 hex fallback）
+2. **`StatusBadge.vue`**：`#52c41a`→`--ant-color-success`、`#ff4d4f`→`--ant-color-error`、`rgba(0,0,0,.65)`→`--ant-color-text-secondary`；label 字号 13px→12px
+3. **`RunDataPanel.vue`**：`#f6ffed`→`--ant-color-success-bg`、`#b7eb8f`→`--ant-color-success-border`
+4. **`RunDetailPanel.vue`**：`#fff`→`--ant-color-bg-container`、`#f0f0f0`→`--ant-color-border`、`#f6f8fa`→`--ant-color-fill-secondary`；内联 `color:#999`→`var(--ant-color-text-tertiary)`
+5. **内联硬编码**：`AnalysisBlock`/`ConcurrencyEditor`/`FreeArgsEditor` 模板内联 `color:#999` → `var(--ant-color-text-tertiary)`
+
+**验证（增量）**：
+- 前端构建成功（12.78s，无错误）
+- WebUI：`-k "dashboard or performance or datas"` 8 项全部通过（无回归）
+- lint 无错误
+
+**TODO 状态**：
+- [x] 优化 — MetricsTable / StatusBadge / RunDataPanel / RunDetailPanel 硬编码颜色令牌化
+- [x] 优化 — 组件模板内联硬编码颜色令牌化
+- [x] 测试与文档 — 前端重建 + WebUI 确认 + VERSION 同步
+
+---
+
 ## 4. TODO 清单
 
 （1.0.8 待办，按 P1–P16 实施路径分解；每项落地后勾选并在 §3 记录迭代明细）

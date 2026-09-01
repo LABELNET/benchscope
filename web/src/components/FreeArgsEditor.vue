@@ -6,7 +6,7 @@
       <a-button size="small" danger @click="remove(i)">删除</a-button>
     </div>
     <a-button size="small" type="dashed" @click="add">+ 添加其他参数</a-button>
-    <div style="color: #999; font-size: 12px; margin-top: 4px">
+    <div style="color: var(--ant-color-text-tertiary); font-size: 12px; margin-top: 4px">
       自由添加 vLLM / SGLang bench 的其他参数，直接拼接到命令末尾。
     </div>
   </div>

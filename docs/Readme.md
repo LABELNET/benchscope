@@ -1,7 +1,7 @@
 # docs 文档目录
 
 > **文档状态**：benchscope 文档体系说明与维护约定  
-> **最后更新**：2026-09-01 11:00:00
+> **最后更新**：2026-09-01 11:20:00
 
 本目录组织项目全部技术文档。**开发更新功能时，必须同步更新对应文档**（见文末「维护约定」）。
 
@@ -44,7 +44,7 @@
 | --- | --- |
 | [rules/Architecture.md](rules/Architecture.md) | 系统架构、核心模块、操作模块 |
 | [rules/Software.md](rules/Software.md) | 软件架构/方案/选型/依赖 |
-| [rules/Design.md](rules/Design.md) | 设计规范：UI / 字体 / 颜色 |
+| [rules/Design.md](rules/Design.md) | 设计规范：UI / 字体 / 颜色，**对齐 Ant Design 设计语言**（价值观 / 设计令牌 / 8px 网格 / 24 栅格） |
 | [rules/Development.md](rules/Development.md) | 开发 / 验证 / 部署规范 |
 | [rules/BenchEngine.md](rules/BenchEngine.md) | **Bench 引擎架构（1.0.7）**：引擎抽象（自研 bench / vllm-<ver> / sglang-<ver>）+ 环境校验 + 参数描述 + 自研引擎核心设计 |
 | [rules/BenchCore.md](rules/BenchCore.md) | ⭐ **自研 bench 核心实现总结（存档）**：流式时间线采集、指标口径对齐 vLLM、四子系统实现、设计取舍与实测数据 |

@@ -1,6 +1,6 @@
 <template>
   <div>
-    <div style="margin-bottom: 8px; color: #999; font-size: 12px">
+    <div style="margin-bottom: 8px; color: var(--ant-color-text-tertiary); font-size: 12px">
       {{ threshold ? `TPOT 阈值 ${threshold}ms，金色行为最佳并发` : '未设置 TPOT 阈值' }}
     </div>
     <MetricsTable :rows="tableRows" :threshold="threshold" :pagination="{ pageSize: 20, showSizeChanger: true }" />

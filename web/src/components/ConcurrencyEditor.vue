@@ -21,7 +21,7 @@
       <a-button size="small" type="dashed" @click="add">添加</a-button>
       <a-button size="small" @click="reset">恢复默认 1,4,8,16,32,40,64,128</a-button>
     </div>
-    <div style="color: #999; font-size: 12px">
+    <div style="color: var(--ant-color-text-tertiary); font-size: 12px">
       测试时每个并发数分别执行一次 bench；--max-concurrency 与 --num-prompts 保持一致。
     </div>
   </div>

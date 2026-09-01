@@ -87,8 +87,8 @@ function groupRows(key) {
 .group-threshold-bar {
   font-size: 10px;
   color: var(--ant-color-text-tertiary, #999);
-  background: #f6ffed;
-  border: 1px dashed #b7eb8f;
+  background: var(--ant-color-success-bg, #f6ffed);
+  border: 1px dashed var(--ant-color-success-border, #b7eb8f);
   border-radius: 4px;
   padding: 2px 8px;
   margin-bottom: 6px;

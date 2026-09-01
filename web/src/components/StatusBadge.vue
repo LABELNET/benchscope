@@ -30,13 +30,13 @@ defineProps({
   font-size: 16px;
 }
 .status-badge.ok .status-icon {
-  color: #52c41a;
+  color: var(--ant-color-success, #52c41a);
 }
 .status-badge.bad .status-icon {
-  color: #ff4d4f;
+  color: var(--ant-color-error, #ff4d4f);
 }
 .status-label {
-  color: rgba(0, 0, 0, 0.65);
-  font-size: 13px;
+  color: var(--ant-color-text-secondary, rgba(0, 0, 0, 0.65));
+  font-size: 12px;
 }
 </style>

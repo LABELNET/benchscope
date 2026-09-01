@@ -46,7 +46,7 @@
             width="900px"
             :footer="null"
           >
-            <div style="color: #999; font-size: 12px; margin-bottom: 6px">
+            <div style="color: var(--ant-color-text-tertiary); font-size: 12px; margin-bottom: 6px">
               共 {{ previewInfo.total_lines }} 行，显示末尾
               {{ previewInfo.truncated > 0 ? `（省略前 ${previewInfo.truncated} 行）` : '全部' }}
             </div>
@@ -149,15 +149,15 @@ watch(() => props.runId, () => refresh(), { immediate: true })
   border-radius: 8px;
 }
 .detail-tabs {
-  background: #fff;
-  border: 1px solid #f0f0f0;
+  background: var(--ant-color-bg-container, #fff);
+  border: 1px solid var(--ant-color-border, #f0f0f0);
   border-radius: 8px;
   padding: 0 12px 12px;
 }
 .preview-pre {
   max-height: 520px;
   overflow: auto;
-  background: #f6f8fa;
+  background: var(--ant-color-fill-secondary, #f6f8fa);
   padding: 12px;
   font-size: 12px;
   white-space: pre-wrap;

@@ -369,7 +369,7 @@ async function exportExcel() {
   white-space: nowrap;
 }
 .metrics-table .case-meta {
-  color: #999;
+  color: var(--ant-color-text-tertiary, #999);
   font-size: 11px;
   margin-left: 4px;
 }
@@ -381,7 +381,7 @@ async function exportExcel() {
 }
 .metrics-table .group-label {
   font-weight: 600;
-  color: #1677ff;
+  color: var(--ant-color-primary, #1677ff);
 }
 .metrics-table .group-count {
   font-size: 11px;
@@ -401,35 +401,35 @@ async function exportExcel() {
   max-width: 300px;
 }
 .metrics-table .row-group > td {
-  background-color: #e6f4ff !important;
-  color: #000;
+  background-color: var(--ant-color-primary-bg, #e6f4ff) !important;
+  color: var(--ant-color-text, #000);
   font-weight: 600;
-  border-bottom: 1px solid #91caff !important;
+  border-bottom: 1px solid var(--ant-color-primary-border, #91caff) !important;
 }
 .metrics-table .row-group:hover > td {
-  background-color: #bae0ff !important;
+  background-color: var(--ant-color-primary-bg-hover, #bae0ff) !important;
 }
 /* 仅 Best 行高亮绿色,其他行默认灰底黑字 */
 .metrics-table .ant-table-tbody > tr > td {
-  background-color: #fafafa;
-  color: #000;
+  background-color: var(--ant-color-bg-container, #fafafa);
+  color: var(--ant-color-text, #000);
 }
 .metrics-table .ant-table-tbody > tr:hover > td {
-  background-color: #f5f5f5 !important;
+  background-color: var(--ant-color-fill-secondary, #f5f5f5) !important;
 }
 .metrics-table .row-best > td {
-  background-color: #d9f7be !important;
-  color: #000;
+  background-color: var(--ant-color-success-bg, #d9f7be) !important;
+  color: var(--ant-color-text, #000);
 }
 .metrics-table .row-best:hover > td {
-  background-color: #c5e8ad !important;
+  background-color: var(--ant-color-success-bg-hover, #c5e8ad) !important;
 }
 .metrics-table .row-bestperf > td {
-  background-color: #fff1b8 !important;
-  color: #000;
+  background-color: var(--ant-color-warning-bg, #fff1b8) !important;
+  color: var(--ant-color-text, #000);
 }
 .metrics-table .row-bestperf:hover > td {
-  background-color: #ffe58f !important;
+  background-color: var(--ant-color-warning-bg-hover, #ffe58f) !important;
 }
 .metrics-table .table-footer {
   display: flex;
