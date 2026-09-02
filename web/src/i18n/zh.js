@@ -322,6 +322,7 @@ export default {
   noSession: '选择一个会话或新建',
   newSession: '新建会话',
   clearSessions: '清空',
+  clear: '清空',
   clearConfirm: '确认清空所有会话？',
   selectModelForChat: '选择模型',
   inputPlaceholder: '输入消息...',
@@ -332,6 +333,8 @@ export default {
   qualityLow: '低',
   thinking: '思考',
   thinkingInProgress: '思考中',
+  sessionRename: '重命名会话',
+  sessionRenamePlaceholder: '输入新名称',
 
   // Settings extras
   statusCol: '状态',

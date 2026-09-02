@@ -232,6 +232,7 @@ class SessionManager:
             )
             self._sessions[session_id] = session
             session.persist(self.sessions_dir / f"{session_id}.json")
+            self.persist_log(session)
             return session
 
     def delete_session(self, session_id: str):
@@ -243,6 +244,13 @@ class SessionManager:
                     p.unlink()
                 except Exception:
                     log.warning("unlink failed: %s", p)
+            # 同步删除对应会话日志
+            try:
+                lp = Path(self.config.logs_dir) / "sessions" / f"{session_id}.log"
+                if lp.exists():
+                    lp.unlink()
+            except Exception:
+                log.warning("session log unlink failed: %s", session_id)
 
     def clear_all(self):
         with self._lock:
@@ -251,6 +259,16 @@ class SessionManager:
                     p.unlink()
                 except Exception:
                     log.warning("unlink failed: %s", p)
+            # 清空会话日志目录
+            try:
+                slog_dir = Path(self.config.logs_dir) / "sessions"
+                for lp in slog_dir.glob("*.log"):
+                    try:
+                        lp.unlink()
+                    except Exception:
+                        log.warning("session log unlink failed: %s", lp)
+            except Exception:
+                log.warning("session log clear failed")
             self._sessions.clear()
 
     def add_message(self, session_id: str, role: str, content: str, model: str = "", thinking: str = "") -> Optional[Message]:
@@ -272,7 +290,41 @@ class SessionManager:
             elif role == "user" and len(session.messages) == 1:
                 session.title = content[:50] + ("..." if len(content) > 50 else "")
             session.persist(self.sessions_dir / f"{session_id}.json")
+            self.persist_log(session)
             return msg
+
+    def persist_log(self, session: Session):
+        """将会话对话记录以可读日志落盘到 logs 目录（logs_dir/sessions/<id>.log）。
+
+        每次消息变更后刷新，作为会话「日志」对外可见（区别于 sessions/*.json 缓存）。
+        """
+        try:
+            logs_dir = Path(self.config.logs_dir) / "sessions"
+            logs_dir.mkdir(parents=True, exist_ok=True)
+            lines = []
+            lines.append(f"# Session: {session.title}")
+            lines.append(f"# ID: {session.session_id}")
+            lines.append(f"# Model: {session.model or '-'}")
+            if session.provider_id:
+                lines.append(f"# Provider: {session.provider_id}")
+            lines.append(f"# Created: {session.created_at}")
+            lines.append(f"# Updated: {session.updated_at}")
+            lines.append("-" * 60)
+            for m in session.messages:
+                if isinstance(m, dict):
+                    role, content, thinking, ts = m.get("role", "?"), m.get("content", ""), m.get("thinking", ""), m.get("timestamp", "")
+                else:
+                    role, content, thinking, ts = m.role, m.content, m.thinking, m.timestamp
+                lines.append(f"[{ts}] {role}")
+                if thinking:
+                    lines.append(f"[thinking] {thinking}")
+                lines.append(content or "")
+                lines.append("")
+            (logs_dir / f"{session.session_id}.log").write_text(
+                "\n".join(lines), encoding="utf-8"
+            )
+        except Exception:
+            log.exception("Session log persist failed: %s", session.session_id)
 
     def update_perf(self, session_id: str, perf: dict):
         with self._lock:
@@ -281,6 +333,19 @@ class SessionManager:
                 return
             session.perf = perf if isinstance(perf, dict) else {}
             session.persist(self.sessions_dir / f"{session_id}.json")
+            self.persist_log(session)
+
+    def update_title(self, session_id: str, title: str):
+        """重命名会话：更新标题并刷新 updated_at，持久化。"""
+        with self._lock:
+            session = self._sessions.get(session_id)
+            if not session:
+                return None
+            session.title = (title or "").strip()
+            session.updated_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            session.persist(self.sessions_dir / f"{session_id}.json")
+            self.persist_log(session)
+            return session
 
     def _provider_api_config(self, provider_id: str) -> Optional[dict]:
         """按 provider_id 解析 Provider 的 API 配置（base_url/endpoint/api_key/extra_headers）。"""
@@ -302,7 +367,7 @@ class SessionManager:
                 }
         return None
 
-    def stream_chat(self, session_id: str, user_message: str, model: str = "", quality: str = "", enable_thinking: bool = True, provider_id: str = ""):
+    def stream_chat(self, session_id: str, user_message: str, model: str = "", quality: str = "", enable_thinking: bool = True, provider_id: str = "", top_k: int | None = None, temperature: float | None = None, top_p: float | None = None):
         """生成器：通过 OpenAI 兼容 API 流式转发对话。"""
         session = self.get_session(session_id)
         if not session:
@@ -349,10 +414,17 @@ class SessionManager:
             "stream": True,
             "max_tokens": 4096,
         }
-        # 对话质量 high/medium/low 映射为 temperature
-        temp = {"high": 0.9, "medium": 0.5, "low": 0.2}.get(quality)
-        if temp is not None:
-            payload["temperature"] = temp
+        # 对话采样参数（顶部性能栏配置）：显式 temperature 优先于 quality 映射
+        if temperature is not None:
+            payload["temperature"] = temperature
+        else:
+            temp = {"high": 0.9, "medium": 0.5, "low": 0.2}.get(quality)
+            if temp is not None:
+                payload["temperature"] = temp
+        if top_k is not None and top_k > 0:
+            payload["top_k"] = top_k
+        if top_p is not None:
+            payload["top_p"] = top_p
         # 思考开关(vLLM/SGLang 通过 chat_template_kwargs 控制)
         payload["chat_template_kwargs"] = {"enable_thinking": enable_thinking}
 

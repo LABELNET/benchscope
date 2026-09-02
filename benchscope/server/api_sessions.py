@@ -27,6 +27,10 @@ class ChatRequest(BaseModel):
     quality: str = ""
     enable_thinking: bool = True
     provider_id: str = ""
+    # 对话采样参数（顶部性能栏配置，可选）
+    top_k: int | None = None
+    temperature: float | None = None
+    top_p: float | None = None
 
 
 @router.get("")
@@ -67,6 +71,18 @@ def update_perf(session_id: str, req: PerfRequest):
     return {"ok": True}
 
 
+class RenameRequest(BaseModel):
+    title: str = ""
+
+
+@router.patch("/{session_id}/title")
+def rename_session(session_id: str, req: RenameRequest):
+    session = state.sessions.update_title(session_id, req.title)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+    return {"ok": True, "session": session.to_dict()}
+
+
 @router.delete("")
 def clear_sessions():
     state.sessions.clear_all()
@@ -80,7 +96,9 @@ def chat(session_id: str, req: ChatRequest):
         raise HTTPException(status_code=404, detail="Session not found")
 
     def event_stream():
-        for chunk in state.sessions.stream_chat(session_id, req.message, model=req.model, quality=req.quality, enable_thinking=req.enable_thinking, provider_id=req.provider_id):
+        for chunk in state.sessions.stream_chat(session_id, req.message, model=req.model, quality=req.quality,
+                                                enable_thinking=req.enable_thinking, provider_id=req.provider_id,
+                                                top_k=req.top_k, temperature=req.temperature, top_p=req.top_p):
             yield f"data: {chunk}\n\n"
 
     return StreamingResponse(event_stream(), media_type="text/event-stream")

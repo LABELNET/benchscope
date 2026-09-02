@@ -110,6 +110,7 @@ export const api = {
   createSession: (data) => http.post('/api/sessions', data),
   getSession: (id) => http.get(`/api/sessions/${id}`),
   deleteSession: (id) => http.delete(`/api/sessions/${id}`),
+  renameSession: (id, title) => http.patch(`/api/sessions/${id}/title`, { title }),
   updateSessionPerf: (id, perf) => http.patch(`/api/sessions/${id}/perf`, { perf }),
   clearSessions: () => http.delete('/api/sessions'),
   chatUrl: (sessionId) => `/api/sessions/${sessionId}/chat`,

@@ -548,6 +548,27 @@ def test_sessions_new_chat(page):
     page.locator(".session-item").first.wait_for(state="visible", timeout=10000)
 
 
+def test_sessions_rename_modal(page):
+    """Sessions 会话项三点菜单 -> 重命名弹框：输入新标题保存后列表标题更新。"""
+    page.goto(f"{BASE_URL}/sessions", wait_until="domcontentloaded")
+    _visible(page, ".sessions-page")
+    page.locator(".new-session-btn").click()
+    page.locator(".session-item").first.wait_for(state="visible", timeout=10000)
+    # 点击三点菜单，展开 Rename / Delete
+    page.locator(".session-item").first.locator(".session-more").click()
+    item = page.locator(".ant-dropdown-menu-item").filter(has_text="Rename").first
+    item.wait_for(state="visible", timeout=5000)
+    item.click()
+    # 重命名弹框：清空输入并填写新标题，保存
+    modal = page.locator(".ant-modal:visible")
+    modal_input = modal.locator("input").first
+    modal_input.fill("renamed-by-ui")
+    modal.locator(".ant-modal-footer button").filter(has_text="Save").click()
+    page.locator(".session-item").first.wait_for(state="visible", timeout=10000)
+    name = page.locator(".session-name").first.inner_text()
+    assert "renamed-by-ui" in name
+
+
 def test_spa_fallback(page):
     """未知非 api 路径由 SPA fallback 返回应用（TopBar 渲染）。"""
     page.goto(f"{BASE_URL}/nonexistent-page", wait_until="domcontentloaded")

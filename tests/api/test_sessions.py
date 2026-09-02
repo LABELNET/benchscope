@@ -35,6 +35,30 @@ def test_update_perf(created_session, client, base_url):
     assert r.json()["ok"] is True
 
 
+def test_rename_session(client, base_url):
+    """会话重命名：PATCH /api/sessions/{id}/title 更新标题并返回新标题。"""
+    r = client.post(f"{base_url}/api/sessions", json={"title": "旧标题", "model": ""}, timeout=10)
+    assert r.status_code == 200, r.text
+    sid = r.json()["session"]["session_id"]
+
+    r = client.patch(f"{base_url}/api/sessions/{sid}/title", json={"title": "新标题"}, timeout=10)
+    assert r.status_code == 200, r.text
+    assert r.json()["ok"] is True
+    assert r.json()["session"]["title"] == "新标题"
+
+    # 列表同步读取到新标题
+    r = client.get(f"{base_url}/api/sessions", timeout=10)
+    sessions = r.json()["sessions"]
+    match = [s for s in sessions if s["session_id"] == sid]
+    assert match and match[0]["title"] == "新标题"
+
+    # 未知会话 → 404
+    r = client.patch(f"{base_url}/api/sessions/nope/title", json={"title": "x"}, timeout=10)
+    assert r.status_code == 404
+
+    client.delete(f"{base_url}/api/sessions/{sid}", timeout=10)
+
+
 def test_chat_sse(created_session, client, base_url):
     """SSE 流式对话：mock 推理服务应流式返回内容并结束。"""
     sid = created_session["session_id"]
@@ -56,6 +80,28 @@ def test_chat_sse(created_session, client, base_url):
     assert len(events) > 0
 
     # 最后一个事件应为结束标记（[DONE] 或 done 字段）
+    last = events[-1]
+    assert "DONE" in last or '"done"' in last or '"done":' in last
+
+
+def test_chat_with_sampling_params(created_session, client, base_url):
+    """SSE 对话携带 top_k/temperature/top_p 采样参数（顶部性能栏配置）：应正常流式并通过 mock。"""
+    sid = created_session["session_id"]
+    r = client.post(
+        f"{base_url}/api/sessions/{sid}/chat",
+        json={"message": "hi", "enable_thinking": False,
+              "top_k": 20, "temperature": 0.8, "top_p": 0.9},
+        timeout=30,
+        stream=True,
+    )
+    assert r.status_code == 200, r.text
+    assert "text/event-stream" in r.headers.get("content-type", "")
+
+    events = []
+    for raw in r.iter_lines(decode_unicode=True):
+        if raw:
+            events.append(raw)
+    assert len(events) > 0
     last = events[-1]
     assert "DONE" in last or '"done"' in last or '"done":' in last
 

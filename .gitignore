@@ -25,3 +25,6 @@ datasets/
 ~$*
 .venv
 .dev-*
+.dev_*
+.*_dev_*
+.*-dev-*

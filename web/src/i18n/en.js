@@ -314,6 +314,7 @@ export default {
   noSession: 'Select or create a session',
   newSession: 'New Session',
   clearSessions: 'Clear All',
+  clear: 'Clear',
   clearConfirm: 'Clear all sessions?',
   selectModelForChat: 'Select Model',
   inputPlaceholder: 'Type a message...',
@@ -324,6 +325,8 @@ export default {
   qualityLow: 'Low',
   thinking: 'Thinking',
   thinkingInProgress: 'Thinking...',
+  sessionRename: 'Rename session',
+  sessionRenamePlaceholder: 'Enter a new name',
 
   // Settings extras
   statusCol: 'Status',

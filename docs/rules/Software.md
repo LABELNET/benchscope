@@ -39,7 +39,7 @@
 
 ### 前端（`web/package.json`）
 
-`vue ^3.5` · `vue-router ^4.5` · `pinia ^2.3` · `ant-design-vue ^4.2.6` · `@ant-design/icons-vue ^7` · `echarts ^5.6` · `axios ^1.7` · `dayjs ^1.11`；dev：`vite ^5.4` · `@vitejs/plugin-vue ^5.2`
+`vue ^3.5` · `vue-router ^4.5` · `pinia ^2.3` · `ant-design-vue ^4.2.6` · `@ant-design/icons-vue ^7` · `echarts ^5.6` · `axios ^1.7` · `dayjs ^1.11` · `marked ^18`（**1.0.9：Sessions Markdown 渲染**）· `dompurify ^3.4`（**1.0.9：Sessions 渲染 XSS 净化**）· `highlight.js ^11`（**1.0.9：Sessions 代码块语法高亮，core 按需注册常用语言 + atom-one-dark 主题**）；dev：`vite ^5.4` · `@vitejs/plugin-vue ^5.2`
 
 ## 4. 关键方案决策
 
