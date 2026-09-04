@@ -1,7 +1,7 @@
 # benchscope Performance 任务执行页 — 双模式核心逻辑与联动说明
 
 > **版本**：v1.0.9  
-> **最后更新**：2026-09-01 23:45:12  
+> **最后更新**：2026-09-04 18:50:00  
 > **文档状态**：Performance 任务执行页双模式（并发 / 阈值）核心逻辑策略与联动关系说明  
 > **前置文档**：[VERSION_1_0_5.md](../versions/VERSION_1_0_5.md)
 
@@ -41,11 +41,75 @@ Performance 任务执行页存在两种执行模式，由任务创建时的 `mod
 
 ---
 
-## 1.5 第一行三面板布局（Perf / Cases / Console）
+## 1.5 第一行三面板布局（Perf / Cases / Logs）
 
 - **各占 1/3 固定宽度**（flex `1 1 0` + `min-width: 0`，宽度保持一致；宽度不够时行内容**伪隐藏**——`.info-value` 省略号 + `max-width: 65%`）
-- **高度直接 = Perf 面板高度（无动画）**：JS 测量 Perf 卡片高度（`ref` 用 `$el` 取真实 DOM；用 **`scrollHeight`** 取自然内容高度——`offsetHeight` 在 `align-items:stretch` 下是拉伸后高度；`ResizeObserver` 观察 `$el` + 任务/状态/行数变化时重测）→ 直接应用为 **Cases / Console 卡片的 `height`**（`sideCardStyle`，非 max-height）；`align-items: stretch` 使三面板对齐；`.case-list` `scroll-behavior: auto` 无平滑动画
-- **内容超出滚动**：Cases 面板（`.cases-body`）与 Console 终端（`.terminal-box`）均 `flex:1; min-height:0; overflow-y:auto`，超出部分滚动条
+- **高度直接 = Perf 面板高度（无动画）**：JS 测量 Perf 卡片高度（`ref` 用 `$el` 取真实 DOM；用 **`scrollHeight`** 取自然内容高度——`offsetHeight` 在 `align-items:stretch` 下是拉伸后高度；`ResizeObserver` 观察 `$el` + 任务/状态/行数变化时重测）→ 直接应用为 **Cases / Logs 卡片的 `height`**（`sideCardStyle`，非 max-height）；`align-items: stretch` 使三面板对齐；`.case-list` `scroll-behavior: auto` 无平滑动画
+- **内容超出滚动**：Cases 面板（`.cases-body`）与 Logs 终端（`.terminal-box`）均 `flex:1; min-height:0; overflow-y:auto`，超出部分滚动条
+- **Console → Logs（1.0.9）**：标题由 `Console` 改为 **`Logs`**（`t('logs')`）；日志行**高亮**（`logLineClass(line)` 按内容附加 CSS 类：`$` 命令行→灰、error/fail→红加粗、warn→橙、success/done→绿、区块标题→蓝加粗）；终端**字体减小**（`10px`，原 11px）
+
+---
+
+## 1.6 第二行两面板（Profile Progress / Real-Time Metrics）（1.0.9）
+
+> **Phase-1 说明**：当前后端仅在每个并发点结束回传聚合行（`task_result`）+ 日志（`task_log`）+ 位置（`currentPos`），**尚无真实逐请求实时流**。Phase-1 用现有数据实现两面板布局与进度/表格呈现；**Phase-2（规划）** 将新增后端实时逐请求指标流，让 Real-Time Metrics 的趋势图/sparkline 与 Profile Progress 的实时 req/s、错误、ETA 真正“实时”。
+
+- **原始「Realtime Data」面板保持不变**：作为独立整行（`.realtime-data-card`，位于第二行与统计图行之间），展示**所有请求行**的数据（`MetricsTable`：含分组标题行、Best/BestPerf、本地面板阈值控件、列设置、Excel 导出）——**不改动/不并入新面板**，仅从原「第二行 Realtime Data」位置平移到独立整行。
+- **第二行** 为**新增的两个“单个请求”面板**（`.row-2`，flex 两卡片，样式与 Perf/Cases 等 **antd 对齐**）：
+  - **Profile Progress（1/3）**（`.profile-panel`，flex `0 0 33.333%`，锁 1/3 宽）
+  - **Real-Time Metrics（2/3）**（`.rtm-panel`，flex `1 1 0`，**仅为逐请求实时指标表** `task_live` 流，不含原 MetricsTable）
+  - **等高**：测量 Profile Progress 自然高度（`profilePanelRef`/`measureProfileRow`，ResizeObserver + 任务状态变化重测）→ 赋给 Real-Time Metrics 卡片 `height`（`rtmCardStyle`），两面板等高；Real-Time Metrics body `flex:1; overflow:hidden`，表格每行 `flex:1` **拉伸填满**面板高度。
+- 两面板 header 右侧均显示**灰色小字当前 case-请求数**（`.rt-case-text`，`rtCaseText` computed：优先 `test.currentPos` 的 case(+`#g{case_id}`)·concurrency，其次末行 label·concurrency；宽度不够伪隐藏省略号）。
+
+**页面四行布局（1.0.9）**：
+1. 第 1 行：Perf / Cases / Logs（各 1/3，等高；Logs 为原 Console 改名，日志高亮 + 字体 10px）
+2. 第 2 行：Profile Progress（1/3）+ Real-Time Metrics（2/3，antd 对齐两卡片，等高）
+3. 第 3 行：Realtime Data（原所有请求行表格，**保持不变**，整行）
+4. 第 4 行：Statistics（统计图）
+
+### Profile Progress 面板（antd 对齐）
+
+- **状态卡片**（`.pp-status`，`.pp-${profileStatusKey}`）：`theTask.status` → `profiling`（蓝）/ `error`（红/Error 图标右对齐）/ `completed`（绿）；异常整条红框高亮。
+- **双进度条**（`.pp-bar-row`）：`Profiling`（请求完成度 = `reqPct` = `doneCount/totalCount`，蓝 `#1677ff`）、`Records`（case 处理度 = `recPct` = `recDoneCases/recTotalCases`，绿 `#52c41a`），各带右侧百分比。
+- **每个指标一行**（`.pp-metrics`，label 左 + 值右，分隔线，共 6 项）及**计算方式**（`rtCaseText` 为 header 右侧 case-请求数；`liveStats` = `task_live` 快照 `stats`，无流时回退已完成行聚合）：
+
+  | 指标 | 计算方式 | 说明 |
+  | --- | --- | --- |
+  | Progress | 实时 `completed / total requests (pct%)`；无流回退 `doneCount / totalCount` | `pct = completed/total×100` |
+  | Errors | `errors / completed (pct%)`；无流回退 `errorsDone / requestsDone` | 有错（`errorsHaveErr`）值标红 |
+  | Request Rate | 实时 `stats.req_per_s`；无流 `requestsDone / elapsedSec` | `requests/s` |
+  | Processing Rate | 实时 `stats.completed / stats.t`；无流 `recDoneCases / elapsedSec` | `records/s` |
+  | Elapsed | `fmtClock(liveSec)` = `Mm Ss` / `Hh Mm`（`liveSec` 取 `stats.t` 或 `started_at→now`） | — |
+  | ETA | `(elapsed / pct) × (100 − pct)`；完成显示 `0s` | <2min 显示 `Ns` 秒，否则 `fmtClock` |
+
+### Real-Time Metrics 面板（逐请求实时指标表，antd 对齐）
+
+- header 右侧：仅**灰色小字 case-请求数**（`rtCaseText`）。（已移除单位换算开关与复制快照按钮。）
+- 内容：**单表 + 单表头**（grid `1.6fr repeat(7,1fr)`，`.rtm-grid`，表头 `.rtm-head`）——列 **Metric · avg · min · max · p99 · p90 · p50 · std**，**Metric 列右对齐**（`ta-r`）；表格行 `flex:1` 均分填满面板高度（无曲线列、无分组表头）。
+- **固定 11 行**（`LIVE_METRIC_DEFS`，顺序固定）：TTFT(ms) / TTST(ms) / **TPOT(ms)** / Req Latency(ms) / ITL(ms) / Output TPS/User / OSL(tokens) / ISL(tokens) / Output TPS / Req-sec / Requests。
+- **指标与计算方式**（均来自 `task_live` 快照 `stats.metrics`，逐请求分布 → `_live_stats` 内 `stat_of`/`_full_stats` 得 avg/min/max/p99/p90/p50/std，7 列均可计算）：
+
+  | Metric | 单位 | 计算方式 | 来源字段 |
+  | --- | --- | --- | --- |
+  | TTFT | ms | `(first_token − start) × 1000` | `metrics.TTFT` |
+  | TTST | ms | `(ttst − start) × 1000`（首达累计 2 输出 token 时刻） | `metrics.TTST` |
+  | TPOT | ms | `(end − first_token) × 1000 / max(completion − 1, 1)`（每请求） | `metrics.TPOT` |
+  | Req Latency | ms | `(end − start) × 1000` | `metrics.ReqLatency` |
+  | ITL | ms | 各请求输出事件逐 chunk 间隔 | `metrics.ITL` |
+  | Output TPS/User | tok/s | `completion / (end − start)`（每请求单用户） | `metrics.OutputTPSPerUser` |
+  | OSL | tokens | `completion_tokens` | `metrics.OSL` |
+  | ISL | tokens | `prompt_tokens` | `metrics.ISL` |
+  | Output TPS | tok/s | 每秒滑窗输出 token 速率（`series["tokens"]`） | `metrics.OutputTPS` |
+  | Req/sec | req/s | 每秒滑窗请求完成速率（`series["req"]`） | `metrics.ReqSec` |
+  | Requests | req | `stats.completed`（仅 avg 可计算） | `stats.completed` |
+
+- **单元格类型与着色**（前端 `numCell/dashCell/naCell` → `rtm-cell` 类）：
+  - 可计算**已出值** → **蓝色**（`.rtm-fill`，`#1677ff`）
+  - 可计算**暂无值** → **灰色横线 `-`**（`.rtm-dash`，`#bfbfbf`）
+  - **不可计算** → **灰黑 `N/A`**（`.rtm-na`，`#595959`；目前仅 Requests 的 min/max/p99/p90/p50/std）
+- **无实时流**：表头 + Metric 列**默认保留**；分布行可计算列显示灰色 `-`，Requests 非 avg 列显示 `N/A`。
+- **hover tooltip**：显示该指标当前样本数（`r.n`）。
+- 原所有请求行表格（`MetricsTable` / `annotatedRows` / Best/BestPerf / 导出）不在本面板内，位于独立的 **Realtime Data** 整行。
 
 ---
 

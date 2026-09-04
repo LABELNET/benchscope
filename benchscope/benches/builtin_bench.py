@@ -409,6 +409,90 @@ def _stats(values: list[float]) -> dict:
     }
 
 
+def _full_stats(values: list[float]) -> dict:
+    """实时指标快照的完整统计：avg/min/max/p99/p90/p50/std/n。"""
+    if not values:
+        return {"avg": 0.0, "min": 0.0, "max": 0.0, "p99": 0.0, "p90": 0.0, "p50": 0.0, "std": 0.0, "n": 0}
+    values = [float(v) for v in values]
+    return {
+        "avg": round(statistics.fmean(values), 3),
+        "min": round(min(values), 3),
+        "max": round(max(values), 3),
+        "p99": round(_percentile(values, 99), 3),
+        "p90": round(_percentile(values, 90), 3),
+        "p50": round(_percentile(values, 50), 3),
+        "std": round(statistics.pstdev(values) if len(values) > 1 else 0.0, 3),
+        "n": len(values),
+    }
+
+
+def _ttst_of(rec: "RequestRecord") -> Optional[float]:
+    """首个达到累计 2 个输出 token 的时刻（相对基准起点秒）；不足 2 token 返回 None。"""
+    if not rec.output_events:
+        return None
+    cum = 0
+    for t, toks in rec.output_events:
+        cum += int(toks or 0)
+        if cum >= 2:
+            return float(t)
+    return None
+
+
+def _live_stats(records: list, num_prompts: int, elapsed: float, series: dict) -> dict:
+    """实时指标快照：由当前已采集的请求记录计算逐指标统计 + 缩略 spark 序列。"""
+    oks = [r for r in records if r.ok and r.first_token is not None]
+    errors = max(0, len(records) - len(oks))
+    elapsed = max(elapsed, 1e-6)
+
+    def stat_of(values, spark_win: int = 40) -> dict:
+        st = _full_stats(values)
+        st["spark"] = values[-spark_win:]
+        return st
+
+    ttft = [(r.first_token - r.start) * 1000.0 for r in oks]
+    ttst = [(_ttst_of(r) - r.start) * 1000.0 for r in oks if _ttst_of(r) is not None]
+    latency = [(r.end - r.start) * 1000.0 for r in oks if r.end is not None]
+    itl = [float(v) for r in oks for v in r.itls]
+    osl = [int(r.completion_tokens or 0) for r in oks]
+    isl = [int(r.prompt_tokens or 0) for r in oks]
+
+    # TPOT(ms) per request = (end - first_token) / (completion_tokens - 1)
+    tpot = []
+    for r in oks:
+        if r.first_token is not None and r.end is not None:
+            n = max(int(r.completion_tokens or 0), 1)
+            denom = max(n - 1, 1)
+            tpot.append(((r.end - r.first_token) * 1000.0) / denom if n > 1 else 0.0)
+    # Output TPS per user (tok/s) = completion_tokens / (end - start)
+    per_user = []
+    for r in oks:
+        if r.end is not None and r.start is not None and r.end > r.start:
+            per_user.append(int(r.completion_tokens or 0) / (r.end - r.start))
+
+    total_completion = sum(int(r.completion_tokens or 0) for r in oks)
+
+    return {
+        "t": round(elapsed, 1),
+        "completed": len(records),
+        "total": num_prompts,
+        "errors": errors,
+        "req_per_s": round(len(oks) / elapsed, 3),
+        "output_tps": round(total_completion / elapsed, 2),
+        "metrics": {
+            "TTFT": stat_of(ttft),
+            "TTST": stat_of(ttst),
+            "TPOT": stat_of(tpot),
+            "ReqLatency": stat_of(latency),
+            "ITL": stat_of(itl),
+            "OSL": stat_of(osl),
+            "ISL": stat_of(isl),
+            "OutputTPSPerUser": stat_of(per_user),
+            "OutputTPS": stat_of(series["tokens"], 60),
+            "ReqSec": stat_of(series["req"], 60),
+        },
+    }
+
+
 def compute_metrics(records: list[RequestRecord], duration: float, concurrency: int) -> dict:
     """由请求记录计算指标（口径对齐 vLLM bench）。
 
@@ -512,6 +596,7 @@ async def _run_async(
     opts: BuiltinOptions,
     progress_cb: Optional[Callable[[int, int], None]] = None,
     stop_event: Optional[asyncio.Event] = None,
+    live_cb: Optional[Callable[[dict], None]] = None,
 ) -> tuple[list[RequestRecord], float]:
     """异步执行一轮：concurrency 个 worker 持续发请求直到完成 num_prompts。"""
     stop_event = stop_event or asyncio.Event()
@@ -545,32 +630,60 @@ async def _run_async(
         counter = {"done": 0}
         lock = asyncio.Lock()
 
-        async def worker():
-            while True:
-                if stop_event.is_set():
-                    return
-                async with lock:
-                    if counter["done"] >= num_prompts:
-                        return
-                    counter["done"] += 1
-                    idx = counter["done"]
-                rec = await _request_once(
-                    session, opts, build_prompt(input_len, opts.chars_per_token, rng), t_start, sem, stop_event
-                )
-                if rec.error == "stopped":
-                    async with lock:
-                        counter["done"] = idx - 1
-                    return
-                records.append(rec)
-                if progress_cb:
-                    progress_cb(len(records), num_prompts)
-                # 速率控制：非 inf 时按泊松到达间隔休眠
-                rate = opts.request_rate
-                if rate and rate != float("inf") and rate > 0:
-                    await asyncio.sleep(rng.expovariate(rate) / concurrency)
+        # 实时指标发射器：每秒基于已完成的 records 计算快照并回调 live_cb
+        series = {"req": [], "tokens": []}
+        prev_tick = {"t": t_start, "req": 0, "tokens": 0}
 
-        workers = [asyncio.create_task(worker()) for _ in range(concurrency)]
-        await asyncio.gather(*workers)
+        async def _live_ticker():
+            while not stop_event.is_set():
+                await asyncio.sleep(1.0)
+                if not records:
+                    continue
+                now = time.perf_counter()
+                elapsed = now - t_start
+                comp = len(records)
+                tokens = sum(int(r.completion_tokens or 0) for r in records)
+                dt = max(now - prev_tick["t"], 1e-6)
+                series["req"].append(round(max(comp - prev_tick["req"], 0) / dt, 3))
+                series["tokens"].append(round(max(tokens - prev_tick["tokens"], 0) / dt, 1))
+                prev_tick["t"], prev_tick["req"], prev_tick["tokens"] = now, comp, tokens
+                if live_cb:
+                    live_cb(_live_stats(records, num_prompts, elapsed, series))
+
+        try:
+            ticker = asyncio.create_task(_live_ticker())
+
+            async def worker():
+                while True:
+                    if stop_event.is_set():
+                        return
+                    async with lock:
+                        if counter["done"] >= num_prompts:
+                            return
+                        counter["done"] += 1
+                        idx = counter["done"]
+                    rec = await _request_once(
+                        session, opts, build_prompt(input_len, opts.chars_per_token, rng), t_start, sem, stop_event
+                    )
+                    if rec.error == "stopped":
+                        async with lock:
+                            counter["done"] = idx - 1
+                        return
+                    records.append(rec)
+                    if progress_cb:
+                        progress_cb(len(records), num_prompts)
+                    # 速率控制：非 inf 时按泊松到达间隔休眠
+                    rate = opts.request_rate
+                    if rate and rate != float("inf") and rate > 0:
+                        await asyncio.sleep(rng.expovariate(rate) / concurrency)
+
+            workers = [asyncio.create_task(worker()) for _ in range(concurrency)]
+            await asyncio.gather(*workers)
+            # 结束前补发一次最终实时快照
+            if live_cb and records:
+                live_cb(_live_stats(records, num_prompts, time.perf_counter() - t_start, series))
+        finally:
+            ticker.cancel()
         duration = time.perf_counter() - t_start
 
     return records, duration
@@ -581,11 +694,13 @@ def run_builtin_bench(
     stream_cb: Optional[Callable[[str], None]] = None,
     stop_flag=None,
     progress_cb: Optional[Callable[[int, int], None]] = None,
+    live_cb: Optional[Callable[[dict], None]] = None,
 ) -> dict:
     """同步入口：执行自研 bench 并返回与 parse_metrics 兼容的指标字典。
 
     stop_flag：threading.Event（来自 BenchRunner），设置后中断执行并抛 StopRequested。
     stream_cb：输出行回调（用于终端日志与前端 Console 展示）。
+    live_cb：实时指标快照回调（每秒 + 结束前各一次）。
     """
     import threading
 
@@ -621,7 +736,7 @@ def run_builtin_bench(
             emit(f"  progress: {done}/{total}\n")
 
         cb = progress_cb or _progress
-        records, duration = loop.run_until_complete(_run_async(opts, cb, stop_event))
+        records, duration = loop.run_until_complete(_run_async(opts, cb, stop_event, live_cb))
         result["records"], result["duration"] = records, duration
     except Exception as e:  # noqa: BLE001
         result["error"] = f"{type(e).__name__}: {e}"

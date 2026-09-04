@@ -13,6 +13,7 @@ export const useTestStore = defineStore('test', {
     activeTaskId: null,  // 当前查看的任务
     logLines: {},        // task_id -> log lines
     currentPos: {},      // task_id -> { case, concurrency } 当前正在执行的位置(仅 running 时有效)
+    liveMetrics: {},     // task_id -> { stats, series:{ metric -> [values] }, t:[..] } 实时逐请求指标流
   }),
   getters: {
     taskList: (s) => Object.values(s.tasks).sort((a, b) => (b.created_at || '').localeCompare(a.created_at || '')),
@@ -88,6 +89,31 @@ export const useTestStore = defineStore('test', {
           lines.push(msg.line)
           if (lines.length > 8000) lines.splice(0, lines.length - 8000)
           break
+        case 'task_live': {
+          // 实时逐请求指标流（自研引擎）：stats = 最新快照，series = 各指标 avg 时间序列（趋势/sparkline）
+          const stats = msg.stats || {}
+          if (!this.liveMetrics[msg.task_id]) this.liveMetrics[msg.task_id] = { stats: null, series: {}, t: [] }
+          const buf = this.liveMetrics[msg.task_id]
+          buf.stats = stats
+          buf.case = msg.case
+          buf.case_id = msg.case_id
+          buf.concurrency = msg.concurrency
+          const t = stats.t != null ? stats.t : buf.t.length
+          buf.t.push(t)
+          const m = stats.metrics || {}
+          for (const key of Object.keys(m)) {
+            if (!buf.series[key]) buf.series[key] = []
+            const v = m[key] && m[key].avg
+            if (typeof v === 'number' && isFinite(v)) buf.series[key].push(v)
+          }
+          // 裁剪防内存膨胀（保留最近 300 点）
+          const cap = 300
+          while (buf.t.length > cap) buf.t.shift()
+          for (const key of Object.keys(buf.series)) {
+            while (buf.series[key].length > cap) buf.series[key].shift()
+          }
+          break
+        }
         case 'task_done':
         case 'task_error': {
           // 停止的任务:用户已点"停止",停止后恢复默认界面 → 后台清理并移除
@@ -95,6 +121,7 @@ export const useTestStore = defineStore('test', {
             delete this.tasks[msg.task_id]
             delete this.logLines[msg.task_id]
             delete this.currentPos[msg.task_id]
+            delete this.liveMetrics[msg.task_id]
             api.deleteTask(msg.task_id).catch(() => {})
           } else if (msg.task) {
             this.tasks[msg.task_id] = msg.task
@@ -171,6 +198,7 @@ export const useTestStore = defineStore('test', {
       delete this.tasks[taskId]
       delete this.logLines[taskId]
       delete this.currentPos[taskId]
+      delete this.liveMetrics[taskId]
     },
     async updateThreshold(taskId, thresholdMs) {
       const snap = await api.updateTaskThreshold(taskId, thresholdMs)

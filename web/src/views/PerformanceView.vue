@@ -170,9 +170,9 @@
           <div class="panel-footer empty-footer"></div>
         </a-card>
 
-        <!-- Console 面板 (白底黑字) -->
+        <!-- Logs 面板（原 Console：白底、日志高亮、小号字体） -->
         <a-card size="small" class="console-panel" :style="sideCardStyle" :body-style="{ flex: '1', minHeight: '0', padding: '0', display: 'flex', flexDirection: 'column' }">
-          <template #title>{{ t('terminal') }}</template>
+          <template #title>{{ t('logs') }}</template>
           <template #extra>
             <a-button size="small" type="link" @click="downloadLog">
               <template #icon><download-outlined /></template>
@@ -180,15 +180,70 @@
             </a-button>
           </template>
           <div class="terminal-box" ref="termBox" @scroll="onTermScroll">
-            <div v-for="(line, i) in activeLogs" :key="i" class="term-line">{{ line }}</div>
+            <div v-for="(line, i) in activeLogs" :key="i" class="term-line" :class="logLineClass(line)">{{ line }}</div>
           </div>
           <!-- footer：空（保持三面板等高） -->
           <div class="panel-footer empty-footer"></div>
         </a-card>
       </div>
 
-      <!-- 第二行：实时数据面板 -->
-      <a-card size="small" class="full-row-card">
+      <!-- 第二行：Profile Progress(1/3) + Real-Time Metrics(2/3)，antd 对齐 -->
+      <div class="row-2">
+        <!-- Profile Progress 面板 -->
+        <a-card ref="profilePanelRef" size="small" class="profile-panel">
+          <template #title>{{ t('profileProgress') }}</template>
+          <template #extra><span class="rt-case-text">{{ rtCaseText }}</span></template>
+          <!-- 状态卡片 -->
+          <div class="pp-status" :class="`pp-${profileStatusKey}`">
+            <span class="pp-status-label">{{ t('profCurrentStatus') }}</span>
+            <span class="pp-status-value">{{ profileStatusText }}</span>
+            <warning-outlined v-if="profileStatusKey === 'error'" class="pp-err-icon" />
+          </div>
+          <!-- 双进度条 -->
+          <div class="pp-bars">
+            <div class="pp-bar-row">
+              <span class="pp-bar-label">{{ t('profProfiling') }}</span>
+              <a-progress :percent="reqPct" :show-info="false" :size="['100%', 8]" :stroke-color="'#1677ff'" class="pp-progress" />
+              <span class="pp-bar-num">{{ reqPct }}%</span>
+            </div>
+            <div class="pp-bar-row">
+              <span class="pp-bar-label">{{ t('profRecords') }}</span>
+              <a-progress :percent="recPct" :show-info="false" :size="['100%', 8]" :stroke-color="'#52c41a'" class="pp-progress" />
+              <span class="pp-bar-num">{{ recPct }}%</span>
+            </div>
+          </div>
+          <!-- 每个指标一行 -->
+          <div class="pp-metrics">
+            <div class="pp-metric"><span class="pp-mk">{{ t('profProgress') }}</span><span class="pp-mv">{{ progressText }}</span></div>
+            <div class="pp-metric"><span class="pp-mk">{{ t('profErrors') }}</span><span class="pp-mv" :class="{ 'pp-err-val': errorsHaveErr }">{{ errorsText }}</span></div>
+            <div class="pp-metric"><span class="pp-mk">{{ t('profReqRate') }}</span><span class="pp-mv">{{ reqRateText }}</span></div>
+            <div class="pp-metric"><span class="pp-mk">{{ t('profProcRate') }}</span><span class="pp-mv">{{ procRateText }}</span></div>
+            <div class="pp-metric"><span class="pp-mk">{{ t('profElapsed') }}</span><span class="pp-mv">{{ elapsedClock }}</span></div>
+            <div class="pp-metric"><span class="pp-mk">{{ t('profEta') }}</span><span class="pp-mv">{{ etaText }}</span></div>
+          </div>
+        </a-card>
+
+        <!-- Real-Time Metrics 面板（高度与 Profile Progress 保持一致） -->
+        <a-card size="small" class="rtm-panel" :style="rtmCardStyle">
+          <template #title>{{ t('realTimeMetrics') }}</template>
+          <template #extra>
+            <div class="rtm-tools">
+              <span class="rt-case-text">{{ rtCaseText }}</span>
+            </div>
+          </template>
+            <!-- 单表 + 单表头（Metric 列右对齐；表头与 Metric 列默认保留，无数据时单元格为空，放大填满面板） -->
+            <div class="rtm-grid rtm-head">
+              <span class="ta-r">{{ t('liveMetric') }}</span><span class="ta-r">avg</span><span class="ta-r">min</span><span class="ta-r">max</span><span class="ta-r">p99</span><span class="ta-r">p90</span><span class="ta-r">p50</span><span class="ta-r">std</span>
+            </div>
+            <div v-for="r in liveMetrics" :key="r.key" class="rtm-grid" :title="r.n ? r.n + ' ' + t('liveSamples') : ''">
+              <span class="ta-r rtm-name">{{ r.label }}</span>
+              <span v-for="(c, i) in r.cols" :key="i" class="ta-r rtm-cell" :class="c.c">{{ c.t }}</span>
+            </div>
+        </a-card>
+      </div>
+
+      <!-- Realtime Data 面板：所有请求行表格（保持不变，承载 Best/BestPerf + 本地面板阈值 + 列设置 + 导出） -->
+      <a-card size="small" class="full-row-card realtime-data-card">
         <template #title>{{ t('realtimeData') }}</template>
         <template #extra>
           <div class="rt-extra">
@@ -239,7 +294,7 @@
         />
       </a-card>
 
-      <!-- 第三行：统计图面板 -->
+      <!-- 第四行：统计图面板 -->
       <a-card size="small" class="full-row-card">
         <template #title>{{ t('statistics') }}</template>
         <template #extra>
@@ -267,6 +322,7 @@ import {
   ExperimentOutlined,
   LoadingOutlined,
   PlayCircleOutlined,
+  WarningOutlined,
 } from '@ant-design/icons-vue'
 import { useRouter } from 'vue-router'
 import { useTestStore } from '@/store/test'
@@ -313,6 +369,19 @@ const activeLogs = computed(() => (taskId.value ? test.logLines[taskId.value] ||
 const serviceReady = computed(() => config.status?.inference === 'ready')
 const serviceUrl = computed(() => config.apiBase || '')
 
+// 日志行高亮分类：按内容给每条日志行附加 CSS 类（Logs 面板）
+function logLineClass(line) {
+  if (!line) return ''
+  const s = String(line)
+  if (s.trim().startsWith('$')) return 'log-cmd'           // 命令行
+  // 真实错误才标红：不再用宽泛的 "fail"（会误伤正常的 "Failed requests:" 汇总行）
+  if (/error|exception|traceback|失败|FAILED/i.test(s)) return 'log-error'  // 错误
+  if (/warn|warning|deprecat/i.test(s)) return 'log-warn'  // 警告
+  if (/success|done|complete|成功|完成/i.test(s)) return 'log-ok'        // 成功
+  if (/====|----|Result|指标|Serving Benchmark/i.test(s)) return 'log-head' // 区块/汇总标题
+  return ''
+}
+
 // 第一行三面板（Perf/Cases/Console）：最大高度 = Perf 面板高度，超出滚动；三面板对齐
 const perfPanelRef = ref(null)
 const perfRowHeight = ref(0)
@@ -343,6 +412,37 @@ onMounted(() => {
 })
 onBeforeUnmount(() => {
   if (perfRowObserver) perfRowObserver.disconnect()
+})
+
+// 第二行：Real-Time Metrics 高度与 Profile Progress 保持一致（测量 Profile 自然高度作为参考）
+const profilePanelRef = ref(null)
+const profileRowHeight = ref(0)
+const rtmCardStyle = computed(() => (profileRowHeight.value ? { height: `${profileRowHeight.value}px` } : {}))
+function measureProfileRow() {
+  // ref 在 a-card 上拿到的是实例，需用 $el 取真实 DOM；scrollHeight 取自然内容高度
+  const el = profilePanelRef.value?.$el || profilePanelRef.value
+  if (el && el.scrollHeight) {
+    profileRowHeight.value = el.scrollHeight
+  }
+}
+watch(
+  () => [theTask.value?.task_id, theTask.value?.mode, theTask.value?.status],
+  async () => {
+    await nextTick()
+    measureProfileRow()
+  },
+  { immediate: true },
+)
+let profileRowObserver = null
+onMounted(() => {
+  const el = profilePanelRef.value?.$el || profilePanelRef.value
+  if (el && typeof ResizeObserver !== 'undefined') {
+    profileRowObserver = new ResizeObserver(() => measureProfileRow())
+    profileRowObserver.observe(el)
+  }
+})
+onBeforeUnmount(() => {
+  if (profileRowObserver) profileRowObserver.disconnect()
 })
 
 // 阈值模式：单 case 的阈值条件文本（并入每个 case 分组标记右侧；0 表示未配置不显示）。
@@ -404,6 +504,221 @@ const doneCount = computed(() => {
   }
   return rows.filter((r) => r.metrics || r.error).length
 })
+
+// ===== Profile Progress 面板（第二行左 1/3）：当前正在进行的请求指标、进度 =====
+// 当前 case-请求数（两个面板 header 右侧灰色小字）——优先执行中的位置，其次已完成行
+const rtCaseText = computed(() => {
+  const pos = taskId.value ? test.currentPos[taskId.value] : null
+  const tk = theTask.value
+  const suffix = t('reqCountSuffix')
+  if (pos && pos.case) {
+    const cid = pos.case_id !== undefined && pos.case_id !== null ? `#g${pos.case_id}` : ''
+    return `${pos.case}${cid} · ${pos.concurrency}${suffix}`
+  }
+  const rows = tk?.rows || []
+  if (rows.length) {
+    const last = rows[rows.length - 1]
+    const key = last.case_id !== undefined && last.case_id !== null ? `#g${last.case_id}` : ''
+    return `${last.label || last.case || '-'}${key} · ${last.concurrency}${suffix}`
+  }
+  return '-'
+})
+
+// 状态：执行中=Profiling；错误=Error；其余=Completed
+const profileStatusKey = computed(() => {
+  const s = theTask.value?.status
+  if (s === 'running') return 'profiling'
+  if (s === 'error') return 'error'
+  return 'completed'
+})
+const profileStatusText = computed(() => {
+  const k = profileStatusKey.value
+  return k === 'profiling' ? t('profProfiling') : k === 'error' ? t('profError') : t('profCompleted')
+})
+
+// 请求完成度（Profile Progress 上条）
+const reqPct = computed(() => {
+  if (!totalCount.value) return 0
+  return Math.round((doneCount.value / totalCount.value) * 100)
+})
+// 记录处理度（下条）：按 case 数
+const recTotalCases = computed(() => (theTask.value?.cases?.length || 0))
+const recDoneCases = computed(() => {
+  const rows = theTask.value?.rows || []
+  const seen = new Set()
+  for (const r of rows) {
+    if (!(r.metrics || r.error)) continue
+    seen.add(r.case_id !== undefined && r.case_id !== null ? `g${r.case_id}` : (r.label || r.case || '-'))
+  }
+  return seen.size
+})
+const recPct = computed(() => (recTotalCases.value ? Math.round((recDoneCases.value / recTotalCases.value) * 100) : 0))
+
+// 已完成请求数 / 错误数（Phase-1：来自已完成行的聚合；真实逐请求流在 Phase-2）
+const requestsDone = computed(() => {
+  let n = 0
+  for (const r of theTask.value?.rows || []) {
+    const m = r.metrics || {}
+    n += (m.successful_requests || 0) + (m.failed_requests || 0)
+  }
+  return n
+})
+const errorsDone = computed(() => {
+  let n = 0
+  for (const r of theTask.value?.rows || []) {
+    const m = r.metrics || {}
+    n += m.failed_requests || 0
+  }
+  return n
+})
+
+// 已运行秒数
+const elapsedSec = computed(() => {
+  if (!theTask.value?.started_at) return 0
+  const start = new Date(theTask.value.started_at).getTime()
+  const sec = Math.max(0, (Date.now() - start) / 1000)
+  return sec
+})
+
+// ===== Profile Progress 文本指标（终端风格：Status/Progress/Errors/Rate/Elapsed/ETA） =====
+const fmtInt = (n) => {
+  const x = Number(n)
+  if (!isFinite(x)) return '0'
+  return Math.round(x).toLocaleString('en-US')
+}
+const fmtDec = (n, d = 1) => {
+  const x = Number(n)
+  if (!isFinite(x)) return '-'
+  return x.toFixed(d)
+}
+// 实时快照（task_live）优先；无流时回退已完成行聚合
+const liveStats = computed(() => (liveBuf.value && liveBuf.value.stats) || null)
+
+const progressText = computed(() => {
+  const ls = liveStats.value
+  if (ls && ls.total) {
+    const pct = (ls.completed / ls.total) * 100
+    return `${fmtInt(ls.completed)} / ${fmtInt(ls.total)} requests (${pct.toFixed(1)}%)`
+  }
+  return `${fmtInt(doneCount.value)} / ${fmtInt(totalCount.value)} (${reqPct.value}%)`
+})
+const errorsText = computed(() => {
+  const ls = liveStats.value
+  if (ls) {
+    const pct = ls.completed ? (ls.errors / ls.completed) * 100 : 0
+    return `${fmtInt(ls.errors)} / ${fmtInt(ls.completed)} (${pct.toFixed(1)}%)`
+  }
+  const total = requestsDone.value
+  const pct = total ? (errorsDone.value / total) * 100 : 0
+  return `${fmtInt(errorsDone.value)} / ${fmtInt(total)} (${pct.toFixed(1)}%)`
+})
+// 是否有错误（高亮 Errors 值）
+const errorsHaveErr = computed(() => {
+  const ls = liveStats.value
+  if (ls) return (ls.errors || 0) > 0
+  return errorsDone.value > 0
+})
+const reqRateText = computed(() => {
+  const ls = liveStats.value
+  if (ls) return `${fmtDec(ls.req_per_s)} requests/s`
+  return elapsedSec.value > 0 ? `${fmtDec(requestsDone.value / elapsedSec.value)} requests/s` : '-'
+})
+const procRateText = computed(() => {
+  const ls = liveStats.value
+  if (ls && ls.t > 0) return `${fmtDec(ls.completed / ls.t)} records/s`
+  return elapsedSec.value > 0 ? `${fmtDec(recDoneCases.value / elapsedSec.value, 3)} records/s` : '-'
+})
+const elapsedClock = computed(() => fmtClock(elapsedSec.value))
+function fmtClock(sec) {
+  if (!isFinite(sec) || sec < 0) return '0s'
+  const s = Math.round(sec)
+  const m = Math.floor(s / 60)
+  const r = s % 60
+  if (m >= 60) return `${Math.floor(m / 60)}h ${String(m % 60).padStart(2, '0')}m`
+  return `${m}m ${String(r).padStart(2, '0')}s`
+}
+const etaText = computed(() => {
+  const ls = liveStats.value
+  let pct = 0
+  let elapsed = elapsedSec.value
+  if (ls) {
+    pct = ls.total ? (ls.completed / ls.total) * 100 : reqPct.value
+    elapsed = ls.t || elapsed
+  } else {
+    pct = reqPct.value
+  }
+  if (pct <= 0 || elapsed <= 0) return '-'
+  if (pct >= 100) return '0s'
+  if (theTask.value?.status !== 'running') return '-'
+  const remain = (elapsed / pct) * (100 - pct)
+  if (remain < 120) return `${remain.toFixed(1)}s`
+  return fmtClock(remain)
+})
+
+// ===== Real-Time Metrics 指标表（task_live 流，终端风格分组表） =====
+const liveBuf = computed(() => (taskId.value ? test.liveMetrics[taskId.value] : null))
+const hasLive = computed(() => !!(liveBuf.value && liveBuf.value.stats))
+const liveUnitDiv = ref(1)
+// 单位换算开关：ms/tok ↔ s/k，切换 liveUnitDiv（1 / 1000）
+const liveUnit1000 = computed({
+  get: () => liveUnitDiv.value === 1000,
+  set: (v) => { liveUnitDiv.value = v ? 1000 : 1 },
+})
+// 当前并发：优先执行位置，其次末行
+const currentConcurrency = computed(() => {
+  const pos = taskId.value ? test.currentPos[taskId.value] : null
+  if (pos && pos.concurrency != null) return Number(pos.concurrency)
+  const rows = theTask.value?.rows || []
+  if (rows.length) return Number(rows[rows.length - 1].concurrency)
+  return 1
+})
+const na = () => 'N/A'
+// 通用数值：convert=true 的 ms/tok 指标受单位换算开关影响（÷1000 → s/k）
+const fmtMrk = (v, convert) => {
+  if (v === undefined || v === null || isNaN(Number(v))) return na()
+  const x = convert && liveUnitDiv.value > 1 ? Number(v) / liveUnitDiv.value : Number(v)
+  return (Number.isInteger(x) ? x : +x.toFixed(2)).toLocaleString('en-US')
+}
+// 单表指标定义（顺序固定；special 表示派生计算指标）
+const LIVE_METRIC_DEFS = [
+  { key: 'TTFT', label: 'TTFT (ms)', src: 'TTFT', warn: 2000, convert: true },
+  { key: 'TTST', label: 'TTST (ms)', src: 'TTST', warn: 3000, convert: true },
+  { key: 'TPOT', label: 'TPOT (ms)', src: 'TPOT', convert: true },
+  { key: 'ReqLatency', label: 'Req Latency (ms)', src: 'ReqLatency', warn: 10000, convert: true },
+  { key: 'ITL', label: 'ITL (ms)', src: 'ITL', warn: 500, convert: true },
+  { key: 'OutputTPSUser', label: 'Output TPS/User', src: 'OutputTPSPerUser', convert: false },
+  { key: 'OSL', label: 'OSL (tokens)', src: 'OSL', convert: true },
+  { key: 'ISL', label: 'ISL (tokens)', src: 'ISL', convert: true },
+  { key: 'OutputTPS', label: 'Output TPS', src: 'OutputTPS', convert: false },
+  { key: 'ReqSec', label: 'Req/sec', src: 'ReqSec', convert: false },
+  { key: 'Requests', label: 'Requests', special: 'requests', convert: false },
+]
+const ORDER = ['avg', 'min', 'max', 'p99', 'p90', 'p50', 'std']
+// 单元格类型：
+//   - 可计算但未出值 → 灰色横线 '-'（rtm-dash）
+//   - 不可计算 → 灰黑色 'N/A'（rtm-na）
+//   - 已计算出值 → 蓝色（rtm-fill）
+const dashCell = () => ({ t: '-', c: 'rtm-dash' })
+const naCell = () => ({ t: 'N/A', c: 'rtm-na' })
+const numCell = (v, convert) => (v === undefined || v === null || isNaN(Number(v))
+  ? dashCell()
+  : { t: fmtMrk(v, convert), c: 'rtm-fill' })
+const naCellsN = (n) => Array.from({ length: n }, () => naCell())
+// 单表扁平数据：始终返回全部 11 行；每格带类型（表头 + Metric 列默认保留）
+const liveMetrics = computed(() => {
+  const stats = (liveBuf.value && liveBuf.value.stats) || null
+  const m = (stats && stats.metrics) || {}
+  return LIVE_METRIC_DEFS.map((def) => {
+    // Requests：仅 avg 可计算（已完成的请求总数），其余 6 列不可计算 → N/A
+    if (def.special === 'requests') {
+      return { key: def.key, label: def.label, n: 0, cols: [numCell(stats ? stats.completed : null, false), ...naCellsN(6)] }
+    }
+    // 分布统计行（含后端直算的 TPOT / Output TPS/User）：7 列均可计算
+    const s = m[def.src] || {}
+    return { key: def.key, label: def.label, n: s.n || 0, cols: ORDER.map((k) => numCell(s[k], def.convert)) }
+  })
+})
+
 const canStart = computed(() => {
   if (!theTask.value) return false
   const s = theTask.value.status
@@ -1027,7 +1342,7 @@ onMounted(async () => {
   color: #000000;
   padding: 8px 10px;
   border-radius: 6px;
-  font-size: 11px;
+  font-size: 10px; /* Logs：字体减小 */
   line-height: 1.5;
   overflow-y: auto;
   overflow-x: hidden;
@@ -1038,7 +1353,25 @@ onMounted(async () => {
   border: 1px solid var(--ant-color-border, #e8e8e8);
 }
 .term-line {
-  min-height: 14px;
+  min-height: 13px;
+}
+/* 日志行高亮 */
+.term-line.log-cmd {
+  color: #8a8a8a;
+}
+.term-line.log-error {
+  color: #f5222d;
+  font-weight: 600;
+}
+.term-line.log-warn {
+  color: #d48806;
+}
+.term-line.log-ok {
+  color: #389e0d;
+}
+.term-line.log-head {
+  color: #1677ff;
+  font-weight: 600;
 }
 
 /* 第二行 / 第三行：整行卡片 */
@@ -1049,6 +1382,145 @@ onMounted(async () => {
   display: flex;
   align-items: center;
   gap: 12px;
+  font-size: 12px;
+}
+
+/* 第二行：Profile Progress(1/3) + Real-Time Metrics(2/3)，antd 对齐 */
+.row-2 {
+  display: flex;
+  gap: 12px;
+  align-items: stretch;
+  margin-bottom: 12px;
+}
+.row-2 .profile-panel,
+.row-2 .rtm-panel {
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+/* 固定 1/3 : 2/3 分栏 */
+.row-2 .profile-panel {
+  flex: 0 0 33.333%;
+  width: 33.333%;
+}
+.row-2 .rtm-panel {
+  flex: 1 1 0;
+  width: 66.666%;
+  max-width: 66.666%;
+}
+.row-2 :deep(.ant-card-head) { padding: 0 12px; }
+/* 面板 body 纵向填满卡片高度；Real-Time Metrics 高度 = Profile Progress 高度，超出的表格内部滚动 */
+.row-2 :deep(.ant-card-body) {
+  padding: 10px 12px;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.row-2 .profile-panel :deep(.ant-card-body) { overflow: hidden; }
+.row-2 .rtm-panel :deep(.ant-card-body) { overflow: hidden; }
+/* 表格行纵向拉伸，放大填满面板内容（表头 + 11 行指标均分高度） */
+.row-2 .rtm-panel .rtm-grid { flex: 1; }
+/* 面板 header 右侧灰色 case-请求数 */
+.rt-case-text {
+  font-size: 11px;
+  color: var(--ant-color-text-tertiary, #999);
+  /* 完整显示当前测试条件（case 名称-请求数），不截断 */
+}
+
+/* ===== Profile Progress 内部（antd 对齐） ===== */
+.pp-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--ant-color-border, #e8e8e8);
+  margin-bottom: 10px;
+  font-size: 12px;
+}
+.pp-status.pp-profiling {
+  border-color: var(--ant-color-primary, #1677ff);
+  background: var(--ant-color-primary-bg, #e6f4ff);
+}
+.pp-status.pp-completed {
+  border-color: var(--ant-color-success, #52c41a);
+  background: #f6ffed;
+}
+.pp-status.pp-error {
+  border-color: var(--ant-color-error, #f5222d);
+  background: #fff2f0;
+}
+.pp-status-label { color: var(--ant-color-text-secondary, #666); }
+.pp-status-value { font-weight: 600; color: var(--ant-color-text, #000); }
+.pp-err-icon { margin-left: auto; color: var(--ant-color-error, #f5222d); font-size: 14px; }
+
+.pp-bars { display: flex; flex-direction: column; gap: 8px; margin-bottom: 10px; }
+.pp-bar-row { display: flex; align-items: center; gap: 8px; font-size: 12px; }
+.pp-bar-label { width: 82px; flex-shrink: 0; color: var(--ant-color-text-secondary, #666); }
+.pp-bar-row :deep(.ant-progress) { flex: 1; }
+.pp-bar-num { width: 34px; flex-shrink: 0; text-align: right; color: var(--ant-color-text, #000); }
+
+/* 每个指标一行（label 左、值右） */
+.pp-metrics { display: flex; flex-direction: column; }
+.pp-metric {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 5px 2px;
+  border-bottom: 1px solid var(--ant-color-border-secondary, #f0f0f0);
+  font-size: 12px;
+}
+.pp-metrics .pp-metric:last-child { border-bottom: none; }
+.pp-mk { color: var(--ant-color-text-secondary, #666); flex-shrink: 0; }
+.pp-mv { color: var(--ant-color-text, #000); text-align: right; word-break: break-all; }
+.pp-mv.pp-err-val { color: var(--ant-color-error, #f5222d); font-weight: 600; }
+
+/* ===== Real-Time Metrics 分组指标表（小字体） ===== */
+.rtm-tools { display: inline-flex; align-items: center; gap: 10px; font-size: 12px; }
+.rtm-unit { font-size: 12px; }
+.rtm-copy { color: var(--ant-color-primary, #1677ff); }
+.rtm-group { margin-bottom: 2px; }
+.rtm-group-head {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--ant-color-primary, #1677ff);
+  padding: 1px 2px;
+}
+/* 更紧凑的行，让表格正好填满面板高度 */
+.rtm-grid {
+  display: grid;
+  grid-template-columns: 1.6fr repeat(7, 1fr);
+  padding: 1px 6px;
+  font-size: 10px; /* 表格小字体 */
+  line-height: 1.25;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  align-items: center; /* 内容垂直居中，水平右对齐（ta-r） */
+  border-bottom: 1px solid var(--ant-color-border-secondary, #f0f0f0);
+}
+.rtm-grid.rtm-head {
+  background: var(--ant-color-fill-secondary, #fafafa);
+  font-weight: 600;
+  border-bottom: 1px solid var(--ant-color-border, #e8e8e8);
+}
+.rtm-group .rtm-grid:last-child { border-bottom: none; }
+.rtm-grid.rtm-alert { background: #fff2f0; }
+.ta-r { text-align: right; }
+.rtm-name { font-weight: 500; }
+/* 数据单元格类型：
+   rtm-fill=已计算值(蓝) / rtm-dash=可计算未出值(灰横线) / rtm-na=不可计算(N/A 灰黑) */
+.rtm-cell { font-weight: 600; }
+.rtm-cell.rtm-fill { color: #1677ff; }
+.rtm-cell.rtm-dash { color: #bfbfbf; font-weight: 400; }
+.rtm-cell.rtm-na { color: #595959; font-weight: 400; }
+.live-empty {
+  padding: 18px 0;
+  text-align: center;
+  color: var(--ant-color-text-tertiary, #999);
   font-size: 12px;
 }
 .linkage-toggle {

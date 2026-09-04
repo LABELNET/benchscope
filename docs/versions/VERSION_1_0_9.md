@@ -418,6 +418,113 @@
 
 ---
 
+### 迭代 14（2026-09-04 18:50:00）：Performance 第二行双面板 + Console→Logs（Phase-1）
+
+**功能概述**：
+
+- 第一行 Console 面板改名 **Logs**：日志行**高亮**（命令/错误/警告/成功/区块着色）+ **字体减小**（10px）。
+- 第二行由单张「Realtime Data」card 改为**双面板**：**Profile Progress（1/3）** + **Real-Time Metrics（2/3）**（后者承载原 MetricsTable + 本地阈值）。
+- **Phase-1**：用现有数据（完成行/进度/`currentPos`/elapsed）实现布局与进度、指标网格；真实逐请求实时流规划在 Phase-2。
+
+**变更内容（前端 — web/src/views/PerformanceView.vue + i18n）**：
+
+1. **Logs**：标题 `t('terminal')`→`t('logs')`；新增 `logLineClass(line)` 按内容返回 CSS 类（`.log-cmd/.log-error/.log-warn/.log-ok/.log-head`），`.terminal-box` 字体 11px→10px
+2. **第二行双面板（`.row-2`）**：
+   - Profile Progress（`.profile-panel` 1/3）：状态卡片（profiling/error/completed 三态着色 + Error 图标）、双进度条（Profiling 请求完成度 `reqPct`、Records case 处理度 `recPct`）、6 卡关键指标（Progress/Errors/Request Rate/Processing Rate/Elapsed/ETA，均 `profileMetrics` computed，Phase-1 按完成行/elapsed 估算，`fmtSec` 格式化）
+   - Real-Time Metrics（`.rtm-panel` 2/3）：header 右侧 case-请求数（`rtCaseText`）+ 原 TPOT/Output 本地阈值控件 + 原 `MetricsTable`
+   - 两面板 header 右侧灰色 `.rt-case-text`
+3. **i18n en/zh**：新增 `logs` / `profileProgress` / `realTimeMetrics` / `profCurrentStatus` / `profProfiling` / `profError` / `profCompleted` / `profRecords` / `profProgress` / `profErrors` / `profReqRate` / `profProcRate` / `profElapsed` / `profEta` / `reqCountSuffix`
+4. **文档**：`docs/prds/Performance.md` §1.5（Console→Logs）+ 新增 §1.6（第二行双面板，含 Phase-1/Phase-2 说明）
+
+**验证（增量）**：
+
+- `npm run build` 成功；`check:i18n` OK
+- host 8080 服务最新构建：`PerformanceView-*.js` 含 `profileProgress/realTimeMetrics/prof-status-card/prof-metrics/rt-case-text/logLineClass`，`PerformanceView-*.css` 含 `row-2/prof-status-card/prof-metrics/rt-case-text/log-error` 规则
+- 沙箱 dev 后端 8080 可达（`v1.0.9-dev`）
+
+**TODO 状态**：
+
+- [x] Logs 改名 + 高亮 + 小字
+- [x] 第二行双面板布局 + Profile Progress（状态/双进度/指标网格）+ Real-Time Metrics（MetricsTable + header）
+- [x] i18n 新键 + 构建 + dev 8080 验证
+- [x] 文档 — Performance / VERSION 同步
+- [ ] Phase-2（规划）— 后端实时逐请求指标流 + 趋势图/sparkline/实时 req/s
+
+---
+
+### 迭代 15（2026-09-04 22:30:00）：Performance 第二行两面板重做 —— Realtime Data 独立整行 + Profile Progress / Real-Time Metrics（antd 版）
+
+**功能概述**：
+
+- **布局厘清**：原始「Realtime Data」面板（所有请求行表格 `MetricsTable`，含 Best/BestPerf、本地面板阈值、列设置、导出）**保持不变**，平移到独立整行（`.realtime-data-card`，位于第二行与统计图行之间）；第二行为**两个“单个请求”面板** Profile Progress（1/3）+ Real-Time Metrics（2/3）。
+- **Profile Progress / Real-Time Metrics 重做**：由终端绿风格改为 **antd 对齐**（卡片样式、antd 色板），指标内容保持一致。
+- **韧性问题修复**：`rtCaseText` 内 `const t = theTask.value` 遮蔽 i18n `t`，运行中任务（有 `currentPos`）触发 `TypeError: t is not a function` 导致 Performance 视图空白 → 局部变量改名 `tk`。
+
+**变更内容（前端 — web/src/views/PerformanceView.vue）**：
+
+1. **Realtime Data 独立整行**：原 `MetricsTable` + TPOT/Output 本地阈值控件从 Real-Time Metrics 面板移出，置于独立 `.realtime-data-card` 整行（标题 `t('realtimeData')`）。
+2. **Profile Progress（左 1/3）**：状态卡片（`.pp-status` 三态：profiling 蓝 / error 红+Error 图标 / completed 绿）、双进度条（`.pp-bar-row` Profiling=`reqPct`、Records=`recPct`）、**每个指标一行**（`.pp-metrics`）：Progress / Errors（`errorsHaveErr` 有错标红）/ Request Rate / Processing Rate / Elapsed（`fmtClock` Mm Ss）/ ETA（完成显示 `0s`）。
+3. **Real-Time Metrics（右 2/3）**：
+   - **单表 + 单表头**（`.rtm-grid.rtm-head`）：`Metric | avg | min | max | p99 | p90 | p50 | std`，Metric 列右对齐
+   - 固定 **11 行**（`LIVE_METRIC_DEFS`）：TTFT(ms) / TTST(ms) / **TPOT(ms)**（近似 `(ReqLatency−TTFT)/max(OSL−1,1)`）/ Req Latency(ms) / ITL(ms) / Output TPS/User（=`output_tps/并发`）/ OSL(tokens) / ISL(tokens) / Output TPS / Req-sec / Requests
+   - **默认值 N/A 灰色**（`.rtm-empty`），**有值绿色高亮**（`.rtm-cv`）；移除异常红/`!` 告警条件样式（不再阈值变色）
+   - **表格行 `flex:1` 拉伸填满面板**；Real-Time 高度与 Profile 保持**等高**（`profilePanelRef`/`measureProfileRow` 测量 → `rtmCardStyle` 赋高，ResizeObserver + 任务状态变化重测）
+   - **移除**：单位换算开关（Unit ms/tok↔s/k）、复制快照小图标按钮、`copySnapshot` 函数、`CopyOutlined` 导入
+4. **Logs 高亮收窄**：错误正则去掉宽泛 `fail`（避免 `Failed requests:` 汇总行误标红），改为 `error|exception|traceback|失败|FAILED`。
+5. **i18n en/zh**：新增 `liveGroupLatency/liveGroupThroughput/liveGroupLength/liveCopySnapshot/liveCopied/liveSamples`（部分后续弃用，保留无副作用）。
+6. **文档**：`docs/prds/Performance.md` §1.5/§1.6 同步（第二行 antd 版、等高、单表右对齐、N/A 绿值）。
+
+**验证（增量）**：
+
+- `npm run build` 成功；`check:i18n` OK；dev 8080 / mock 8001 均 UP（`v1.0.9-dev`）
+- 运行中任务 Performance 页不再抛 `TypeError: t is not a function`（视图正常渲染）
+
+**TODO 状态**：
+
+- [x] Realtime Data 独立整行（保持不变）
+- [x] Profile Progress（antd：状态/双进度/每指标一行/ETA 补齐）
+- [x] Real-Time Metrics（单表单表头右对齐 + TPOT/Output TPS-User 派生 + N/A 灰/有值绿 + 等高/填满）
+- [x] 移除单位开关 / 复制按钮 / 异常告警条件样式
+- [x] `rtCaseText` 变量遮蔽修复（运行中页面空白）
+- [x] 文档 — Performance / VERSION 同步
+- [ ] Phase-2（规划）— 后端实时逐请求指标流 + 趋势图/实时 req/s
+
+---
+
+### 迭代 16（2026-09-04 22:55:00）：Real-Time Metrics 指标直算 + 单元格状态着色 + header 完整显示
+
+**功能概述**：
+
+- Real-Time Metrics 表格**每个指标全量统计（7 列）直算**：TPOT 与 Output TPS/User 由后端逐请求分布下发（不再前端近似/仅 avg），min/max/p99/p90/p50/std 均真实可算。
+- **单元格状态着色**：可计算未出值→灰色横线 `-`；有值→蓝色；不可计算→灰黑 `N/A`。
+- 表格内容垂直居中、header 右侧 case-请求数完整显示（不再截断）；高亮改为蓝色；Perf/Cases 保持 antd 配色。
+
+**变更内容**：
+
+1. **后端 `benchscope/benches/builtin_bench.py` `_live_stats`**：
+   - 新增逐请求分布：`TPOT`（`(end−first_token)×1000/max(completion−1,1)`）、`OutputTPSPerUser`（`completion/(end−start)`）→ `stat_of` 全量统计
+   - `stats.metrics` 新增 `TPOT` / `OutputTPSPerUser` 两键
+2. **前端 `web/src/views/PerformanceView.vue`**：
+   - `LIVE_METRIC_DEFS`：TPOT、Output TPS/User 改为 `src` 分布行（读取 `metrics.TPOT` / `metrics.OutputTPSPerUser`），去掉前端近似与单值 N/A 特殊分支
+   - 单元格改为带类型（`numCell/dashCell/naCell` → `cols` 数组），模板按类型渲染；CSS `.rtm-fill`(蓝)#1677ff / `.rtm-dash`(灰横线)#bfbfbf / `.rtm-na`(灰黑)#595959
+   - `.rtm-grid` 增加 `align-items:center` 垂直居中；`.rt-case-text` 去截断完整显示
+3. **文档**：`docs/prds/Performance.md` §1.6（Real-Time Metrics 指标表 + 每指标计算方式 + 单元格类型着色）；本文件迭代记录
+
+**验证（增量）**：
+
+- `builtin_bench.py` 语法 OK；`npm run build` 成功；check:i18n OK；dev 8080 / mock 8001 UP
+- 运行任务后 `task_live` 快照 `metrics` 含 `TPOT` / `OutputTPSPerUser`，前端两行显示全部统计而非 N/A
+
+**TODO 状态**：
+
+- [x] 后端直算 TPOT / Output TPS/User 全量统计
+- [x] 前端映射为完整分布行 + 单元格状态着色（灰横线 / N/A / 蓝）
+- [x] 表格垂直居中 + header 完整显示 + 蓝色高亮 + Perf/Cases antd
+- [x] 文档 — Performance / VERSION 同步
+- [ ] Phase-2（规划）— 后端实时逐请求指标流 + 趋势图/实时 req/s
+
+---
+
 ## 4. TODO 清单
 
 （1.0.9 待办，按规划补充后逐项勾选）

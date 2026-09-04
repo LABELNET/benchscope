@@ -497,7 +497,19 @@ class TaskManager:
         # 自研引擎（kind=builtin）：进程内异步压测，不经子进程 / 命令构建 / 输出解析
         if _builtin_engine(task):
             opts = _builtin_options(task, ds, concurrency, api)
-            metrics = run_builtin_bench(opts, stream_cb=stream, stop_flag=runner._stop_flag)
+
+            def live(stats: dict):
+                # 实时指标快照 → 前端 Real-Time Metrics / Profile Progress
+                self.hub.broadcast({
+                    "type": "task_live",
+                    "task_id": task.task_id,
+                    "case": case["label"],
+                    "case_id": case.get("case_id"),
+                    "concurrency": concurrency,
+                    "stats": stats,
+                })
+
+            metrics = run_builtin_bench(opts, stream_cb=stream, stop_flag=runner._stop_flag, live_cb=live)
             return {
                 "case": case["label"], "label": case["label"], "case_id": case.get("case_id"),
                 "input_len": case.get("input_len"), "output_len": case.get("output_len"),
