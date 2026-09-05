@@ -4,11 +4,28 @@ benchscope 按版本迭代推进，**倒序**列出各版本（最新在前）�
 
 ---
 
-## 1.0.9（开发中 / In Development）
+## 1.1.0（已发布 / Released）
 
-- **发布时间**：待定
-- **迭代记录**（详见 [docs/versions/VERSION_1_0_9.md](versions/VERSION_1_0_9.md)）：
-- **规划**：1.0.8 发布后开启的下一迭代版本，待规划（后续按需求补充目标范围与 TODO）
+- **发布时间**：2026-09-05
+- **迭代记录**（发散阶段记录在 [docs/versions/VERSION_1_0_9.md](versions/VERSION_1_0_9.md)，1.0.9 未独立发布并入本版；发布说明见 [docs/versions/VERSION_1_1_0.md](versions/VERSION_1_1_0.md)）：
+
+**主目标：性能实时面板与单请求快照、Sessions 会话体验升级、Dashboard Overview 重构 + Envs 网络补全、Settings/Datas 收敛、第三方引擎指标可得性口径显式化**
+
+- **性能页实时面板**：第二行双面板（Realtime Data / Profile Progress / Real-Time Metrics，指标直算 + 状态着色）、单个请求回看 + 按请求实时快照持久化（Datas/Perfs 详情弹窗）、原生引擎运行中随并发点更新、单并发点内“连续滚动”
+- **单请求快照**：按请求快照拓展到原生引擎、口径对齐 vLLM（0/不可得→N/A、缺失→灰横线，固定 11 指标契约）、引擎导入逻辑加固
+- **Sessions 会话体验**：采样参数、Markdown 渲染 + 代码语法高亮（highlight.js + 黑底）、重命名 + 会话日志落盘、侧栏 / 会话项 UI 细化、清空居中确认弹窗
+- **Settings 细化**：Cache Paths 改版（Root Dir 即时生效、子目录只读）、四类 UI 细化、Engine 卡片按来源标色、Provider 模型绿色标签
+- **Dashboard Overview 重构**：7 计数面板（Performance / Accuracy / Sessions / Skills(内置) / Models / Datasets / Providers 整行），Models / Datasets 下载数暂占位 0
+- **Dashboard Envs info 补全**：网络面板按网口 MAC / IP / 子网 / 掩码，框架版本 / 硬件 / OS，统一 antd 文字样式并缩小字号
+- **未完成功能占位**：Datas 隐藏 Evals（路由重定向 Perfs）+ Analysis「敬请期待」、Accuracy 创建任务弹敬请期待、Settings/Models 隐藏 Homepage、Dashboard 隐藏 Eval Records
+
+---
+
+## 1.0.9（并入 1.1.0 / Folded）
+
+- **发布时间**：—（未独立发布，随 1.1.0 于 2026-09-05 发布）
+- **迭代记录**（详阅 [docs/versions/VERSION_1_0_9.md](versions/VERSION_1_0_9.md)）：
+- **说明**：1.0.8 发布后开启的开发周期版本，未在 PyPI 独立发布，其全部迭代明细并入 1.1.0 发布。
 
 ---
 
