@@ -80,6 +80,11 @@ else
   NEED_PYPI=1
   echo "==> 主/次版本变化（X.Y: ${OLD_MM} -> ${NEW_MM}）：完整发布 = PyPI + GitHub tag + release"
 fi
+# 特殊处理：FORCE_PYPI=1 时即使补丁版本也推送 PyPI（如修复版需重新上传）
+if [ "${FORCE_PYPI:-0}" = "1" ]; then
+  NEED_PYPI=1
+  echo "==> FORCE_PYPI=1：本版本强制推送 PyPI（覆盖补丁跳过规则）"
+fi
 
 # ---------- 版本同步 ----------
 sed -i '' "s/^version = \".*\"/version = \"$NEW\"/" pyproject.toml
@@ -206,7 +211,7 @@ create_github_release() {
   fi
   # 回退：GitHub REST API（GITHUB_TOKEN / GH_TOKEN）
   if [ -n "${GITHUB_TOKEN:-}" ] || [ -n "${GH_TOKEN:-}" ]; then
-    echo "==> 创建 GitHub Release $tag（REST API）..."
+    echo "==> 创建 GitHub Release $tag (REST API) ..."
     python3 - "$tag" "$NOTES_TMP" <<'PYEOF'
 import json, os, sys, urllib.error, urllib.request
 tag, notes = sys.argv[1], sys.argv[2]
