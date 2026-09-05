@@ -1,7 +1,8 @@
 """内置技能清单（Settings → Skills）。
 
-技能本体位于仓库 skills/<skill-id>/SKILL.md（frontmatter: name/description/version），
-接口返回每个技能的元数据与提示词全文，供前端技能面板展示、复制与下载。
+技能本体位于 benchscope/skills/<skill-id>/SKILL.md（frontmatter: name/description/version），
+随包分发（package-data `skills/**/*`），接口返回每个技能的元数据与提示词全文，
+供前端技能面板展示、复制与下载。
 """
 
 import logging
@@ -14,7 +15,7 @@ log = logging.getLogger("benchscope.api_skills")
 
 router = APIRouter(prefix="/api/skills", tags=["skills"])
 
-_SKILLS_DIR = Path(__file__).resolve().parents[2] / "skills"
+_SKILLS_DIR = Path(__file__).resolve().parents[1] / "skills"
 
 # 内置技能补充元数据（SKILL.md frontmatter 之外的展示字段；features/prompt/description 均为中英双语）
 _SKILL_EXTRA = {

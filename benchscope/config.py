@@ -171,13 +171,36 @@ class ConfigManager:
                     log.exception("目录创建失败: %s=%s", key, raw)
 
     # ---------- Providers（推理服务提供方） ----------
+    @staticmethod
+    def _provider_id_from_name(name) -> str:
+        """由 Provider 名称生成稳定的 id（历史数据缺失 id 时回填用）。"""
+        import re
+        slug = re.sub(r"[^A-Za-z0-9]+", "-", str(name or "").strip().lower()).strip("-")
+        return f"provider_{slug}" if slug else "provider_default"
+
     def _migrate_providers(self) -> None:
-        """旧配置迁移：只有 api 无 providers 时，生成名为 Default 的 Provider 并激活。"""
+        """旧配置迁移：补齐历史 Provider 缺失的 id；仅 api 无 providers 时生成 Default 并激活。"""
         providers = self._data.get("providers")
-        if providers:  # 已有 providers：确保 active 指向有效项
+        if providers:  # 已有 providers：补齐缺失 id，并确保 active 指向有效项
+            changed = False
+            used_ids = {p.get("id") for p in providers if isinstance(p, dict) and p.get("id")}
+            for p in providers:
+                if not isinstance(p, dict) or p.get("id"):
+                    continue
+                pid = self._provider_id_from_name(p.get("name"))
+                n = 2
+                while pid in used_ids:  # 名次 slug 冲突时追加后缀保证唯一
+                    pid = f"{self._provider_id_from_name(p.get('name'))}_{n}"
+                    n += 1
+                p["id"] = pid
+                used_ids.add(pid)
+                changed = True
             ids = [p.get("id") for p in providers if isinstance(p, dict)]
             if self._data.get("active_provider") not in ids:
                 self._data["active_provider"] = ids[0] if ids else ""
+            if changed:
+                self.save()
+                log.info("已为历史缺失的 Provider 补齐 id")
             return
         api = self._data.get("api") or {}
         if not api.get("base_url"):

@@ -14,7 +14,7 @@ from pathlib import Path
 import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-SKILLS_DIR = REPO_ROOT / "skills"
+SKILLS_DIR = REPO_ROOT / "benchscope" / "skills"
 
 EXPECTED_SKILLS = {"bs-engine-create", "bs-perfs-concurrency", "bs-perfs-threshold"}
 

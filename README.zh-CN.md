@@ -1,5 +1,5 @@
 <div align="center">
-  <img src="asserts/black_logo.png" width="120" height="120" alt="BenchScope logo" />
+  <img src="https://raw.githubusercontent.com/LABELNET/benchscope/main/asserts/black_logo.png" width="120" height="120" alt="BenchScope logo" />
 </div>
 
 <h1 align="center" style="font-size: 48px; margin-top: 12px;">BenchScope</h1>
@@ -11,7 +11,7 @@ BenchScope 基于 ~~Vibe Coding~~ Harness Coding 开发的开源大模型推理�
 面向大语言模型性能与精度的可视化测试平台，支持基于 vLLM / SGLang 的模型推理，以及所有兼容 OpenAI 协议的接口。
 
 <div align="center">
-  <img src="asserts/main-performance.png" width="72%" alt="BenchScope 性能测试示意图" />
+  <img src="https://raw.githubusercontent.com/LABELNET/benchscope/main/asserts/benchscope-performance.png" width="72%" alt="BenchScope 性能测试示意图" />
 </div>
 
 ---

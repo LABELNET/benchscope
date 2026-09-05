@@ -309,3 +309,37 @@ def test_skills_list(client, base_url):
         assert isinstance(s.get("usage"), list) and len(s["usage"]) >= 2, "使用说明（下载安装 / 复制提示词）"
         assert s.get("prompt"), "提示词应非空（滚动显示）"
         assert s.get("download", {}).get("path"), "下载路径"
+
+
+def test_providers_backfill_missing_id(tmp_path):
+    """历史 Provider 缺失 id 时自动回填稳定 id，且可正常编辑（回归：未知 Provider: undefined）。"""
+    import json
+    from benchscope.config import ConfigManager
+
+    legacy = {
+        "api": {"base_url": "http://127.0.0.1:8001", "endpoint": "/v1/chat/completions", "api_key": ""},
+        "providers": [
+            {"name": "Default", "base_url": "http://127.0.0.1:8001", "api_key": "",
+             "framework": "vllm", "endpoint": "/v1/chat/completions"},
+            {"id": "provider_2", "name": "gpu server", "base_url": "http://10.0.0.1:8000",
+             "endpoint": "/v1/chat/completions", "api_key": "", "extra_headers": {}},
+        ],
+        "active_provider": "provider_2",
+    }
+    p = tmp_path / "settings.json"
+    p.write_text(json.dumps(legacy), encoding="utf-8")
+
+    cm = ConfigManager(p)
+    cm.load()
+    listed = cm.list_providers()["providers"]
+    by_name = {x["name"]: x.get("id") for x in listed}
+    assert by_name.get("Default"), "历史 Default 应被回填 id"
+    assert by_name["Default"] == "provider_default"
+
+    # 回填的 id 已持久化
+    saved = json.loads(p.read_text(encoding="utf-8"))
+    assert saved["providers"][0].get("id") == "provider_default"
+
+    # 编辑回填后的 Default 不再报「未知 Provider」
+    updated = cm.update_provider("provider_default", {"base_url": "http://127.0.0.1:9999"})
+    assert updated["base_url"] == "http://127.0.0.1:9999"

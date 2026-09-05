@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "benchscope"
-version = "1.1.0"
+version = "1.1.1.dev0"
 description = "LLM inference performance testing tool. Supports vLLM, SGLang, and any OpenAI-compatible API."
 readme = "README.md"
 requires-python = ">=3.9"
@@ -64,7 +64,11 @@ packages = [
 ]
 
 [tool.setuptools.package-data]
-"benchscope" = ["webui/**/*"]
+"benchscope" = [
+    "webui/**/*",
+    "configs/*.yaml",
+    "skills/**/*",
+]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

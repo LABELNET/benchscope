@@ -1,5 +1,5 @@
 <div align="center">
-  <img src="asserts/black_logo.png" width="120" height="120" alt="BenchScope logo" />
+  <img src="https://raw.githubusercontent.com/LABELNET/benchscope/main/asserts/black_logo.png" width="120" height="120" alt="BenchScope logo" />
 </div>
 
 <h1 align="center" style="font-size: 48px; margin-top: 12px;">BenchScope</h1>
@@ -11,7 +11,7 @@ BenchScope is an open‑source LLM inference benchmarking platform built with ~~
 A visualization testing platform for LLM model **performance & accuracy**, supporting models inference with vLLM / SGLang and any OpenAI‑compatible API.
 
 <div align="center">
-  <img src="asserts/main-performance.png" width="72%" alt="BenchScope main performance screenshot" />
+  <img src="https://raw.githubusercontent.com/LABELNET/benchscope/main/asserts/benchscope-performance.png" width="72%" alt="BenchScope main performance screenshot" />
 </div>
 
 ---
