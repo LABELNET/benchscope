@@ -94,7 +94,8 @@ echo "==> 重建前端 (vite build) ..."
 
 echo "==> 构建 sdist + wheel ..."
 rm -rf dist
-python3 -m build >/dev/null
+# --no-isolation：直接使用当前环境已装的 setuptools/wheel，避免隔离 venv 联网拉取构建依赖（弱网/内网友好）
+python3 -m build --no-isolation >/dev/null
 
 echo "==> twine check ..."
 python3 -m twine check dist/*
