@@ -18,7 +18,7 @@ Skills 是给 **AI 编程助手**消费的领域知识包：描述「如何完�
 | --- | --- | --- |
 | `skills/<name>/` | **可分发产物** | 技能本体（SKILL.md / references / templates / scripts），可打包成 tar.gz 供任意项目使用 |
 | `docs/skills/` | **说明文档归口** | 技能规范、各技能详解、上游分析索引；给人阅读与维护 |
-| `skills/Readme.md` | **速查指针** | 精简版：技能清单 + 快速约定，规范正文以本文件为准 |
+| `benchscope/skills/Readme.md` | **速查指针** | 精简版：技能清单 + 快速约定，规范正文以本文件为准 |
 
 ---
 
@@ -148,9 +148,9 @@ tar -tzf "$ARCHIVE" >/dev/null && echo "✅ 产物校验通过（可解压）"
 
 | 技能 | 用途 | 版本 | 文档 |
 | --- | --- | --- | --- |
-| [bs-engine-create](../../skills/bs-engine-create/) | 创建自定义 bench 引擎压缩包（vllm/sglang/其他版本）；导入时校验 + mock 数据验证 + 功能动态注册 | 1.2.0 | [BsEngineCreate.md](./BsEngineCreate.md) |
-| [bs-perfs-concurrency](../../skills/bs-perfs-concurrency/) | 安装 benchscope 并用 `benchscope perf` 进行并发（concurrency）压测；内置表单 + 生成可导入 Datas/perfs 的 zip | 1.0.0 | [BsPerfsConcurrency.md](./BsPerfsConcurrency.md) |
-| [bs-perfs-threshold](../../skills/bs-perfs-threshold/) | 安装 benchscope 并用 `benchscope perf --mode threshold` 进行阈值搜索压测；内置表单 + 生成可导入 Datas/perfs 的 zip | 1.0.0 | [BsPerfsThreshold.md](./BsPerfsThreshold.md) |
+| [bs-engine-create](../../benchscope/skills/bs-engine-create/) | 创建自定义 bench 引擎压缩包（vllm/sglang/其他版本）；导入时校验 + mock 数据验证 + 功能动态注册 | 1.2.0 | [BsEngineCreate.md](./BsEngineCreate.md) |
+| [bs-perfs-concurrency](../../benchscope/skills/bs-perfs-concurrency/) | 安装 benchscope 并用 `benchscope perf` 进行并发（concurrency）压测；内置表单 + 生成可导入 Datas/perfs 的 zip | 1.0.0 | [BsPerfsConcurrency.md](./BsPerfsConcurrency.md) |
+| [bs-perfs-threshold](../../benchscope/skills/bs-perfs-threshold/) | 安装 benchscope 并用 `benchscope perf --mode threshold` 进行阈值搜索压测；内置表单 + 生成可导入 Datas/perfs 的 zip | 1.0.0 | [BsPerfsThreshold.md](./BsPerfsThreshold.md) |
 
 ---
 
@@ -174,15 +174,15 @@ tar -tzf "$ARCHIVE" >/dev/null && echo "✅ 产物校验通过（可解压）"
 
 ## 8. 维护约定
 
-- **新增技能** → 在 `skills/Readme.md` 与本文档 §6 清单各追加一行，并在 `docs/skills/` 补充对应说明文档；
+- **新增技能** → 在 `benchscope/skills/Readme.md` 与本文档 §6 清单各追加一行，并在 `docs/skills/` 补充对应说明文档；
 - **一个技能一个说明文档（强制）**：每个技能在 `docs/skills/` 下对应一个 `<BsXxxYyy>.md` 说明文档（命名见 §2.1），**禁止多技能合并到一份文档**；
 - **技能内容变更涉及功能/流程** → 同步 `docs/versions/VERSION_x_y_z.md` 迭代记录；
-- **规范变更** → 只改本文件（`docs/skills/Readme.md`），`skills/Readme.md` 保持精简指针，不复制规范正文；
+- **规范变更** → 只改本文件（`docs/skills/Readme.md`），`benchscope/skills/Readme.md` 保持精简指针，不复制规范正文；
 - 所有技能必须能通过 `scripts/package.sh` 成功打包（由 `tests/api/test_skills.py` 强制校验）。
 - **技能开发完成（强制）**：任何技能的开发/变更完成后，必须**同步更新 `docs/skills/` 文件夹下对应说明与变更内容**：
   - `docs/skills/Readme.md` §6 技能清单（版本/用途）、命名规范、文档索引如有变化需同步；
   - 对应技能的说明文档（如 `BsEngineCreate.md` / `BsPerfsConcurrency.md` / `BsPerfsThreshold.md`）更新功能描述与维护记录表；
-  - 变更内容同步 `docs/versions/VERSION_x_y_z.md` 迭代记录；若涉及能力/命名/发布规则变更，同步 `skills/Readme.md`。
+  - 变更内容同步 `docs/versions/VERSION_x_y_z.md` 迭代记录；若涉及能力/命名/发布规则变更，同步 `benchscope/skills/Readme.md`。
 
 ### 8.1 版本递增与发版（强制约定）
 
