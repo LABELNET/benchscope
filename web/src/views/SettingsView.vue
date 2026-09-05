@@ -274,13 +274,7 @@
               <template v-if="selectedProvider">
                 <div class="provider-head">
                   <h3 class="provider-title">{{ selectedProvider.name }}</h3>
-                  <a
-                    v-if="selectedProvider.homepage"
-                    class="provider-homepage"
-                    :href="selectedProvider.homepage"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                  >{{ t('homepage') }}</a>
+                  <!-- Homepage 暂时隐藏 -->
                 </div>
                 <div v-if="selectedProvider.models?.length" class="provider-models">
                   <a-card

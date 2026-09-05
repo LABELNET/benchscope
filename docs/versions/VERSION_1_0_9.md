@@ -1,9 +1,9 @@
 # VERSION 1.0.9 — 版本修订记录
 
-> **版本**：1.0.9  
-> **状态**：开发中（In Development）  
-> **发布时间**：待定  
-> **文档状态**：当前开发版本——**未特别说明版本号时，项目内容所有变更均迭代在此版本**（显示 `v1.0.9-dev`），按时间顺序追加到本文档；仅当明确「迭代下一个版本」才切换  
+> **版本**：1.0.9（未独立发布）  
+> **状态**：已并入 1.1.0（内容随 1.1.0 发布）  
+> **发布时间**：—（随 [1.1.0](./VERSION_1_1_0.md) 发布，2026-09-05）  
+> **文档状态**：1.0.9 为 1.0.8 之后的开发周期版本，未在 PyPI 独立发布；其全部迭代明细（迭代 1–25）并入 1.1.0 发布。本文档仅作归档，后续开发请迭代到新的版本文档  
 > **目录**：页面级行为细则见 `docs/prds/`；版本路线见 `docs/Roadmap.md`
 
 ---
@@ -683,6 +683,132 @@
 - [x] 前端 `null`→N/A、缺失→灰横线
 - [x] 文档：可得性盘点表 + 迭代记录
 - [ ] Phase-2（规划）— 趋势图/sparkline/真实引擎逐请求流
+
+---
+
+### 迭代 22（2026-09-05 15:41:11）：临时隐藏部分面板 / 入口（敬请期待）
+
+**功能概述**：
+
+- 未完成功能以「敬请期待」占位，前端统一使用新增 i18n 键 `comingSoon`（zh=敬请期待 / en=Coming soon）。
+
+**变更内容**：
+
+1. `DashboardView.vue`：暂时移除 **Eval Records** 面板（可自 git 历史恢复）。
+2. `AccuracyView.vue`：「创建精度任务」不再跳转 `/accuracy/create`，改为弹出「敬请期待」提示弹窗（`goCreate` → 打开模态）。
+3. `DatasView.vue`：副导航**隐藏 **Evals****，仅保留 Perfs / Analysis。
+4. `router/index.js`：`/datas/evals` 重定向到 `/datas/perfs`（隐藏后不可直接访问）。
+5. `DatasAnalysisView.vue`：Analysis 页改为「敬请期待」占位（`a-result` 大标题 + `analysisPlanned` 副标题）。
+6. `SettingsView.vue`：Settings/Models 厂商头部**隐藏 **Homepage** 链接**（仅占位注释，未删数据字段）。
+
+**验证（增量）**：
+
+- `check-i18n` OK（新增 `comingSoon` 键 zh/en 一致）
+- `npm run build` OK；dev 8080 / mock 8001 UP
+
+**TODO 状态**：
+
+- [x] Dashboard 隐藏 Eval Records
+- [x] Accuracy 创建精度任务 → 敬请期待弹窗
+- [x] Datas 隐藏 Evals + Analysis 敬请期待 + evals 路由重定向
+- [x] Settings/Models 隐藏 Homepage
+- [x] i18n `comingSoon` 键 + 构建验证
+
+---
+
+### 迭代 23（2026-09-05 15:57:28）：Dashboard Overview 精简 + Envs/Network 补全
+
+**功能概述**：
+
+- Overview 统计只保留 Total Perfs / Total Acc，移除未实现的占位与状态项。
+- Envs info 的 Network 面板补全每个主联网口的 **UUID(MAC) / IP / 子网 / 掩码**。
+
+**变更内容**：
+
+1. `web/src/views/DashboardView.vue`：
+   - Overview 移除 **Max Perf Records (RUN ID) / Max Acc Records (RUN ID) / Running Tasks / Test Env Status** 四个统计格，仅保留 Total Perfs Records 与 Total Acc Records。
+   - Network 面板改为按网口渲染 `iface` 标题 + `UUID / IP / 子网 / 掩码` 四行（新增 `.net-block` / `.net-iface` 样式）；未联网口回退 `—`。
+2. `benchscope/env_info.py` `_network_interfaces()`：每个网口新增 `mac`（即用户口径的 UUID，主联网口 MAC）、`mask`（子网掩码）、`subnet`（子网地址）字段：
+   - Linux：`ip -o -4 addr show` 取 IP/CIDR 前缀 → `_cidr_to_netmask` 算掩码、`_net_addr` 算子网；`ip -o link show` 解析 MAC。
+   - macOS：`ifconfig` 解析 `ether`(MAC) 与 `inet ... netmask 0xffffff00` → `_hex_netmask_to_str` 转点分十进制掩码，再算子网。
+   - 使用标准库 `ipaddress` / `re`，无新增依赖。
+3. `web/src/i18n/zh.js`、`en.js`：新增 `netUuid / netIp / netSubnet / netMask` 键。
+
+**验证（增量）**：
+
+- `py_compile benchscope/env_info.py` OK；本机 macOS 采集输出 `en0` → `mac:78:4f:43:8c:66:2b, ip:192.168.71.29, subnet:192.168.71.0, mask:255.255.255.0`。
+- `check-i18n` OK；`npm run build` OK。
+- 重启 dev 后 `GET /api/dashboard/env` 返回含 `mac/subnet/mask` 的网口数据；dev 8080 / mock 8001 UP。
+
+**TODO 状态**：
+
+- [x] Overview 移除 4 个统计格（仅保留 Total Perfs / Total Acc）
+- [x] Network 补全 UUID(MAC) / IP / 子网 / 掩码（前后端）
+- [x] i18n 键 + 构建 + dev 重启验证
+
+---
+
+### 迭代 24（2026-09-05 16:04:25）：Dashboard Overview 重构为 7 个子面板
+
+**功能概述**：
+
+- Overview 面板由「Total Perfs / Total Acc」扩展为 **7 个子面板**：Performance、Accuracy、Sessions、Skills(内置)、Models、Datasets、以及占整行的 Providers（内含 Provider 数量 + Provider Models 两个小格）。
+- 布局：Providers 整行 1 个，其余 6 个每行 2 个。
+
+**变更内容**：
+
+1. `web/src/views/DashboardView.vue`：
+   - Overview 模板：6 个 stat-box（Performance=`stats.total_runs`、Accuracy=`stats.total_acc_runs`、Sessions=`sessionCount`、Skills=`skillCount` 带 `(内置)` 标记、Models=`modelDownloadCount`、Datasets=`datasetDownloadCount`）+ 整行 `.prov-box`（Provider 数量 / Provider Models）。
+   - 新增计数 ref 与 `loadOverviewCounts()`：并行拉取 `/api/sessions`、`/api/skills`、`/api/config/providers`；Provider Models 对各 Provider 并行 `testConnection` 求和模型数。**Models / Datasets 下载数暂未实现，默认 0**。
+   - 新增 `.prov-box` / `.prov-col` 样式。
+2. `web/src/i18n/zh.js`、`en.js`：新增 `perfCount / accCount / builtin / providerCount / providerModelCount` 键。
+
+**数据口径**：
+
+- Performance = Performance 记录数（`stats.total_runs`）；Accuracy = 精度记录数（`stats.total_acc_runs`）
+- Sessions = 会话数量（`sessions.length`）；Skills(内置) = 技能数量（`skills.length`）
+- Models / Datasets = 下载数（暂未实现 → 0）
+- Providers = Provider 数量（`providers.length`）；Provider Models = 各 Provider 探测模型数之和（`testConnection`）
+
+**验证（增量）**：
+
+- `check-i18n` OK；`npm run build` OK。
+- 运行后端各端点返回符合预期：`/api/sessions`、`/api/skills`、`/api/config/providers`、`/api/dashboard/stats`。
+- 纯前端改动，dev 8080 无需重启即可加载新构建。
+
+**TODO 状态**：
+
+- [x] Overview 重构为 7 子面板（Providers 占整行）
+- [x] 接入 Sessions / Skills / Providers 实时计数
+- [x] Models / Datasets 下载数占位（默认 0）
+- [x] i18n 键 + 构建验证
+
+---
+
+### 迭代 25（2026-09-05 16:09:32）：Envs info 面板 antd 文字样式 + 字号缩小 + Net UUID→MAC
+
+**功能概述**：
+
+- Envs info 面板文字改用 **antd Typography** 样式，整体字号缩小。
+- Network 面板下的 **UUID 标签改为 MAC**。
+
+**变更内容**：
+
+1. `web/src/views/DashboardView.vue`：
+   - Envs info 各 `env-row-item` 的标签 `<span>` 改用 `<a-typography-text type="secondary">`（antd secondary 文字样式），值保留 `<b>`。
+   - 字号缩小：`.env-box-title` 13px→12px、`.env-row-item` 12px→11px、`.net-iface` 12px→11px；`.env-row-item :deep(.ant-typography)` 强制 11px / 行高 1.5。
+2. `web/src/i18n/zh.js`、`en.js`：`netUuid` 值由 `UUID` 改为 `MAC`（键名保留 netUuid 以最小改动）。
+
+**验证（增量）**：
+
+- `check-i18n` OK；`npm run build` OK。
+- 纯前端改动，dev 8080 无需重启。
+
+**TODO 状态**：
+
+- [x] Envs info 使用 antd 文字样式
+- [x] 整体文字减小
+- [x] Network 下 UUID 标签改为 MAC
 
 ---
 

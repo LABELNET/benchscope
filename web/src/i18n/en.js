@@ -8,6 +8,11 @@ export default {
   settings: 'Settings',
 
   overview: 'Overview',
+  perfCount: 'Performance',
+  accCount: 'Accuracy',
+  builtin: 'Built-in',
+  providerCount: 'Providers',
+  providerModelCount: 'Provider Models',
   totalPerfsRecords: 'Total Perf Records',
   totalAccRecords: 'Total Acc Records',
   maxPerfRecords: 'Max Perf Records',
@@ -23,6 +28,10 @@ export default {
   kernel: 'Kernel',
   network: 'Network',
   ifaceIp: 'Interface - IP',
+  netUuid: 'MAC',
+  netIp: 'IP',
+  netSubnet: 'Subnet',
+  netMask: 'Mask',
   frameworkVersions: 'Frameworks',
   more: 'More',
   testRecords: 'Test Records',
@@ -390,6 +399,7 @@ export default {
   analysis: 'Analysis',
   evalsPlanned: 'Eval/accuracy test records planned',
   analysisPlanned: 'Data analysis feature planned',
+  comingSoon: 'Coming soon',
 
   // Datas/Perfs detail page
   records: 'Records',

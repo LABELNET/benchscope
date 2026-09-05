@@ -30,7 +30,6 @@ const router = useRouter()
 
 const subnavItems = computed(() => [
   { key: 'perfs', label: t('perfsTab') },
-  { key: 'evals', label: t('evalsTab') },
   { key: 'analysis', label: t('analysis') },
 ])
 

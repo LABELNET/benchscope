@@ -210,12 +210,16 @@
         </div>
       </div>
     </template>
+
+    <!-- 创建精度任务：敬请期待 -->
+    <a-modal v-model:open="createOpen" :title="t('comingSoon')" :footer="null" :width="360">
+      <p class="coming-soon-tip">{{ t('comingSoon') }}</p>
+    </a-modal>
   </div>
 </template>
 
 <script setup>
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { useRouter } from 'vue-router'
 import { message } from 'ant-design-vue'
 import { FundOutlined, PlayCircleOutlined } from '@ant-design/icons-vue'
 import * as echarts from 'echarts'
@@ -223,8 +227,8 @@ import { api } from '@/api'
 import { t } from '@/i18n'
 import { useAccuracyStore } from '@/store/accuracy'
 
-const router = useRouter()
 const store = useAccuracyStore()
+const createOpen = ref(false)
 const consoleRef = ref(null)
 const radarRef = ref(null)
 let radarChart = null
@@ -319,7 +323,7 @@ async function selectTask(taskId) {
   await store.loadTask(taskId) // 列表快照不含 result，拉取完整详情
   loadSamples()
 }
-function goCreate() { router.push('/accuracy/create') }
+function goCreate() { createOpen.value = true }
 async function stopTask(taskId) {
   try { await api.stopAccTask(taskId); message.info(t('accStopSent')) } catch (e) { message.error(e.message) }
 }
@@ -497,6 +501,12 @@ onMounted(async () => {
 .concl-row { margin-top: 14px; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 .grade-tag { font-size: 14px; font-weight: 700; padding: 2px 10px; }
 .radar-chart { width: 100%; max-width: 360px; height: 220px; margin: 8px auto 0; }
+.coming-soon-tip {
+  text-align: center;
+  margin: 16px 0;
+  font-size: 15px;
+  color: var(--ant-color-text-secondary, #666);
+}
 
 /* ===== 控制台 / 样本 ===== */
 .console {

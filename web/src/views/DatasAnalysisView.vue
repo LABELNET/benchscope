@@ -1,6 +1,8 @@
 <template>
   <div class="placeholder-page">
-    <a-empty :description="t('analysisPlanned')" />
+    <div class="placeholder-box">
+      <a-result :title="t('comingSoon')" :sub-title="t('analysisPlanned')" />
+    </div>
   </div>
 </template>
 
@@ -14,5 +16,9 @@ import { t } from '@/i18n'
   display: flex;
   align-items: center;
   justify-content: center;
+}
+.placeholder-box {
+  width: 100%;
+  max-width: 480px;
 }
 </style>

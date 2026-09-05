@@ -5,8 +5,10 @@
 """
 from __future__ import annotations
 
+import ipaddress
 import os
 import platform
+import re
 import socket
 import subprocess
 import sys
@@ -85,8 +87,36 @@ def _os_info() -> dict:
     return {"name": system, "version": version, "kernel": kernel}
 
 
+def _cidr_to_netmask(prefix: int) -> Optional[str]:
+    """CIDR 前缀长度 → 点分十进制子网掩码（如 /24 → 255.255.255.0）。"""
+    try:
+        return str(ipaddress.IPv4Network(f"0.0.0.0/{int(prefix)}").netmask)
+    except Exception:
+        return None
+
+
+def _hex_netmask_to_str(hexmask: str) -> Optional[str]:
+    """macOS ifconfig 的十六进制掩码（0xffffff00）→ 点分十进制掩码。"""
+    try:
+        val = int(str(hexmask).replace("0x", ""), 16)
+        return ".".join(str((val >> (8 * shift)) & 0xFF) for shift in (3, 2, 1, 0))
+    except Exception:
+        return None
+
+
+def _net_addr(ip: str, mask: str) -> Optional[str]:
+    """IP + 掩码 → 子网地址（network address）。"""
+    try:
+        return str(ipaddress.IPv4Network(f"{ip}/{mask}", strict=False).network_address)
+    except Exception:
+        return None
+
+
 def _network_interfaces() -> list[dict]:
-    """网口-IP 列表，过滤 docker / 虚拟网卡。"""
+    """网口信息列表，过滤 docker / 虚拟网卡。
+
+    每个网口返回 {iface, mac, ip, subnet, mask}；MAC 作为「UUID」展示。
+    """
     out: list[dict] = []
 
     def is_virtual(iface: str) -> bool:
@@ -94,30 +124,71 @@ def _network_interfaces() -> list[dict]:
 
     try:
         if sys.platform.startswith("linux"):
+            # IP + CIDR 前缀：`ip -o -4 addr show`
+            ip_meta: dict[str, tuple[str, int]] = {}
             raw = _run(["ip", "-o", "-4", "addr", "show"], timeout=5)
             if raw:
                 for line in raw.splitlines():
                     parts = line.split()
                     if len(parts) >= 4:
                         iface = parts[1].strip(":")
-                        ip = parts[3].split("/")[0]
+                        ip_cidr = parts[3]
+                        ip = ip_cidr.split("/")[0]
+                        prefix = int(ip_cidr.split("/")[1]) if "/" in ip_cidr else None
                         if is_virtual(iface):
                             continue
-                        out.append({"iface": iface, "ip": ip})
-                return out
-        # macOS / fallback：使用 ifconfig 简单解析
+                        ip_meta[iface] = (ip, prefix)
+            # MAC：`ip -o link show`
+            mac_meta: dict[str, str] = {}
+            raw_link = _run(["ip", "-o", "link", "show"], timeout=5)
+            if raw_link:
+                for line in raw_link.splitlines():
+                    m = re.search(r"\d+:\s*([^\s@]+)[@\d]*:\s.*link/ether\s+([0-9a-f:]+)", line)
+                    if m:
+                        mac_meta[m.group(1)] = m.group(2)
+            for iface, (ip, prefix) in ip_meta.items():
+                mask = _cidr_to_netmask(prefix) if prefix is not None else None
+                out.append({
+                    "iface": iface,
+                    "mac": mac_meta.get(iface),
+                    "ip": ip,
+                    "subnet": _net_addr(ip, mask) if mask else None,
+                    "mask": mask,
+                })
+            return out
+        # macOS / fallback：使用 ifconfig 解析（每网口 ether / inet netmask）
         raw = _run(["ifconfig"], timeout=5)
         if raw:
             cur: Optional[str] = None
+            mac: Optional[str] = None
             for line in raw.splitlines():
                 stripped = line.strip()
                 if line and not line.startswith((" ", "\t")):
+                    # 网口头行，刷新当前网口与 MAC
+                    if cur and cur in [x["iface"] for x in out]:
+                        pass
                     cur = line.split(":")[0]
+                    mac = None
+                elif "ether " in stripped and cur:
+                    mac = stripped.split()[1]
                 elif "inet " in stripped and cur:
-                    ip = stripped.split()[1]
+                    parts = stripped.split()
+                    ip = parts[1]
                     if is_virtual(cur):
                         continue
-                    out.append({"iface": cur, "ip": ip})
+                    mask_hex = None
+                    for i, p in enumerate(parts):
+                        if p == "netmask" and i + 1 < len(parts):
+                            mask_hex = parts[i + 1]
+                    mask = _hex_netmask_to_str(mask_hex) if mask_hex else None
+                    out.append({
+                        "iface": cur,
+                        "mac": mac,
+                        "ip": ip,
+                        "subnet": _net_addr(ip, mask) if mask else None,
+                        "mask": mask,
+                    })
+                    mac = None
     except Exception:
         pass
     return out

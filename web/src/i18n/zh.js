@@ -10,6 +10,11 @@ export default {
 
   // Dashboard
   overview: '统计概览',
+  perfCount: '性能',
+  accCount: '精度',
+  builtin: '内置',
+  providerCount: 'Provider 数量',
+  providerModelCount: 'Provider 模型',
   totalPerfsRecords: 'Total Perf Records',
   totalAccRecords: 'Total Acc Records',
   maxPerfRecords: 'Max Perf Records',
@@ -25,6 +30,10 @@ export default {
   kernel: '内核版本',
   network: '网络环境',
   ifaceIp: '网口 - IP',
+  netUuid: 'MAC',
+  netIp: 'IP',
+  netSubnet: '子网',
+  netMask: '掩码',
   frameworkVersions: '框架版本',
   more: '更多',
   testRecords: '测试记录',
@@ -398,6 +407,7 @@ export default {
   analysis: 'Analysis',
   evalsPlanned: '精度/评估测试记录规划中',
   analysisPlanned: '数据分析功能规划中',
+  comingSoon: '敬请期待',
 
   // Datas/Perfs 详情页
   records: 'Records',

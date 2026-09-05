@@ -19,7 +19,7 @@ const routes = [
     redirect: '/datas/perfs',
     children: [
       { path: 'perfs', name: 'datas-perfs', component: () => import('@/views/DatasPerfsView.vue') },
-      { path: 'evals', name: 'datas-evals', component: () => import('@/views/DatasEvalsView.vue') },
+      { path: 'evals', redirect: '/datas/perfs' },
       { path: 'analysis', name: 'datas-analysis', component: () => import('@/views/DatasAnalysisView.vue') },
     ],
   },

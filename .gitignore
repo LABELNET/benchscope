@@ -28,3 +28,6 @@ datasets/
 .dev_*
 .*_dev_*
 .*-dev-*
+.npm-cache
+.pip-cache
+.release-deps
