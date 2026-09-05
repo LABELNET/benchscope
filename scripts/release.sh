@@ -113,10 +113,25 @@ if [ "$NEED_PYPI" -eq 1 ]; then
   UPLOAD_RETRIES="${TWINE_UPLOAD_RETRIES:-3}"
   UPLOAD_TIMEOUT="${TWINE_UPLOAD_TIMEOUT:-180}"
   UPLOAD_OK=0
+  # GNU `timeout` 在 macOS 不存在：用 Python 的 subprocess 实现单次超时
+  run_twine_upload() {
+    python3 - "$UPLOAD_TIMEOUT" "$@" <<'PYEOF'
+import subprocess, sys
+timeout = int(sys.argv[1])
+files = sys.argv[2:]
+try:
+    r = subprocess.run(
+        [sys.executable, "-m", "twine", "upload", "--non-interactive",
+         "--disable-progress-bar"] + files, timeout=timeout)
+    sys.exit(r.returncode)
+except subprocess.TimeoutExpired:
+    print(f"twine upload 超时（>{timeout}s）", file=sys.stderr)
+    sys.exit(1)
+PYEOF
+  }
   for i in $(seq 1 "$UPLOAD_RETRIES"); do
     echo "==> 上传 PyPI (第 ${i}/${UPLOAD_RETRIES} 次) ..."
-    if timeout "$UPLOAD_TIMEOUT" python3 -m twine upload \
-        --non-interactive --disable-progress-bar dist/*; then
+    if run_twine_upload dist/*; then
       UPLOAD_OK=1
       break
     else
