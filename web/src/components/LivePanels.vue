@@ -140,9 +140,13 @@ const etaText = computed(() => {
 const ORDER = ['avg', 'min', 'max', 'p99', 'p90', 'p50', 'std']
 const dashCell = () => ({ t: '-', c: 'rtm-dash' })
 const naCell = () => ({ t: 'N/A', c: 'rtm-na' })
-const numCell = (v, convert) => (v === undefined || v === null || isNaN(Number(v))
-  ? dashCell()
-  : { t: fmtMrk(v, convert), c: 'rtm-fill' })
+// 单元格取值语义：
+//   number → 有值(蓝)；null → 明确不可得(N/A 灰黑)；undefined/缺失 → 尚无可计算(灰横线)
+const numCell = (v, convert) => {
+  if (v === null) return naCell()
+  if (v === undefined || isNaN(Number(v))) return dashCell()
+  return { t: fmtMrk(v, convert), c: 'rtm-fill' }
+}
 const naCellsN = (n) => Array.from({ length: n }, () => naCell())
 const fmtMrk = (v) => {
   const x = Number(v)

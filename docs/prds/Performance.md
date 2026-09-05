@@ -71,7 +71,19 @@ Performance 任务执行页存在两种执行模式，由任务创建时的 `mod
 - Perf Datas 表格（`MetricsTable` → `RunDataPanel`）末尾新增**固定列「详情」按钮**（`showDetail`/`detail` 事件）；点击该行弹出 Modal，上下两块展示该请求的 **Profile Progress / Real-Time Metrics**（同一 `LivePanels` 组件）。
 - 数据来源：后端按请求持久化实时快照 `run_dir/live/<reqKey>.json`，新增 `GET /api/logs/runs/{run_id}/live` 读取；前端 `openDetail` 按 `reqKeyOf(label, case_id, concurrency)` 匹配。
   - **内置引擎**：请求结束时用最终 `task_live` 快照落盘（`_save_request_live`，7 列全量分布）。
-  - **原生引擎（vLLM/SGLang）**：每个并发点结束时用解析指标构造快照（`_snapshot_from_row`）：TTFT/TPOT/ITL/Req Latency 的 avg(=mean)/p50(=median)/p99、Output TPS/Req-sec 与 OSL/ISL 的 avg；min/max/p90/std 置空 → 前端显示灰横线/N-A。
+  - **原生引擎（vLLM/SGLang）**：每个并发点结束时用解析指标构造快照（`_snapshot_from_row`），并在 `_record_row` **广播 `task_live`**，使第二行面板随每个并发点完成而更新。
+  - **第三方引擎可得性盘点（`_snapshot_from_row`，可得→蓝；不可得→`None`→前端 N/A）**：
+
+    | Metric | 可得 | 不可得（N/A） | 数据来源 |
+    | --- | --- | --- | --- |
+    | TTFT / TPOT / ITL / Req Latency | avg(=mean)、p50(=median)、p99 | min / max / p90 / std | `ttft/tpot/itl/e2e_{mean,median,p99}` |
+    | Output TPS、Req/sec | avg | min/max/p99/p90/p50/std | `output_mean`、`req_per_s` |
+    | OSL、ISL | avg(=总量/成功请求数) | 其余 | `total_generated/input_tokens` |
+    | **TTST** | — | **全部**（引擎不输出） | — |
+    | **Output TPS/User** | — | **全部**（无逐用户数据） | — |
+
+    单元格语义：数值=有值（蓝）；`null`=不可得（灰黑 N/A)；缺失=`尚未出值`（灰横线）。
+  - **原生点内“连续滚动”（Phase-2 尽力实现）**：原生执行时起一个**每秒的 `task_live` 广播线程**（`_run_one` 原生分支），点内持续更新（`t`=Elapsed 实时滚动、`completed`=实时解析的进度、状态 Profiling）；增量进度行 `benchscope-live-done k/N`（`mocks/bench_outputs._done_lines`，`_run_fake` 逐行流式输出供实时解析）→ mock/FAKE 原生点内进度随请求完成连续递增。真实 vLLM/SGLang CLI 无可解析逐请求进度行 → 点内仅 Elapsed/状态滚动，进度在点结束时上满。
   - 无任何快照（异常/老旧运行）时回退用行指标构造最小 Profile 快照。
 
 **引擎创建/导入（Settings → Bench Engines Upload Engine）——逻辑优化**（`benchs.py`）：

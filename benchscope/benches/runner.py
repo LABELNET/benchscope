@@ -279,19 +279,22 @@ class BenchRunner:
         output = self._fake_output(framework, concurrency, input_len, output_len, request_rate)
         lines = output.splitlines()
 
-        # 模拟耗时（可被 kill 中断）
+        # 模拟耗时并在过程中逐行流式输出（让原生 mock 的增量进度行随时间滚动，可被 kill 中断）
         total_sleep = min(0.6, 0.2 + concurrency * 0.01)
-        slept = 0.0
-        while slept < total_sleep:
-            if self._stop_flag.is_set():
-                raise StopRequested("测试已被停止")
-            time.sleep(0.05)
-            slept += 0.05
-        if self._stop_flag.is_set():
-            raise StopRequested("测试已被停止")
+        per_line = (total_sleep / max(len(lines), 1)) if lines else 0
         if stream_cb:
             stream_cb(f"$ {args}\n")
-            for ln in lines:
+        for ln in lines:
+            if per_line > 0:
+                chunk = per_line
+                while chunk > 0:
+                    if self._stop_flag.is_set():
+                        raise StopRequested("测试已被停止")
+                    time.sleep(min(chunk, 0.05))
+                    chunk -= 0.05
+            if self._stop_flag.is_set():
+                raise StopRequested("测试已被停止")
+            if stream_cb:
                 stream_cb(ln + "\n")
         metrics = parse_metrics(output)
         return metrics

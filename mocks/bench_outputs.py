@@ -113,6 +113,8 @@ def generate_vllm_output(
     lines: list[str] = []
     if include_progress:
         lines += _progress_lines(rng, prompts)
+        # 逐请求完成的增量进度行（供原生引擎实时解析/滚动；最终解析器按正则忽略）
+        lines += _done_lines(prompts)
 
     lines += [
         "============ Serving Benchmark Result ============",
@@ -170,6 +172,8 @@ def generate_sglang_output(
     lines: list[str] = []
     if include_progress:
         lines += _progress_lines(rng, prompts, sglang=True)
+        # 逐请求完成的增量进度行（供原生引擎实时解析/滚动；最终解析器按正则忽略）
+        lines += _done_lines(prompts)
 
     lines += [
         "============ Serving Benchmark Result ============",
@@ -212,6 +216,20 @@ def generate_output(framework: str, **kwargs) -> str:
 
 
 # ---------------------------------------------------------------- 进度行
+
+def _done_lines(num_prompts: int) -> list[str]:
+    """逐请求完成的增量进度行（``benchscope-live-done k/N``），供原生引擎实时解析/滚动。
+
+    每个并发点内部按请求数 N 递增输出；N 很大时按步长采样（上限约 200 行）避免超长。
+    最终解析器（``benchscope.parser``）按正则匹配，会忽略这些行。
+    """
+    n = max(int(num_prompts or 0), 1)
+    step = max(1, n // 200)
+    out = [f"benchscope-live-done {k}/{n}" for k in range(step, n, step)]
+    if not out or out[-1] != f"benchscope-live-done {n}/{n}":
+        out.append(f"benchscope-live-done {n}/{n}")
+    return out
+
 
 def _progress_lines(rng: random.Random, num_prompts: int, sglang: bool = False) -> list[str]:
     """模拟 bench 运行中的进度/预热日志（纯展示，不影响解析）。"""

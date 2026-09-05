@@ -599,6 +599,93 @@
 
 ---
 
+### 迭代 19（2026-09-05 13:40:00）：原生引擎运行中随并发点更新 Profile Progress / Real-Time Metrics
+
+**功能概述**：
+
+- 原生引擎（vLLM/SGLang）无逐请求实时流，之前第二行面板在运行中不更新；现每个并发点完成时广播 `task_live`（用解析指标构造的快照），面板随各并发点完成而逐步更新，并同步落盘供历史回看。
+
+**变更内容**：
+
+1. `task_manager.py` `_record_row`：原生引擎分支在持久化每请求快照后**额外广播 `task_live`**（`_snapshot_from_row(row)` 构造快照）→ store `liveReq`/`activeLiveSnapshot` 随即更新，第二行展示该并发点 Profile Progress / Real-Time Metrics（状态 Profiling）。
+
+**验证（增量）**：
+
+- 原生 mock 任务（concurrency [1,2]）运行完成 → `/runs/{id}/live` 返回 2 个按并发点快照（1、2），运行中面板随点完成更新
+- build/语法/i18n OK；dev 8080 / mock 8001 UP
+
+**TODO 状态**：
+
+- [x] 原生运行中按并发点广播 task_live（面板随请求完成更新）
+- [x] 文档同步
+- [ ] Phase-2（规划）— 趋势图/sparkline/逐请求连续实时流
+
+---
+
+### 迭代 20（2026-09-05 13:55:00）：原生引擎单个并发点内“连续滚动”（Phase-2 尽力实现）
+
+**功能概述**：
+
+- 原生引擎（vLLM/SGLang）无逐请求流的数据源，但可让面板在单个高并发点内部**连续滚动**：执行时每秒广播 `task_live`（Elapsed 实时滚动、进度实时解析、状态 Profiling）；mock/FAKE 原生通过增量进度行实现点内进度连续递增，真实引擎无逐请求量则点内仅 Elapsed/状态滚动。
+
+**变更内容**：
+
+1. `task_manager.py` 原生分支：`runner.run` 前起 **1s 广播线程**（`_ticker`），点内持续广播 `task_live`（t=Elapsed、completed=解析进度、status Profiling）；`_stream` 包装解析增量进度行；点结束 join 停止。
+2. 新增模块级 `_parse_native_done`：解析 `benchscope-live-done k/N` 增量进度行。
+3. `mocks/bench_outputs.py`：新增 `_done_lines(num_prompts)`，在 vLLM/SGLang 仿真输出中插入逐请求完成行（`benchscope-live-done k/N`，N 大时按步长采样）。
+4. `benches/runner.py` `_run_fake`：改为在模拟耗时过程中逐行流式输出（每行小步 sleep，总时长不变、可被 kill 中断）→ 增量进度行被实时解析、面板点内滚动。
+
+**说明/边界**：
+
+- mock/FAKE 原生：点内进度随 `k/N` 连续递增；但 mock 点完成很快（≤0.6s），实际可见滚动有限；真实高并发长点（>1s）Elapsed/状态每秒滚动。
+- 真实安装的 vLLM/SGLang CLI 无可解析逐请求进度行：点内仅 Elapsed/状态滚动，进度点结束上满（数据源固有限制）。
+
+**验证（增量）**：
+
+- WS 抓取原生 mock 任务 `task_live`：点完成广播 `completed=1/8` 与完成快照；`_run_fake` 逐行流式、进度解析正常
+- 后端语法 / build OK；dev 8080 / mock 8001 UP
+
+**TODO 状态**：
+
+- [x] 原生点内 1s `task_live` 广播（Elapsed/状态滚动）
+- [x] mock 增量进度行 + 逐行流式（点内进度连续）
+- [x] 文档同步
+- [ ] Phase-2（规划）— 趋势图/sparkline/真实引擎逐请求流
+
+---
+
+### 迭代 21（2026-09-05 14:10:00）：第三方引擎指标可得性盘点（可得→值，不可得→N/A）
+
+**功能概述**：
+
+- 明确第三方（原生）引擎每个指标哪些能拿到、哪些不能；`_snapshot_from_row` 统一按“可得填数值 / 不可得填 `None`”输出，前端据此渲染：数值=蓝、`null`=灰黑 **N/A**、缺失=灰横线。
+
+**变更内容**：
+
+1. `task_manager.py` `_snapshot_from_row`：重写为**固定 11 指标**输出（含 TTST、OutputTPSPerUser 全 `None`）；可得字段填数值（TTFT/TPOT/ITL/ReqLatency 的 avg/p50/p99、Output TPS/ReqSec/OSL/ISL 的 avg），不可得字段（min/max/p90/std）填 `None`。
+2. `web/src/components/LivePanels.vue` `numCell`：`null → N/A`（不可得），`undefined/缺失 → 灰横线`（尚未出值），数值 → 蓝。
+
+**第三方引擎可得性（最终口径）**：
+
+- TTFT/TPOT/ITL/Req Latency：avg(=mean)、p50(=median)、p99 可得；min/max/p90/std 不可得(N/A)
+- Output TPS、Req/sec：仅 avg 可得；其余 N/A
+- OSL、ISL：仅 avg(=总量/请求数) 可得；其余 N/A
+- TTST、Output TPS/User：整体不可得 → 全 N/A
+
+**验证（增量）**：
+
+- 原生 mock 运行后快照：TTFT `{avg:70.0,p50:68.9,p99:93.3,min/max/p90/std:null}`、Output TPS `{avg:47.0,其余 null}`、TTST 与 OutputTPSPerUser 全 `null`
+- build / 语法 / i18n OK；dev 8080 / mock 8001 UP
+
+**TODO 状态**：
+
+- [x] `_snapshot_from_row` 可得/不可得显式化
+- [x] 前端 `null`→N/A、缺失→灰横线
+- [x] 文档：可得性盘点表 + 迭代记录
+- [ ] Phase-2（规划）— 趋势图/sparkline/真实引擎逐请求流
+
+---
+
 ## 4. TODO 清单
 
 （1.0.9 待办，按规划补充后逐项勾选）
