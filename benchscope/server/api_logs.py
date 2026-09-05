@@ -93,6 +93,22 @@ def get_run(run_id: str):
     return {"run_id": run_id, "dir": str(d), "files": [{"name": n, "size": s} for n, s in files], "run": run_info}
 
 
+@router.get("/runs/{run_id}/live")
+def get_run_live(run_id: str):
+    """读取该运行记录下按请求持久化的实时快照（run_dir/live/*.json），
+    供 Datas Perf 详情弹窗展示各请求的 Profile Progress / Real-Time Metrics。"""
+    d = _resolve_run_dir(run_id)
+    live_dir = d / "live"
+    snaps = []
+    if live_dir.is_dir():
+        for p in sorted(live_dir.glob("*.json")):
+            try:
+                snaps.append(json.loads(p.read_text(encoding="utf-8")))
+            except Exception:
+                log.warning("解析实时快照失败: %s", p)
+    return {"run_id": run_id, "snapshots": snaps}
+
+
 @router.delete("/runs/{run_id}")
 def delete_run(run_id: str):
     """删除整条运行记录：run 目录 + 终端输出日志（logs_dir 下 perf|eval_runID_*.log）。"""

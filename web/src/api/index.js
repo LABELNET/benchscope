@@ -86,6 +86,7 @@ export const api = {
   // 日志
   listRuns: () => http.get('/api/logs/runs'),
   getRun: (runId) => http.get(`/api/logs/runs/${runId}`),
+  getRunLive: (runId) => http.get(`/api/logs/runs/${runId}/live`),
   deleteRun: (runId) => http.delete(`/api/logs/runs/${runId}`),
   previewFile: (runId, name) =>
     http.get(`/api/logs/runs/${runId}/preview`, { params: { name } }),

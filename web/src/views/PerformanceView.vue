@@ -148,6 +148,10 @@
                       :key="tt.conc"
                       :color="tt.running ? 'processing' : 'green'"
                       size="small"
+                      class="req-tag"
+                      :class="{ 'req-selected': isReqSelected(c, tt.conc) }"
+                      :title="t('reqViewHint')"
+                      @click="selectReq(c, tt.conc)"
                     >{{ tt.conc }}</a-tag>
                   </template>
                   <a-tag v-else color="default" size="small">{{ t('pending') }}</a-tag>
@@ -159,6 +163,10 @@
                     :key="conc"
                     :color="caseConcColor(c, conc)"
                     size="small"
+                    class="req-tag"
+                    :class="{ 'req-selected': isReqSelected(c, conc) }"
+                    :title="t('reqViewHint')"
+                    @click="selectReq(c, conc)"
                   >{{ conc }}</a-tag>
                 </template>
               </span>
@@ -187,60 +195,8 @@
         </a-card>
       </div>
 
-      <!-- 第二行：Profile Progress(1/3) + Real-Time Metrics(2/3)，antd 对齐 -->
-      <div class="row-2">
-        <!-- Profile Progress 面板 -->
-        <a-card ref="profilePanelRef" size="small" class="profile-panel">
-          <template #title>{{ t('profileProgress') }}</template>
-          <template #extra><span class="rt-case-text">{{ rtCaseText }}</span></template>
-          <!-- 状态卡片 -->
-          <div class="pp-status" :class="`pp-${profileStatusKey}`">
-            <span class="pp-status-label">{{ t('profCurrentStatus') }}</span>
-            <span class="pp-status-value">{{ profileStatusText }}</span>
-            <warning-outlined v-if="profileStatusKey === 'error'" class="pp-err-icon" />
-          </div>
-          <!-- 双进度条 -->
-          <div class="pp-bars">
-            <div class="pp-bar-row">
-              <span class="pp-bar-label">{{ t('profProfiling') }}</span>
-              <a-progress :percent="reqPct" :show-info="false" :size="['100%', 8]" :stroke-color="'#1677ff'" class="pp-progress" />
-              <span class="pp-bar-num">{{ reqPct }}%</span>
-            </div>
-            <div class="pp-bar-row">
-              <span class="pp-bar-label">{{ t('profRecords') }}</span>
-              <a-progress :percent="recPct" :show-info="false" :size="['100%', 8]" :stroke-color="'#52c41a'" class="pp-progress" />
-              <span class="pp-bar-num">{{ recPct }}%</span>
-            </div>
-          </div>
-          <!-- 每个指标一行 -->
-          <div class="pp-metrics">
-            <div class="pp-metric"><span class="pp-mk">{{ t('profProgress') }}</span><span class="pp-mv">{{ progressText }}</span></div>
-            <div class="pp-metric"><span class="pp-mk">{{ t('profErrors') }}</span><span class="pp-mv" :class="{ 'pp-err-val': errorsHaveErr }">{{ errorsText }}</span></div>
-            <div class="pp-metric"><span class="pp-mk">{{ t('profReqRate') }}</span><span class="pp-mv">{{ reqRateText }}</span></div>
-            <div class="pp-metric"><span class="pp-mk">{{ t('profProcRate') }}</span><span class="pp-mv">{{ procRateText }}</span></div>
-            <div class="pp-metric"><span class="pp-mk">{{ t('profElapsed') }}</span><span class="pp-mv">{{ elapsedClock }}</span></div>
-            <div class="pp-metric"><span class="pp-mk">{{ t('profEta') }}</span><span class="pp-mv">{{ etaText }}</span></div>
-          </div>
-        </a-card>
-
-        <!-- Real-Time Metrics 面板（高度与 Profile Progress 保持一致） -->
-        <a-card size="small" class="rtm-panel" :style="rtmCardStyle">
-          <template #title>{{ t('realTimeMetrics') }}</template>
-          <template #extra>
-            <div class="rtm-tools">
-              <span class="rt-case-text">{{ rtCaseText }}</span>
-            </div>
-          </template>
-            <!-- 单表 + 单表头（Metric 列右对齐；表头与 Metric 列默认保留，无数据时单元格为空，放大填满面板） -->
-            <div class="rtm-grid rtm-head">
-              <span class="ta-r">{{ t('liveMetric') }}</span><span class="ta-r">avg</span><span class="ta-r">min</span><span class="ta-r">max</span><span class="ta-r">p99</span><span class="ta-r">p90</span><span class="ta-r">p50</span><span class="ta-r">std</span>
-            </div>
-            <div v-for="r in liveMetrics" :key="r.key" class="rtm-grid" :title="r.n ? r.n + ' ' + t('liveSamples') : ''">
-              <span class="ta-r rtm-name">{{ r.label }}</span>
-              <span v-for="(c, i) in r.cols" :key="i" class="ta-r rtm-cell" :class="c.c">{{ c.t }}</span>
-            </div>
-        </a-card>
-      </div>
+      <!-- 第二行：Profile Progress(1/3) + Real-Time Metrics(2/3)，按请求快照渲染 -->
+      <LivePanels :snapshot="activeLiveSnapshot" :live="isLiveRunning" />
 
       <!-- Realtime Data 面板：所有请求行表格（保持不变，承载 Best/BestPerf + 本地面板阈值 + 列设置 + 导出） -->
       <a-card size="small" class="full-row-card realtime-data-card">
@@ -325,11 +281,13 @@ import {
   WarningOutlined,
 } from '@ant-design/icons-vue'
 import { useRouter } from 'vue-router'
-import { useTestStore } from '@/store/test'
+import { reqKeyOf, useTestStore } from '@/store/test'
 import { useConfigStore } from '@/store/config'
+import { api } from '@/api'
 import { t } from '@/i18n'
 import MetricsTable from '@/components/MetricsTable.vue'
 import MetricsCharts from '@/components/MetricsCharts.vue'
+import LivePanels from '@/components/LivePanels.vue'
 
 const test = useTestStore()
 const config = useConfigStore()
@@ -365,6 +323,61 @@ const effectiveOutputThreshold = computed(() => {
 
 const theTask = computed(() => test.theTask)
 const taskId = computed(() => theTask.value?.task_id || null)
+
+// ===== 单个请求回看：点击 Cases 请求数可查看该请求的 Profile Progress / Real-Time Metrics =====
+const selectedReqKey = ref(null)
+function selectReq(caseObj, conc) {
+  selectedReqKey.value = reqKeyOf(caseObj.label || caseObj.case, caseObj.case_id, conc)
+}
+function isReqSelected(caseObj, conc) {
+  return selectedReqKey.value === reqKeyOf(caseObj.label || caseObj.case, caseObj.case_id, conc)
+}
+// 当前展示的快照：优先选中请求 → 执行中 realtime → 默认最后一个已完成请求
+const activeLiveSnapshot = computed(() => {
+  const tid = taskId.value
+  if (!tid) return null
+  const cache = test.liveReq[tid] || {}
+  if (selectedReqKey.value && cache[selectedReqKey.value]) return cache[selectedReqKey.value]
+  const pos = test.currentPos[tid]
+  if (pos && pos.case != null) {
+    const k = reqKeyOf(pos.case, pos.case_id, pos.concurrency)
+    if (cache[k]) return cache[k]
+    const live = test.liveMetrics[tid]
+    if (live && live.stats) {
+      return { case: pos.case, case_id: pos.case_id, concurrency: pos.concurrency, label: pos.case, stats: live.stats }
+    }
+  }
+  // 默认显示最后一个已完成请求
+  const rows = theTask.value?.rows || []
+  if (rows.length) {
+    const last = rows[rows.length - 1]
+    const k = reqKeyOf(last.label || last.case, last.case_id, last.concurrency)
+    if (cache[k]) return cache[k]
+  }
+  return null
+})
+// 是否以“执行中”呈现（状态 Profiling）；选中某个已缓存请求时视为已完成的回看
+const isLiveRunning = computed(() => theTask.value?.status === 'running' && !selectedReqKey.value)
+// 切换任务时重置选中的请求
+watch(taskId, () => { selectedReqKey.value = null })
+// 任务结束时加载持久化按请求快照（原生引擎靠结束解析结果落盘，内置引擎已有实时缓存）
+watch(() => theTask.value?.status, (st) => {
+  if (['done', 'stopped', 'error'].includes(st) && taskId.value) loadPersistedLive(taskId.value)
+})
+
+// 加载该任务持久化的按请求实时快照（原生引擎无实时流，靠结束解析结果落盘）
+async function loadPersistedLive(id) {
+  try {
+    const runId = String(id).replace(/^task-/, '')
+    const resp = await api.getRunLive(runId)
+    if (!test.liveReq[id]) test.liveReq[id] = {}
+    for (const s of resp?.snapshots || []) {
+      const k = reqKeyOf(s.label ?? s.case, s.case_id, s.concurrency)
+      // 已存在（如内置引擎实时缓存）则保留更完整的
+      if (!test.liveReq[id][k]) test.liveReq[id][k] = s
+    }
+  } catch { /* 无快照或运行不存在时忽略 */ }
+}
 const activeLogs = computed(() => (taskId.value ? test.logLines[taskId.value] || [] : []))
 const serviceReady = computed(() => config.status?.inference === 'ready')
 const serviceUrl = computed(() => config.apiBase || '')
@@ -1023,6 +1036,7 @@ watch(taskId, async (id, oldId) => {
   outputThreshold.value = null
   await test.loadTask(id)
   await test.loadTaskLogs(id)
+  await loadPersistedLive(id)
   await nextTick()
   scrollTermToBottom()
 })
@@ -1037,6 +1051,7 @@ onMounted(async () => {
     userNearBottom.value = true
     await test.loadTask(taskId.value)
     await test.loadTaskLogs(taskId.value)
+    await loadPersistedLive(taskId.value)
     await nextTick()
     scrollTermToBottom()
   }
@@ -1304,6 +1319,14 @@ onMounted(async () => {
   font-size: 10px;
   line-height: 16px;
   padding: 0 5px;
+}
+/* 请求数可点击查看对应实时快照 */
+.case-tags :deep(.req-tag) {
+  cursor: pointer;
+}
+.case-tags :deep(.req-tag.req-selected) {
+  outline: 2px solid #1677ff;
+  outline-offset: 0;
 }
 .empty-hint {
   text-align: center;

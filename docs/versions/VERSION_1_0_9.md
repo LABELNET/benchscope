@@ -525,6 +525,80 @@
 
 ---
 
+### 迭代 17（2026-09-05 01:10:00）：Performance 单个请求回看 + 按请求实时快照持久化 + Datas/Perfs 详情弹窗
+
+**功能概述**：
+
+- **Performance**：每个请求（case×concurrency）的 Profile Progress / Real-Time Metrics 均被缓存；任务完成后点击 Cases 中的**请求数颜色块**可查看该请求的两个面板，**默认显示最后一个已完成请求**的数据。
+- 抽出**可复用 `LivePanels` 组件**（`snapshot` + `live` 两 prop），由单个请求快照渲染两个面板。
+- **Datas/Perfs**：Perf Datas 表格末尾加**固定「详情」列**，点击弹窗展示该请求的 Profile Progress / Real-Time Metrics。
+- **后端持久化**：内置引擎每个请求结束落盘实时快照到 `run_dir/live/<reqKey>.json`，新增 `GET /api/logs/runs/{run_id}/live` 读取。
+
+**变更内容**：
+
+1. **前端 `web/src/components/LivePanels.vue`（新增）**：从 `snapshot.stats` 渲染 Profile Progress + Real-Time Metrics（把原 PerformanceView 第二行逻辑抽离），内部含等高测量；同组件复用于 Performance 第二行与 Datas/Perfs 弹窗。
+2. **前端 PerformanceView.vue**：第二行改用 `<LivePanels :snapshot="activeLiveSnapshot" :live="isLiveRunning" />`；新增 `selectedReqKey`/`selectReq`/`isReqSelected`；Cases 请求数标签可点击（`.req-tag`/`.req-selected`）；`activeLiveSnapshot` 依次优先：选中请求 → 执行中 `currentPos` → 最后一个已完成请求。
+3. **前端 store/test.js**：新增 `liveReq[taskId][reqKey]` 逐请求缓存（`reqKeyOf(label, case_id, concurrency)` 与后端口径一致），`task_live` 每帧更新；删除任务时清理；导出 `reqKeyOf`。
+4. **后端 task_manager.py**：内置引擎分支捕获每请求最终快照 → `_save_request_live` 写 `run_dir/live/<key>.json`（`_request_live_key`）。
+5. **后端 api_logs.py**：新增 `GET /runs/{run_id}/live` 返回按请求快照列表。
+6. **Datas/Perfs**：`MetricsTable` 新增 `showDetail`/`detail` 事件 + 最后固定列；`RunDataPanel` 透传并 re-emit；`DatasPerfsView` 调用 `api.getRunLive`、`openDetail` 匹配快照弹出 Modal 展示 `<LivePanels>`（无快照回退行指标构造最小 Profile 快照）。
+7. **i18n en/zh**：新增 `perfDetail` / `reqViewHint`。
+8. **文档**：`docs/prds/Performance.md` §1.6（LivePanels 复用、单个请求回看、Datas 详情弹窗、持久化）；本文件迭代记录。
+
+**验证（增量）**：
+
+- `npm run build` 成功；`check:i18n` OK；后端语法 OK；dev 8080 / mock 8001 UP
+- 端到端：内置引擎小任务运行完成 → `run_dir/live/*.json` 落盘（含 TTFT 全分布），`GET /runs/{run_id}/live` 返回该快照
+- `/api/logs/runs/{run_id}/live` 端点对旧运行返回空数组（不报错）
+
+**TODO 状态**：
+
+- [x] LivePanels 组件（snapshot 驱动，复用于 Performance / Datas 弹窗）
+- [x] Performance 逐请求缓存 + Cases 点击回看 + 默认末请求
+- [x] 后端按请求持久化实时快照 + `/runs/{id}/live` 端点
+- [x] Datas/Perfs 详情固定列 + 弹窗（Profile Progress + Real-Time Metrics）
+- [x] i18n + 文档同步
+- [ ] Phase-2（规划）— 趋势图/sparkline/实时 req/s 增强
+
+---
+
+### 迭代 18（2026-09-05 01:35:00）：单请求快照拓展到原生引擎 + 引擎导入逻辑优化
+
+**功能概述**：
+
+- **单请求快照拓展到原生引擎**：vLLM/SGLang 无逐请求实时流，现于每个并发点结束时用解析指标构造每请求快照并落盘；Datas/Perfs 详情弹窗与 Performance 点击回看同样可用。
+- **优化引擎创建/导入逻辑**（Settings → Bench Engines Upload Engine）：写文件改为原子写；上传包合并前先做包内自检。
+
+**变更内容**：
+
+1. **后端 task_manager.py**：
+   - `_record_row`：非内置引擎时用 `_snapshot_from_row(row)` 构造每请求快照并 `_save_request_live` 落盘 `run_dir/live/<key>.json`
+   - 新增模块级 `_snapshot_from_row`：由解析 metrics 构造快照（TTFT/TPOT/ITL/ReqLatency 的 avg(=mean)/p50(=median)/p99、Output TPS/Req-sec/OSL/ISL 的 avg；min/max/p90/std 置 None）
+2. **前端 PerformanceView.vue**：新增 `loadPersistedLive(taskId)` 用 `api.getRunLive` 加载已落盘快照并入 `test.liveReq`（原生引擎回看）；任务切换/加载及**任务变为 done/stopped/error 时**调用。
+3. **后端 benchs.py（引擎导入优化）**：
+   - 新增 `_atomic_write(path, text)`（临时文件 + `os.replace`），`save_benchs_yaml_text` 与 `import_engine_package` 写 `benchs.yaml`/`bench-params.yaml` 均原子化
+   - `import_engine_package` 合并前**包内自检**：id 必填且包内唯一、kind ∈ {builtin,vllm,sglang,native,mock}
+4. **前端 api/index.js**：新增 `getRunLive`。
+5. **文档**：`docs/prds/Performance.md` §1.6（原生引擎快照构造 + 引擎导入优化）；本文件迭代记录。
+
+**验证（增量）**：
+
+- `npm run build`、`check:i18n`、后端语法 OK；dev 8080 / mock 8001 UP
+- `_snapshot_from_row` 单测：合成原生行 → 快照 total/errors/t、TTFT avg/p99/p50、OSL/ISL avg 均正确
+- `GET /api/benchs` 列表正常（原子写/自检不破坏现有引擎）
+- 内置引擎端到端落盘不受影响（`_save_request_live` 路径未变）
+
+**TODO 状态**：
+
+- [x] 原生引擎每请求快照构造 + 落盘（`_snapshot_from_row`）
+- [x] Performance 完成后/切换加载持久化快照（原生回看）
+- [x] Datas/Perfs 原生详情（读取同一 live/ 目录）
+- [x] 引擎导入：原子写 + 包内自检
+- [x] i18n / 文档同步
+- [ ] Phase-2（规划）— 趋势图/sparkline/实时 req/s 增强
+
+---
+
 ## 4. TODO 清单
 
 （1.0.9 待办，按规划补充后逐项勾选）

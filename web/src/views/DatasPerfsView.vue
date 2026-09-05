@@ -217,6 +217,8 @@
             :threshold="current.run?.tpot_threshold_ms || null"
             :request-rate="current.run?.request_rate || 'inf'"
             :group-thresholds="groupThresholdTexts"
+            show-detail
+            @detail="openDetail"
           />
         </a-card>
 
@@ -301,6 +303,20 @@
       <pre class="preview-box">{{ previewContent }}</pre>
     </a-modal>
 
+    <!-- Perf 详情 Modal：上 Profile Progress / 下 Real-Time Metrics -->
+    <a-modal
+      :open="detailVisible"
+      :title="t('perfDetail')"
+      :footer="null"
+      width="960px"
+      @cancel="detailVisible = false"
+    >
+      <div v-if="detailSnapshot" class="perf-detail-modal">
+        <LivePanels :snapshot="detailSnapshot" />
+      </div>
+      <a-empty v-else :description="t('noData')" />
+    </a-modal>
+
     <!-- 导入面板：右侧抽屉，上传备份 zip 恢复任务 -->
     <a-drawer
       :open="importVisible"
@@ -354,8 +370,10 @@ import {
 } from '@ant-design/icons-vue'
 import { t } from '@/i18n'
 import { api } from '@/api'
+import { reqKeyOf } from '@/store/test'
 import RunDataPanel from '@/components/RunDataPanel.vue'
 import RunChartsPanel from '@/components/RunChartsPanel.vue'
+import LivePanels from '@/components/LivePanels.vue'
 
 const route = useRoute()
 
@@ -386,6 +404,49 @@ async function selectRun(r) {
     message.error(e.message || String(e))
     current.value = null
   }
+  await loadRunLive(r.run_id)
+}
+
+// Perf 详情弹窗：按请求的 Profile Progress / Real-Time Metrics 快照
+const detailVisible = ref(false)
+const detailSnapshot = ref(null)
+const liveByKey = ref({}) // reqKey -> {case,case_id,concurrency,label,stats}
+async function loadRunLive(runId) {
+  liveByKey.value = {}
+  try {
+    const resp = await api.getRunLive(runId)
+    const byKey = {}
+    for (const s of resp?.snapshots || []) {
+      byKey[reqKeyOf(s.label ?? s.case, s.case_id, s.concurrency)] = s
+    }
+    liveByKey.value = byKey
+  } catch { /* 无按请求实时快照（如非 builtin 运行）时静默 */ }
+}
+function openDetail(row) {
+  const key = reqKeyOf(row.label || row.case, row.case_id, row.concurrency)
+  if (liveByKey.value[key]) {
+    detailSnapshot.value = liveByKey.value[key]
+  } else {
+    // 回退：用行指标构造一个最小 Profile Progress 快照（Real-Time Metrics 将为空/N-A）
+    const m = row.metrics || {}
+    const total = (m.successful_requests || 0) + (m.failed_requests || 0)
+    detailSnapshot.value = {
+      case: row.label || row.case,
+      case_id: row.case_id,
+      concurrency: row.concurrency,
+      label: row.label || row.case,
+      stats: {
+        t: m.benchmark_duration || 0,
+        completed: total,
+        total,
+        errors: m.failed_requests || 0,
+        req_per_s: m.req_per_s || 0,
+        output_tps: m.output_mean || 0,
+        metrics: {},
+      },
+    }
+  }
+  detailVisible.value = true
 }
 
 function shortId(id) {

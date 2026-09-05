@@ -234,6 +234,48 @@ class Task:
             log.exception("persist_run_json failed: %s", self.task_id)
 
 
+def _request_live_key(case: dict, concurrency) -> str:
+    """单个请求实时快照的文件 key：label(#g{case_id})__c{concurrency}，label 做文件名安全转义。"""
+    label = re.sub(r"[^\w\u4e00-\u9fff-]+", "_", str(case.get("label") or "unknown"))
+    gid = case.get("case_id")
+    gs = f"#g{gid}" if gid is not None else ""
+    return f"{label}{gs}__c{concurrency}"
+
+
+def _snapshot_from_row(row: dict) -> dict:
+    """由解析后的结果行 metrics 构造单个请求的实时快照（原生引擎无逐请求流时的近似/回退）。
+    仅填充可得字段：TTFT/TPOT/ITL/ReqLatency 的 avg(=mean)、p50(=median)、p99；吞吐 avg；长度 avg。
+    其余统计（min/max/p90/std）置 None → 前端显示为灰色横线/N-A。"""
+    m = row.get("metrics") or {}
+
+    def stat(avg, med, p99):
+        return {"avg": avg, "min": None, "max": None, "p99": p99, "p90": None, "p50": med, "std": None, "n": None}
+
+    ok = m.get("successful_requests") or 0
+    fail = m.get("failed_requests") or 0
+    total = ok + fail
+    metrics = {}
+    if m:
+        metrics["TTFT"] = stat(m.get("ttft_mean"), m.get("ttft_median"), m.get("ttft_p99"))
+        metrics["TPOT"] = stat(m.get("tpot_mean"), m.get("tpot_median"), m.get("tpot_p99"))
+        metrics["ITL"] = stat(m.get("itl_mean"), m.get("itl_median"), m.get("itl_p99"))
+        metrics["ReqLatency"] = stat(m.get("e2e_mean"), m.get("e2e_median"), m.get("e2e_p99"))
+        metrics["OutputTPS"] = {"avg": m.get("output_mean"), "min": None, "max": None, "p99": None, "p90": None, "p50": None, "std": None, "n": ok or None}
+        metrics["ReqSec"] = {"avg": m.get("req_per_s"), "min": None, "max": None, "p99": None, "p90": None, "p50": None, "std": None, "n": ok or None}
+        if ok:
+            metrics["OSL"] = {"avg": (m.get("total_generated_tokens") or 0) / ok, "min": None, "max": None, "p99": None, "p90": None, "p50": None, "std": None, "n": ok}
+            metrics["ISL"] = {"avg": (m.get("total_input_tokens") or 0) / ok, "min": None, "max": None, "p99": None, "p90": None, "p50": None, "std": None, "n": ok}
+    return {
+        "t": m.get("benchmark_duration") or 0,
+        "completed": total,
+        "total": total,
+        "errors": fail,
+        "req_per_s": m.get("req_per_s") or 0,
+        "output_tps": m.get("output_mean") or 0,
+        "metrics": metrics,
+    }
+
+
 class TaskManager:
     def __init__(self, config, hub, tasks_dir: Path | None = None):
         self.config = config
@@ -498,8 +540,12 @@ class TaskManager:
         if _builtin_engine(task):
             opts = _builtin_options(task, ds, concurrency, api)
 
+            last_live: dict = {}
+
             def live(stats: dict):
-                # 实时指标快照 → 前端 Real-Time Metrics / Profile Progress
+                # 实时指标快照 → 前端 Real-Time Metrics / Profile Progress（并暂存最终一帧用于持久化）
+                last_live.clear()
+                last_live.update(stats)
                 self.hub.broadcast({
                     "type": "task_live",
                     "task_id": task.task_id,
@@ -510,6 +556,9 @@ class TaskManager:
                 })
 
             metrics = run_builtin_bench(opts, stream_cb=stream, stop_flag=runner._stop_flag, live_cb=live)
+            # 持久化该请求的最终实时快照（完成后 Cases 点击回看 / Datas Perf 详情弹窗）
+            if last_live:
+                self._save_request_live(task, case, concurrency, last_live)
             return {
                 "case": case["label"], "label": case["label"], "case_id": case.get("case_id"),
                 "input_len": case.get("input_len"), "output_len": case.get("output_len"),
@@ -542,6 +591,32 @@ class TaskManager:
         task.persist()
         task.persist_run_json()  # 每完成一个并发：刷新 run.json
         self.hub.broadcast({"type": "task_result", "task_id": task.task_id, "row": row})
+        # 原生引擎（vLLM/SGLang，无逐请求实时流）：用解析指标构造每请求快照并持久化，
+        # 使 Datas/Perfs 详情弹窗与 Performance 历史回看同样可用
+        if not _builtin_engine(task):
+            try:
+                self._save_request_live(task, case, row.get("concurrency") or case.get("concurrency"), _snapshot_from_row(row))
+            except Exception:  # noqa: BLE001
+                log.exception("保存原生引擎请求快照失败")
+
+    def _save_request_live(self, task, case, concurrency, live_stats: dict):
+        """持久化单个请求（case_id + concurrency）的最终实时快照到 run_dir/live/。
+        供 Performance 完成后按请求回看 Profile Progress / Real-Time Metrics，以及 Datas Perf 详情弹窗。"""
+        try:
+            live_dir = task.run_dir / "live"
+            live_dir.mkdir(parents=True, exist_ok=True)
+            key = _request_live_key(case, concurrency)
+            payload = {
+                "case": case.get("label"),
+                "case_id": case.get("case_id"),
+                "concurrency": concurrency,
+                "label": case.get("label"),
+                "stats": live_stats,
+                "saved_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            }
+            (live_dir / f"{key}.json").write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+        except Exception:  # noqa: BLE001
+            log.exception("保存请求实时快照失败")
 
     def _execute_case_threshold(self, runner, task, case, detail_fp, full_log_fp, mean_csv, p99_csv, meta):
         """阈值模式执行策略（对单个 case）：

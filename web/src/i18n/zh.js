@@ -30,6 +30,8 @@ export default {
   testRecords: '测试记录',
   searchModel: '搜索模型...',
   detail: '详情',
+  perfDetail: 'Perf 请求详情',
+  reqViewHint: '查看该请求的 Profile Progress / Real-Time Metrics',
   download: '下载',
   latest8Hint: '*仅显示最新 8 条记录',
 

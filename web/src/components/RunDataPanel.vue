@@ -13,6 +13,8 @@
           :preset="mode"
           :max-rows="100"
           :default-hidden="['label', 'concurrency', 'successful', 'status']"
+          :show-detail="showDetail"
+          @detail="(row) => emit('detail', row)"
         />
       </a-tab-pane>
     </a-tabs>
@@ -30,8 +32,10 @@ const props = defineProps({
   mode: { type: String, default: 'default' },
   // 分组阈值信息：分组 key → 阈值条件文本（跟随 Groups 每组独立配置；0 表示未配置不显示）
   groupThresholds: { type: Object, default: () => ({}) },
+  // 显示 detail/详情 固定列
+  showDetail: { type: Boolean, default: false },
 })
-const emit = defineEmits(['update:mode'])
+const emit = defineEmits(['update:mode', 'detail'])
 
 // cases 分组信息：caseKey（label#g{case_id} 或 label）
 const groups = computed(() => {

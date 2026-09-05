@@ -10,6 +10,7 @@
 from __future__ import annotations
 
 import logging
+import os
 import re
 import tarfile
 import tempfile
@@ -450,17 +451,24 @@ def validate_benchs_yaml(content: str, mock_output: str = "", extra_param_sectio
     return {"ok": ok, "checks": checks}
 
 
+def _atomic_write(path: Path, text: str) -> None:
+    """原子写文件：先写同目录临时文件再 os.replace，避免写入中断产生半截/损坏配置。"""
+    tmp = path.with_name(f".{path.name}.tmp")
+    tmp.write_text(text, encoding="utf-8")
+    os.replace(tmp, path)
+
+
 def save_benchs_yaml_text(content: str, mock_output: str = "") -> dict:
     """保存 benchs.yaml（用户自定义引擎 / 版本扩展），保存前逐项校验。
 
-    全部校验通过才写文件；任一项失败抛 ValueError（不写文件）。
+    全部校验通过才写文件（原子写）；任一项失败抛 ValueError（不写文件）。
     返回校验结果 {ok, checks}。
     """
     result = validate_benchs_yaml(content, mock_output)
     if not result["ok"]:
         failed = "; ".join(c["message"] for c in result["checks"] if not c["ok"])
         raise ValueError(f"引擎定义校验失败：{failed}")
-    BENCHS_YAML.write_text(content, encoding="utf-8")
+    _atomic_write(BENCHS_YAML, content)
     return result
 
 
@@ -559,6 +567,19 @@ def import_engine_package(data: bytes, filename: str) -> dict:
     if not new_engines:
         raise ValueError("引擎包中未找到任何引擎定义（engines 段）")
 
+    # ---- 包内自检（先于合并即失败返回，便于定位问题包） ----
+    _VALID_KINDS = ("builtin", "vllm", "sglang", "native", "mock")
+    pkg_ids: set = set()
+    for eng in new_engines:
+        eid = eng.get("id")
+        if not eid:
+            raise ValueError("引擎包中存在缺少 id 的引擎条目")
+        if eid in pkg_ids:
+            raise ValueError(f"引擎包内 id 重复：{eid}（引擎包内 id 必须唯一）")
+        pkg_ids.add(eid)
+        if eng.get("kind") not in _VALID_KINDS:
+            raise ValueError(f"引擎 {eid} 的 kind 必须为 {' / '.join(_VALID_KINDS)}（当前：{eng.get('kind')}）")
+
     # ---- 与现有配置合并 ----
     current_text = load_benchs_yaml_text()
     try:
@@ -624,11 +645,9 @@ def import_engine_package(data: bytes, filename: str) -> dict:
         for key, section in new_param_sections.items():
             doc[key] = section
             merged_params.append(key)
-        PARAMS_YAML.write_text(
-            yaml.safe_dump(doc, allow_unicode=True, sort_keys=False), encoding="utf-8"
-        )
+        _atomic_write(PARAMS_YAML, yaml.safe_dump(doc, allow_unicode=True, sort_keys=False))
 
-    BENCHS_YAML.write_text(merged_text, encoding="utf-8")
+    _atomic_write(BENCHS_YAML, merged_text)
     return {
         "ok": True,
         "checks": result["checks"],

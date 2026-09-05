@@ -55,11 +55,29 @@ Performance 任务执行页存在两种执行模式，由任务创建时的 `mod
 > **Phase-1 说明**：当前后端仅在每个并发点结束回传聚合行（`task_result`）+ 日志（`task_log`）+ 位置（`currentPos`），**尚无真实逐请求实时流**。Phase-1 用现有数据实现两面板布局与进度/表格呈现；**Phase-2（规划）** 将新增后端实时逐请求指标流，让 Real-Time Metrics 的趋势图/sparkline 与 Profile Progress 的实时 req/s、错误、ETA 真正“实时”。
 
 - **原始「Realtime Data」面板保持不变**：作为独立整行（`.realtime-data-card`，位于第二行与统计图行之间），展示**所有请求行**的数据（`MetricsTable`：含分组标题行、Best/BestPerf、本地面板阈值控件、列设置、Excel 导出）——**不改动/不并入新面板**，仅从原「第二行 Realtime Data」位置平移到独立整行。
-- **第二行** 为**新增的两个“单个请求”面板**（`.row-2`，flex 两卡片，样式与 Perf/Cases 等 **antd 对齐**）：
-  - **Profile Progress（1/3）**（`.profile-panel`，flex `0 0 33.333%`，锁 1/3 宽）
-  - **Real-Time Metrics（2/3）**（`.rtm-panel`，flex `1 1 0`，**仅为逐请求实时指标表** `task_live` 流，不含原 MetricsTable）
-  - **等高**：测量 Profile Progress 自然高度（`profilePanelRef`/`measureProfileRow`，ResizeObserver + 任务状态变化重测）→ 赋给 Real-Time Metrics 卡片 `height`（`rtmCardStyle`），两面板等高；Real-Time Metrics body `flex:1; overflow:hidden`，表格每行 `flex:1` **拉伸填满**面板高度。
-- 两面板 header 右侧均显示**灰色小字当前 case-请求数**（`.rt-case-text`，`rtCaseText` computed：优先 `test.currentPos` 的 case(+`#g{case_id}`)·concurrency，其次末行 label·concurrency；宽度不够伪隐藏省略号）。
+- **第二行** 为**新增的两个“单个请求”面板**，封装为可复用组件 **`LivePanels`**（`web/src/components/LivePanels.vue`，`props: { snapshot, live }`，由传入的单个请求实时快照 `stats` 渲染）：
+  - **Profile Progress（1/3）**（`.profile-panel`，flex `0 0 36%`，锁 1/3 宽）
+  - **Real-Time Metrics（2/3）**（`.rtm-panel`，flex `1 1 0`，**仅为逐请求实时指标表**，单表 + 单表头）
+  - **等高**：组件内测量 Profile Progress 自然高度 → 赋给 Real-Time Metrics `height`（`profilePanelRef`/`measureProfileRow`），两面板等高；表格每行 `flex:1` 拉伸填满。
+  - **数据源**：`snapshot = { case, case_id, concurrency, label, stats }`（`stats` 为 `task_live` 快照）。同组件复用于 Performance 第二行、以及 Datas/Perfs 详情弹窗。
+- 两面板 header 右侧均显示**灰色小字当前 case-请求数**（组件内 `rtCaseText` 由 `snapshot` 计算）。
+
+**单个请求回看（Performance 第二行）**：
+- **逐请求缓存**：store `liveReq[taskId][reqKey]`（`reqKey = label(#g{case_id})__c{concurrency}`，与后端 `_request_live_key` 口径一致）；`task_live` 每帧更新当前请求缓存；**原生引擎**（无实时流）在任务完成时经 `loadPersistedLive` 从 `run_dir/live/` 加载已落盘的按请求快照（`GET /runs/{run_id}/live`）。
+- **点击回看**：Cases 中的每个请求数**颜色块**（`.req-tag`）可点击（`selectReq`），选中后第二行 `LivePanels` 展示该请求的 Profile Progress / Real-Time Metrics（选中高亮 `.req-selected`）。
+- **默认**：任务完成后默认展示**最后一个已完成请求**的数据（`activeLiveSnapshot` 依次优先：选中的请求 → 执行中 `currentPos` → 最后一个已完成请求）；切换任务重置选中。
+
+**Datas/Perfs 详情弹窗（Perf Datas 面板）**：
+- Perf Datas 表格（`MetricsTable` → `RunDataPanel`）末尾新增**固定列「详情」按钮**（`showDetail`/`detail` 事件）；点击该行弹出 Modal，上下两块展示该请求的 **Profile Progress / Real-Time Metrics**（同一 `LivePanels` 组件）。
+- 数据来源：后端按请求持久化实时快照 `run_dir/live/<reqKey>.json`，新增 `GET /api/logs/runs/{run_id}/live` 读取；前端 `openDetail` 按 `reqKeyOf(label, case_id, concurrency)` 匹配。
+  - **内置引擎**：请求结束时用最终 `task_live` 快照落盘（`_save_request_live`，7 列全量分布）。
+  - **原生引擎（vLLM/SGLang）**：每个并发点结束时用解析指标构造快照（`_snapshot_from_row`）：TTFT/TPOT/ITL/Req Latency 的 avg(=mean)/p50(=median)/p99、Output TPS/Req-sec 与 OSL/ISL 的 avg；min/max/p90/std 置空 → 前端显示灰横线/N-A。
+  - 无任何快照（异常/老旧运行）时回退用行指标构造最小 Profile 快照。
+
+**引擎创建/导入（Settings → Bench Engines Upload Engine）——逻辑优化**（`benchs.py`）：
+- **原子写**：`_atomic_write`（同目录临时文件 + `os.replace`），`benchs.yaml` 与 `bench-params.yaml` 写入不再可能产生半截/损坏配置。
+- **包内自检**：合并前对上传包内的引擎先做自检——id 必填且包内不重复、kind ∈ 合法集合（builtin/vllm/sglang/native/mock），问题包在合并前即报明确错误。
+- 校验、合并、参数段覆盖合并、结果返回逻辑保持不变。
 
 **页面四行布局（1.0.9）**：
 1. 第 1 行：Perf / Cases / Logs（各 1/3，等高；Logs 为原 Console 改名，日志高亮 + 字体 10px）
@@ -67,20 +85,20 @@ Performance 任务执行页存在两种执行模式，由任务创建时的 `mod
 3. 第 3 行：Realtime Data（原所有请求行表格，**保持不变**，整行）
 4. 第 4 行：Statistics（统计图）
 
-### Profile Progress 面板（antd 对齐）
+### Profile Progress 面板（antd 对齐，按单个请求快照渲染）
 
-- **状态卡片**（`.pp-status`，`.pp-${profileStatusKey}`）：`theTask.status` → `profiling`（蓝）/ `error`（红/Error 图标右对齐）/ `completed`（绿）；异常整条红框高亮。
-- **双进度条**（`.pp-bar-row`）：`Profiling`（请求完成度 = `reqPct` = `doneCount/totalCount`，蓝 `#1677ff`）、`Records`（case 处理度 = `recPct` = `recDoneCases/recTotalCases`，绿 `#52c41a`），各带右侧百分比。
-- **每个指标一行**（`.pp-metrics`，label 左 + 值右，分隔线，共 6 项）及**计算方式**（`rtCaseText` 为 header 右侧 case-请求数；`liveStats` = `task_live` 快照 `stats`，无流时回退已完成行聚合）：
+- **状态卡片**（`.pp-status`，`.pp-${statusKey}`）：`props.live`（执行中）= `profiling`（蓝，当前正在执行）；否则 `completed`（绿）；异常红框高亮。
+- **双进度条**（`.pp-bar-row`，单个请求口径 `completed/total`）：`Profiling`（请求完成度 = `profPct`，蓝 `#1677ff`）、`Records`（记录处理度 = `recPct` = 同 `completed/total`，绿 `#52c41a`），各带右侧百分比。
+- **每个指标一行**（`.pp-metrics`，label 左 + 值右，分隔线，共 6 项），全部取自 `snapshot.stats`：
 
   | 指标 | 计算方式 | 说明 |
   | --- | --- | --- |
-  | Progress | 实时 `completed / total requests (pct%)`；无流回退 `doneCount / totalCount` | `pct = completed/total×100` |
-  | Errors | `errors / completed (pct%)`；无流回退 `errorsDone / requestsDone` | 有错（`errorsHaveErr`）值标红 |
-  | Request Rate | 实时 `stats.req_per_s`；无流 `requestsDone / elapsedSec` | `requests/s` |
-  | Processing Rate | 实时 `stats.completed / stats.t`；无流 `recDoneCases / elapsedSec` | `records/s` |
-  | Elapsed | `fmtClock(liveSec)` = `Mm Ss` / `Hh Mm`（`liveSec` 取 `stats.t` 或 `started_at→now`） | — |
-  | ETA | `(elapsed / pct) × (100 − pct)`；完成显示 `0s` | <2min 显示 `Ns` 秒，否则 `fmtClock` |
+  | Progress | `completed / total requests (pct%)` | `pct = completed/total×100` |
+  | Errors | `errors / completed (pct%)` | 有错（`errors`>0）值标红 |
+  | Request Rate | `stats.req_per_s` | `requests/s` |
+  | Processing Rate | `stats.completed / stats.t` | `records/s` |
+  | Elapsed | `fmtClock(stats.t)` = `Mm Ss` / `Hh Mm` | — |
+  | ETA | `(t / completed) × (total − completed)`；完成显示 `0s` | <2min 显示 `Ns` 秒，否则 `fmtClock` |
 
 ### Real-Time Metrics 面板（逐请求实时指标表，antd 对齐）
 

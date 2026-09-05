@@ -6,6 +6,13 @@ import { useAccuracyStore } from './accuracy'
 let socket = null
 let reconnectTimer = null
 
+// 单个请求的缓存 key（与后端 _request_live_key 口径一致）：label(#g{case_id})__c{concurrency}
+export function reqKeyOf(label, caseId, concurrency) {
+  const l = String(label == null ? 'unknown' : label).replace(/[^\w\u4e00-\u9fff-]+/g, '_')
+  const gs = caseId !== undefined && caseId !== null ? `#g${caseId}` : ''
+  return `${l}${gs}__c${concurrency}`
+}
+
 export const useTestStore = defineStore('test', {
   state: () => ({
     connected: false,
@@ -14,6 +21,7 @@ export const useTestStore = defineStore('test', {
     logLines: {},        // task_id -> log lines
     currentPos: {},      // task_id -> { case, concurrency } 当前正在执行的位置(仅 running 时有效)
     liveMetrics: {},     // task_id -> { stats, series:{ metric -> [values] }, t:[..] } 实时逐请求指标流
+    liveReq: {},         // task_id -> { reqKey -> {case, case_id, concurrency, label, stats} } 按请求缓存的实时快照
   }),
   getters: {
     taskList: (s) => Object.values(s.tasks).sort((a, b) => (b.created_at || '').localeCompare(a.created_at || '')),
@@ -92,6 +100,16 @@ export const useTestStore = defineStore('test', {
         case 'task_live': {
           // 实时逐请求指标流（自研引擎）：stats = 最新快照，series = 各指标 avg 时间序列（趋势/sparkline）
           const stats = msg.stats || {}
+          // 按请求缓存最新快照（完成后可按请求回看 Profile Progress / Real-Time Metrics）
+          if (!this.liveReq[msg.task_id]) this.liveReq[msg.task_id] = {}
+          const rkey = reqKeyOf(msg.case, msg.case_id, msg.concurrency)
+          this.liveReq[msg.task_id][rkey] = {
+            case: msg.case,
+            case_id: msg.case_id,
+            concurrency: msg.concurrency,
+            label: msg.case,
+            stats,
+          }
           if (!this.liveMetrics[msg.task_id]) this.liveMetrics[msg.task_id] = { stats: null, series: {}, t: [] }
           const buf = this.liveMetrics[msg.task_id]
           buf.stats = stats
@@ -122,6 +140,7 @@ export const useTestStore = defineStore('test', {
             delete this.logLines[msg.task_id]
             delete this.currentPos[msg.task_id]
             delete this.liveMetrics[msg.task_id]
+            delete this.liveReq[msg.task_id]
             api.deleteTask(msg.task_id).catch(() => {})
           } else if (msg.task) {
             this.tasks[msg.task_id] = msg.task
@@ -199,6 +218,7 @@ export const useTestStore = defineStore('test', {
       delete this.logLines[taskId]
       delete this.currentPos[taskId]
       delete this.liveMetrics[taskId]
+      delete this.liveReq[taskId]
     },
     async updateThreshold(taskId, thresholdMs) {
       const snap = await api.updateTaskThreshold(taskId, thresholdMs)

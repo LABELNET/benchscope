@@ -28,6 +28,8 @@ export default {
   testRecords: 'Test Records',
   searchModel: 'Search model...',
   detail: 'Detail',
+  perfDetail: 'Perf Request Detail',
+  reqViewHint: 'View this request Profile Progress / Real-Time Metrics',
   download: 'Download',
   latest8Hint: '*Only the latest 8 records are shown',
 

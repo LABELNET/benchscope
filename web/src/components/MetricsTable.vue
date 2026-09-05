@@ -45,6 +45,9 @@
             </template>
           </span>
         </template>
+        <template v-else-if="column.key === 'detail'">
+          <a-button size="small" type="link" class="detail-btn" @click="emits('detail', record)">{{ t('detail') }}</a-button>
+        </template>
       </template>
     </a-table>
     <div class="table-footer">
@@ -100,7 +103,10 @@ const props = defineProps({
   preset: { type: String, default: 'default' },
   // 默认隐藏的列键（仍可在列控制中开启）；如 Datas Perf Datas 隐藏 Case/Concurrency/Successful
   defaultHidden: { type: Array, default: () => [] },
+  // 最后固定列显示 detail/详情 按钮（点击 emit detail 行数据）
+  showDetail: { type: Boolean, default: false },
 })
+const emits = defineEmits(['detail'])
 
 // 列定义：key + title + 数据路径 + 默认可见
 const ALL_COLUMNS = computed(() => [
@@ -195,6 +201,10 @@ const visibleColumns = computed(() => {
   // Case(label) 列被隐藏（如 Datas Perf Datas）时，自动固定首个可见任务列（Requests）
   if (cols.length && !cols.some((c) => c.fixed === 'left')) {
     cols[0] = { ...cols[0], fixed: 'left' }
+  }
+  // 最后固定列：detail/详情 按钮（仅 showDetail 时）
+  if (props.showDetail) {
+    cols.push({ title: '', key: 'detail', width: 64, fixed: 'right', className: 'col-detail' })
   }
   return cols
 })
@@ -446,5 +456,9 @@ async function exportExcel() {
 .metrics-table .row-count {
   font-size: 11px;
   color: var(--ant-color-text-tertiary, #999);
+}
+.metrics-table .detail-btn {
+  padding: 0 4px;
+  font-size: 12px;
 }
 </style>
