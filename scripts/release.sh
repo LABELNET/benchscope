@@ -82,10 +82,10 @@ else
 fi
 
 # ---------- 版本同步 ----------
-sed -i "s/^version = \".*\"/version = \"$NEW\"/" pyproject.toml
-sed -i "s/__version__ = \".*\"/__version__ = \"$NEW\"/" benchscope/__init__.py
-sed -i "s/\"version\": \".*\"/\"version\": \"$NEW\"/" web/package.json
-sed -i "s|>v[0-9][0-9.]*<|>v$NEW<|" web/src/components/TopBar.vue
+sed -i '' "s/^version = \".*\"/version = \"$NEW\"/" pyproject.toml
+sed -i '' "s/__version__ = \".*\"/__version__ = \"$NEW\"/" benchscope/__init__.py
+sed -i '' "s/\"version\": \".*\"/\"version\": \"$NEW\"/" web/package.json
+sed -i '' "s|>v[0-9][0-9.]*<|>v$NEW<|" web/src/components/TopBar.vue
 echo "已同步版本: pyproject.toml / benchscope/__init__.py / web/package.json / TopBar badge(前端)"
 
 # ---------- 构建 ----------
